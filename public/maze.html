@@ -219,6 +219,17 @@
             appId: "APP_ID"
         };
 
+        // --- CONFIGURACIÓN WebRTC ---
+        const ICE_SERVERS = {
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:stun1.l.google.com:19302" },
+                { urls: "stun:stun2.l.google.com:19302" },
+                { urls: "stun:stun3.l.google.com:19302" },
+                { urls: "stun:stun4.l.google.com:19302" }
+            ]
+        };
+
         // Inicializamos Firebase solo si la config no es la de placeholder
         let db = null;
         if (firebaseConfig.apiKey !== "API_KEY_PLACEHOLDER") {
@@ -2145,7 +2156,7 @@
             protagonista.nombre = document.getElementById('nickInput').value || "Host";
             registrarLogConexion("Iniciando Host en modo manual...");
 
-            const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+            const pc = new RTCPeerConnection(ICE_SERVERS);
             const dc = pc.createDataChannel("mazeRPG");
             
             const info = { pc, dc, entidad: null, unsubscribes: [] };
@@ -2211,7 +2222,7 @@
 
             try {
                 const offer = JSON.parse(atob(offerBase64));
-                const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+                const pc = new RTCPeerConnection(ICE_SERVERS);
                 const info = { pc, dc: null, entidad: null, unsubscribes: [] };
                 
                 pc.ondatachannel = (event) => {
@@ -2400,9 +2411,7 @@
 
             registrarLogConexion(`Iniciando PeerConnection para Invitado: ${guestId}`);
             
-            const pc = new RTCPeerConnection({ 
-                iceServers: [{ urls: "stun:stun.l.google.com:19302" }] 
-            });
+            const pc = new RTCPeerConnection(ICE_SERVERS);
             
             // Creamos el canal de datos principal para el juego
             const dc = pc.createDataChannel("mazeRPG");
@@ -2434,12 +2443,19 @@
             // Gestión de candidatos ICE locales
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
-                    registrarLogConexion(`Enviando ICE local para ${guestId}`);
+                    const tipo = event.candidate.candidate.includes('typ relay') ? 'RELAY' : 
+                                 (event.candidate.candidate.includes('typ srflx') ? 'STUN' : 'HOST');
+                    registrarLogConexion(`Generado ICE local (${tipo}) para ${guestId}. Subiendo...`);
                     db.collection('partidas').doc(idPartidaActual)
                       .collection('conexiones').doc(guestId)
                       .collection('iceCandidatesHost').add(event.candidate.toJSON())
+                      .then(() => registrarLogConexion(`ICE local (${tipo}) guardado en Firestore.`))
                       .catch(e => registrarLogConexion(`Error enviando ICE: ${e.message}`));
                 }
+            };
+
+            pc.onicegatheringstatechange = () => {
+                registrarLogConexion(`Estado Recolección ICE (Host): ${pc.iceGatheringState}`);
             };
 
             // Creamos la oferta SDP
@@ -2479,11 +2495,12 @@
                       if (change.type === 'added') {
                           const cand = change.doc.data();
                           if (pc.remoteDescription) {
-                              pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => {
-                                  registrarLogConexion(`Error añadiendo ICE remoto: ${e.message}`);
-                              });
+                              registrarLogConexion(`Recibido ICE de Invitado. Intentando añadir...`);
+                              pc.addIceCandidate(new RTCIceCandidate(cand))
+                                .then(() => registrarLogConexion("ICE de Invitado añadido correctamente."))
+                                .catch(e => registrarLogConexion(`Error añadiendo ICE remoto: ${e.message}`));
                           } else {
-                              // Si aún no tenemos Answer, lo guardamos en el buffer
+                              registrarLogConexion(`Recibido ICE de Invitado prematuro. Guardando en buffer.`);
                               iceBuffer.push(cand);
                           }
                       }
@@ -2502,7 +2519,7 @@
         async function setupWebRTCGuest(partidaId) {
             registrarLogConexion(`Uniéndose a partida ${partidaId} como invitado.`);
             
-            const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+            const pc = new RTCPeerConnection(ICE_SERVERS);
             const iceBuffer = [];
             const info = { pc, dc: null, entidad: null, unsubscribes: [] };
             
@@ -2525,12 +2542,19 @@
 
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
-                    registrarLogConexion(`Enviando ICE local al Host`);
+                    const tipo = event.candidate.candidate.includes('typ relay') ? 'RELAY' : 
+                                 (event.candidate.candidate.includes('typ srflx') ? 'STUN' : 'HOST');
+                    registrarLogConexion(`Generado ICE local (${tipo}). Subiendo al Host...`);
                     db.collection('partidas').doc(partidaId)
                       .collection('conexiones').doc(idLocal)
                       .collection('iceCandidatesGuest').add(event.candidate.toJSON())
+                      .then(() => registrarLogConexion(`ICE local (${tipo}) guardado en Firestore.`))
                       .catch(e => registrarLogConexion("Error enviando ICE guest: " + e.message));
                 }
+            };
+
+            pc.onicegatheringstatechange = () => {
+                registrarLogConexion(`Estado Recolección ICE (Invitado): ${pc.iceGatheringState}`);
             };
 
             // Notificamos nuestra presencia al Host
@@ -2579,10 +2603,12 @@
                       if (change.type === 'added') {
                           const cand = change.doc.data();
                           if (pc.remoteDescription) {
-                              pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => {
-                                  registrarLogConexion(`Error ICE Host: ${e.message}`);
-                              });
+                              registrarLogConexion(`Recibido ICE de Host. Intentando añadir...`);
+                              pc.addIceCandidate(new RTCIceCandidate(cand))
+                                .then(() => registrarLogConexion("ICE de Host añadido correctamente."))
+                                .catch(e => registrarLogConexion(`Error ICE Host: ${e.message}`));
                           } else {
+                              registrarLogConexion(`Recibido ICE de Host prematuro. Guardando en buffer.`);
                               iceBuffer.push(cand);
                           }
                       }

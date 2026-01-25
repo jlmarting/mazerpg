@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laberinto RPG</title>
+    <title>Juego del Laberinto</title>
     <style>
         body {
             display: flex;
@@ -128,7 +128,7 @@
         <div class="menu-content">
             <button class="menu-btn" onclick="toggleDebugManual()">DEBUG (D)</button>
             <button class="menu-btn" onclick="toggleChat()">CHAT (Enter)</button>
-            <button id="btnAceptarJugadores" class="menu-btn" onclick="toggleAceptarJugadores()" disabled>ACEPTAR JUGADORES: OFF</button>
+            <button id="btnAceptarJugadores" class="menu-btn" onclick="admitirCandidatos()" disabled>ADMITIR JUGADORES</button>
             <button class="menu-btn" onclick="toggleLogPanel()">VER CONEXIONES</button>
         </div>
         <div id="logPanel">
@@ -210,22 +210,22 @@
     <script>
         // --- CONFIGURACIÓN FIREBASE (Placeholder) ---
         // IMPORTANTE: El usuario deberá sustituir esto por sus credenciales reales.
-              const firebaseConfig = {
-            apiKey: "__FIREBASE_API_KEY__",
-            authDomain: "__FIREBASE_AUTH_DOMAIN__",
-            projectId: "__FIREBASE_PROJECT_ID__",
-            storageBucket: "__FIREBASE_STORAGE_BUCKET__",
-            messagingSenderId: "__FIREBASE_MESSAGING_SENDER_ID__",
-            appId: "__FIREBASE_APP_ID__",
-            measurementId: "__FIREBASE_MEASUREMENT_ID__" // Opcional
+        const firebaseConfig = {
+            apiKey: "API_KEY_PLACEHOLDER",
+            authDomain: "PROJECT_ID.firebaseapp.com",
+            projectId: "PROJECT_ID",
+            storageBucket: "PROJECT_ID.appspot.com",
+            messagingSenderId: "SENDER_ID",
+            appId: "APP_ID"
         };
 
         // Inicializamos Firebase solo si la config no es la de placeholder
-        if (firebaseConfig.apiKey.includes("__")) {
-            console.warn("Atención: Firebase se está ejecutando con placeholders. Configura las variables de entorno.");
+        let db = null;
+        if (firebaseConfig.apiKey !== "API_KEY_PLACEHOLDER") {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
         } else {
-            // Aquí iría tu firebase.initializeApp(firebaseConfig);
-            console.log("Firebase configurado correctamente.");
+            console.warn("Firebase no configurado. El lobby multijugador no funcionará hasta que se añadan las credenciales.");
         }
 
         // --- ESTADO GLOBAL Y CORE ---
@@ -439,6 +439,7 @@
                 }
                 
                 for (let vecino of obtenerVecinosTransitables(celdaActual)) {
+                    if (vecino === celdaActual) continue; // Seguridad extra
                     let puntuacionGTentativa = (puntuacionG.get(celdaActual) || 0) + 1;
                     if (puntuacionGTentativa < (puntuacionG.get(vecino) || Infinity)) {
                         origenDelCamino.set(vecino, celdaActual);
@@ -481,17 +482,25 @@
         function reconstruirRuta(origenDelCamino, celdaFinal) {
             let rutaTotal = [celdaFinal];
             let celdaActual = celdaFinal;
-            let iteracionesDeSeguridad = 0;
-            const MAX_ITERACIONES = NUMERO_FILAS * NUMERO_COLUMNAS;
+            let visitadosEnRuta = new Set();
+            visitadosEnRuta.add(celdaFinal);
 
             while (origenDelCamino.has(celdaActual)) {
-                celdaActual = origenDelCamino.get(celdaActual);
+                let celdaSiguiente = origenDelCamino.get(celdaActual);
+                
+                // Si la siguiente celda ya está en la ruta, hemos detectado un ciclo
+                if (visitadosEnRuta.has(celdaSiguiente) || celdaSiguiente === celdaActual) {
+                    console.error("Bucle infinito detectado en reconstruirRuta. Abortando reconstrucción.");
+                    console.log("Estado de origenDelCamino:", origenDelCamino);
+                    break;
+                }
+                
+                celdaActual = celdaSiguiente;
+                visitadosEnRuta.add(celdaActual);
                 rutaTotal.unshift(celdaActual);
                 
-                iteracionesDeSeguridad++;
-                if (iteracionesDeSeguridad > MAX_ITERACIONES) {
-                    console.error("Bucle infinito detectado en reconstruirRuta. Abortando.");
-                    console.log("Estado de origenDelCamino:", origenDelCamino);
+                if (rutaTotal.length > NUMERO_FILAS * NUMERO_COLUMNAS) {
+                    console.error("Ruta excesivamente larga. Abortando.");
                     break;
                 }
             }
@@ -1300,7 +1309,7 @@
                         this.ejecutarMovimientoIA(siguientePaso.fila - this.fila, siguientePaso.columna - this.columna);
                     } else {
                         // Si falla A*, intenta acercarse de forma simple
-                        this.moverseHaciaJugadorDirectamente();
+                        this.moverseHaciaJugadorDirectamente(objetivoInteres);
                     }
                 } else {
                     // Si no lo ve, vaga aleatoriamente
@@ -1674,41 +1683,26 @@
             registrarLogConexion(`Debug toggled: ${vistaDebugActivada}`);
         }
 
-        function toggleAceptarJugadores(forzarValor = null) {
-            if (!esHost) return;
+        async function admitirCandidatos() {
+            if (!esHost || !db || !idPartidaActual) return;
             
-            aceptandoJugadores = (forzarValor !== null) ? forzarValor : !aceptandoJugadores;
-            
-            const btn = document.getElementById('btnAceptarJugadores');
-            btn.innerText = `ACEPTAR JUGADORES: ${aceptandoJugadores ? 'ON' : 'OFF'}`;
-            btn.classList.toggle('active', aceptandoJugadores);
-            registrarLogConexion(`Estado recepción: ${aceptandoJugadores ? 'ACTIVO' : 'INACTIVO'}`);
-            
-            if (aceptandoJugadores) {
-                if (!unsubConexionesHost && db && idPartidaActual) {
-                    registrarLogConexion("Escuchando nuevas conexiones en Firestore...");
-                    unsubConexionesHost = db.collection('partidas').doc(idPartidaActual).collection('conexiones')
-                        .onSnapshot(snapshot => {
-                            if (!aceptandoJugadores) return;
-                            snapshot.docChanges().forEach(change => {
-                                if (change.type === 'added') {
-                                    const guestId = change.id;
-                                    if (guestId !== idLocal) {
-                                        registrarLogConexion(`Nuevo candidato detectado: ${guestId}`);
-                                        setupWebRTCHost(guestId);
-                                    }
-                                }
-                            });
-                        }, err => {
-                            registrarLogConexion("Error en listener de conexiones: " + err.message);
-                        });
-                }
-            } else {
-                if (unsubConexionesHost) {
-                    unsubConexionesHost();
-                    unsubConexionesHost = null;
-                    registrarLogConexion("Listener de conexiones detenido.");
-                }
+            registrarLogConexion("Buscando candidatos en Firestore...");
+            try {
+                const snapshot = await db.collection('partidas').doc(idPartidaActual).collection('conexiones').get();
+                registrarLogConexion(`Escaneo completado: ${snapshot.size} entradas encontradas.`);
+                
+                snapshot.forEach(doc => {
+                    const guestId = doc.id;
+                    if (guestId && guestId !== idLocal) {
+                        // Solo procesamos si no tenemos ya una conexión activa o en curso
+                        if (!jugadoresRemotos.has(guestId)) {
+                            registrarLogConexion(`Iniciando conexión con candidato: ${guestId}`);
+                            setupWebRTCHost(guestId);
+                        }
+                    }
+                });
+            } catch (e) {
+                registrarLogConexion("Error al buscar candidatos: " + e.message);
             }
         }
 
@@ -2126,7 +2120,6 @@
             document.getElementById('lobbyInitial').style.display = 'block';
             document.getElementById('lobbyFirebase').style.display = 'none';
             document.getElementById('lobbyManual').style.display = 'none';
-            if (typeof unsubscribeLobby === 'function') unsubscribeLobby();
         }
 
         function mostrarLobbyManual() {
@@ -2135,10 +2128,6 @@
         }
 
         function mostrarLobbyFirebase() {
-            if (unsubscribeLobby) {
-                unsubscribeLobby();
-                unsubscribeLobby = null;
-            }
             document.getElementById('lobbyInitial').style.display = 'none';
             document.getElementById('lobbyFirebase').style.display = 'flex';
             
@@ -2278,8 +2267,7 @@
             crearPartidaFirestore();
         }
 
-        let unsubscribeLobby = null;
-        function listarPartidasFirestore() {
+        async function listarPartidasFirestore() {
             if (!db) {
                 registrarLogConexion("Lobby: Error - DB no inicializada.");
                 return;
@@ -2287,47 +2275,49 @@
             const listaContainer = document.getElementById('listaPartidas');
             registrarLogConexion("Lobby: Consultando partidas activas...");
             
-            unsubscribeLobby = db.collection('partidas')
-                .where('estado', '==', 'activa')
-                .onSnapshot(snapshot => {
-                    registrarLogConexion(`Lobby: Snapshot recibido (${snapshot.size} partidas).`);
-                    listaContainer.innerHTML = "";
-                    
-                    // Filtrar partidas "zombis" (sin actualización en > 60 seg)
-                    const ahora = Date.now();
-                    const partidasValidas = [];
-                    snapshot.forEach(doc => {
-                        const data = doc.data();
-                        if (ahora - (data.lastSeen || 0) < 60000) {
-                            partidasValidas.push({id: doc.id, ...data});
-                        }
-                    });
-
-                    if (partidasValidas.length === 0) {
-                        listaContainer.innerHTML = '<p style="color: #666; font-style: italic; text-align: center;">No hay partidas disponibles.</p>';
-                        return;
+            try {
+                const snapshot = await db.collection('partidas')
+                    .where('estado', '==', 'activa')
+                    .get();
+                
+                registrarLogConexion(`Lobby: Snapshot recibido (${snapshot.size} partidas).`);
+                listaContainer.innerHTML = "";
+                
+                // Filtrar partidas "zombis" (sin actualización en > 60 seg)
+                const ahora = Date.now();
+                const partidasValidas = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (ahora - (data.lastSeen || 0) < 60000) {
+                        partidasValidas.push({id: doc.id, ...data});
                     }
-
-                    partidasValidas.forEach(partida => {
-                        const tiempoActiva = Math.floor((ahora - (partida.creacion || ahora)) / 1000);
-                        const mins = Math.floor(tiempoActiva / 60);
-                        const segs = tiempoActiva % 60;
-                        
-                        const item = document.createElement('div');
-                        item.style = "background: #222; margin-bottom: 5px; padding: 10px; border-radius: 3px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444;";
-                        item.innerHTML = `
-                            <div style="text-align: left;">
-                                <strong style="color: #007bff;">ID: ${partida.id}</strong><br>
-                                <span style="font-size: 10px; color: #888;">Host: ${partida.hostNick || '?' } | Jugadores: ${partida.numJugadores || 1} | ${mins}m ${segs}s</span>
-                            </div>
-                            <button onclick="unirseAPartidaFirestore('${partida.id}')" style="background: #28a745; color: white; border: none; padding: 5px 10px; cursor: pointer; font-family: monospace; font-weight: bold;">UNIRSE</button>
-                        `;
-                        listaContainer.appendChild(item);
-                    });
-                }, err => {
-                    registrarLogConexion("Lobby: Error snapshot - " + err.message);
-                    listaContainer.innerHTML = `<p style="color: #f55;">Error: ${err.message}</p>`;
                 });
+
+                if (partidasValidas.length === 0) {
+                    listaContainer.innerHTML = '<p style="color: #666; font-style: italic; text-align: center;">No hay partidas disponibles.</p>';
+                    return;
+                }
+
+                partidasValidas.forEach(partida => {
+                    const tiempoActiva = Math.floor((ahora - (partida.creacion || ahora)) / 1000);
+                    const mins = Math.floor(tiempoActiva / 60);
+                    const segs = tiempoActiva % 60;
+                    
+                    const item = document.createElement('div');
+                    item.style = "background: #222; margin-bottom: 5px; padding: 10px; border-radius: 3px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444;";
+                    item.innerHTML = `
+                        <div style="text-align: left;">
+                            <strong style="color: #007bff;">ID: ${partida.id}</strong><br>
+                            <span style="font-size: 10px; color: #888;">Host: ${partida.hostNick || '?' } | Jugadores: ${partida.numJugadores || 1} | ${mins}m ${segs}s</span>
+                        </div>
+                        <button onclick="unirseAPartidaFirestore('${partida.id}')" style="background: #28a745; color: white; border: none; padding: 5px 10px; cursor: pointer; font-family: monospace; font-weight: bold;">UNIRSE</button>
+                    `;
+                    listaContainer.appendChild(item);
+                });
+            } catch (err) {
+                registrarLogConexion("Lobby: Error snapshot - " + err.message);
+                listaContainer.innerHTML = `<p style="color: #f55;">Error: ${err.message}</p>`;
+            }
         }
         
         async function crearPartidaFirestore() {
@@ -2370,20 +2360,13 @@
                 }
             }, 10000); // Cada 10 segundos
 
-            // Escuchar nuevas conexiones de invitados (Forzamos ON)
-            toggleAceptarJugadores(true); 
-
-            registrarLogConexion(`Partida creada: ${idPartidaActual}.`);
+            registrarLogConexion(`Partida creada: ${idPartidaActual}. Pulsa 'ADMITIR JUGADORES' en el menú para conectar invitados.`);
             ocultarLobby();
             iniciarMotorJuego();
         }
 
         async function unirseAPartidaFirestore(partidaId) {
             if (!db) return;
-            if (unsubscribeLobby) {
-                unsubscribeLobby();
-                unsubscribeLobby = null;
-            }
             idPartidaActual = partidaId;
             protagonista.nombre = document.getElementById('nickInput').value || "Invitado";
             esHost = false;
@@ -2405,6 +2388,7 @@
          * @param {string} guestId - ID único del invitado que intenta unirse.
          */
         function setupWebRTCHost(guestId) {
+            if (!guestId) return;
             // Evitar duplicidad si ya estamos conectando o conectados
             if (jugadoresRemotos.has(guestId)) {
                 const existing = jugadoresRemotos.get(guestId);

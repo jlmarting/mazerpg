@@ -1,0 +1,2693 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Juego del Laberinto</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #222; /* Fondo oscuro más inmersivo */
+            font-family: 'Courier New', monospace;
+            overflow: hidden; /* Evitar scroll en móvil */
+        }
+        canvas {
+            border: 3px solid #555;
+            background-color: #000;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            touch-action: none; /* Crucial para evitar gestos del navegador */
+        }
+
+        /* Menú superior colapsable */
+        #topMenu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 100;
+            background: rgba(34, 34, 34, 0.95);
+            border-bottom: 2px solid #007bff;
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateY(-100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #topMenu.visible {
+            transform: translateY(0);
+        }
+
+        #menuToggle {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #007bff;
+            color: white;
+            padding: 2px 15px;
+            border-radius: 0 0 10px 10px;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        .menu-content {
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .menu-btn {
+            background: #333;
+            color: #ccc;
+            border: 1px solid #555;
+            padding: 5px 10px;
+            font-family: monospace;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .menu-btn:hover {
+            background: #444;
+            color: white;
+        }
+
+        .menu-btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+
+        .menu-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        #logPanel {
+            width: 90%;
+            max-width: 800px;
+            height: 0;
+            overflow: hidden;
+            transition: height 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        #logPanel.visible {
+            height: 150px;
+        }
+
+        #logTextArea {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            color: #0f0;
+            font-size: 10px;
+            font-family: monospace;
+            border: 1px solid #333;
+            padding: 5px;
+            box-sizing: border-box;
+            resize: none;
+        }
+    </style>
+    <!-- Firebase SDK (v9 Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div id="topMenu">
+        <div id="menuToggle" onclick="document.getElementById('topMenu').classList.toggle('visible')">MENU</div>
+        <div class="menu-content">
+            <button class="menu-btn" onclick="toggleDebugManual()">DEBUG (D)</button>
+            <button class="menu-btn" onclick="toggleChat()">CHAT (Enter)</button>
+            <button id="btnAceptarJugadores" class="menu-btn" onclick="toggleAceptarJugadores()" disabled>ACEPTAR JUGADORES: OFF</button>
+            <button class="menu-btn" onclick="toggleLogPanel()">VER CONEXIONES</button>
+        </div>
+        <div id="logPanel">
+            <textarea id="logTextArea" readonly placeholder="Esperando logs de conexión..."></textarea>
+        </div>
+    </div>
+
+    <div id="lobby" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; color: white; padding: 20px; box-sizing: border-box; text-align: center;">
+        <h1 style="color: #007bff;">LABERINTO RPG</h1>
+        <div style="margin-bottom: 20px; border: 1px solid #444; padding: 15px; border-radius: 5px;">
+            <label>TU NICK: <input type="text" id="nickInput" value="Héroe" maxlength="10" style="padding: 5px; font-family: 'Courier New', monospace; background: #111; color: #fff; border: 1px solid #555;"></label>
+        </div>
+        
+        <div id="lobbyInitial">
+            <div style="margin-bottom: 10px;">
+                <button onclick="iniciarComoHostFirebase()" style="padding: 10px 20px; margin: 10px; cursor: pointer; background: #007bff; color: white; border: none; font-family: monospace; font-weight: bold;">CREAR PARTIDA (HOST)</button>
+                <button onclick="mostrarLobbyFirebase()" style="padding: 10px 20px; margin: 10px; cursor: pointer; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold;">UNIRSE A PARTIDA</button>
+            </div>
+            <div style="border-top: 1px solid #333; padding-top: 10px;">
+                <button onclick="mostrarLobbyManual()" style="padding: 8px 15px; margin: 5px; cursor: pointer; background: #6c757d; color: white; border: none; font-family: monospace;">CONEXIÓN MANUAL (SIN FIREBASE)</button>
+                <br>
+                <button onclick="empezarSolo()" style="padding: 8px 15px; margin: 10px; cursor: pointer; background: #444; color: #ccc; border: none; font-family: monospace;">MODO UN JUGADOR</button>
+            </div>
+        </div>
+
+        <div id="lobbyManual" style="display: none; width: 100%; max-width: 600px; flex-direction: column; align-items: center; gap: 15px;">
+            <h2 style="color: #6c757d; margin: 0;">MODO MANUAL</h2>
+            
+            <div id="manualHostSection" style="width: 100%; border: 1px solid #007bff; padding: 15px; border-radius: 5px; background: #111;">
+                <h3 style="margin-top: 0; color: #007bff; font-size: 14px;">PASO 1: COMO ANFITRIÓN (HOST)</h3>
+                <button onclick="iniciarComoHostManual()" style="background: #007bff; color: white; border: none; padding: 8px; cursor: pointer; font-family: monospace; margin-bottom: 10px;">GENERAR OFERTA</button>
+                <p style="font-size: 10px; color: #888; margin: 5px 0;">Copia este código y envíalo al invitado:</p>
+                <textarea id="manualOfferOut" style="width: 100%; height: 60px; background: #000; color: #0f0; font-size: 9px; border: 1px solid #333;" readonly></textarea>
+                
+                <p style="font-size: 10px; color: #888; margin: 10px 0 5px 0;">PASO 2: PEGA LA RESPUESTA DEL INVITADO:</p>
+                <textarea id="manualAnswerIn" style="width: 100%; height: 60px; background: #000; color: #fff; font-size: 9px; border: 1px solid #333;"></textarea>
+                <button onclick="procesarRespuestaManual()" style="background: #28a745; color: white; border: none; padding: 8px; cursor: pointer; font-family: monospace; margin-top: 10px; width: 100%;">CONECTAR</button>
+            </div>
+
+            <div id="manualGuestSection" style="width: 100%; border: 1px solid #28a745; padding: 15px; border-radius: 5px; background: #111;">
+                <h3 style="margin-top: 0; color: #28a745; font-size: 14px;">COMO INVITADO (GUEST)</h3>
+                <p style="font-size: 10px; color: #888; margin: 5px 0;">PASO 1: PEGA LA OFERTA DEL ANFITRIÓN:</p>
+                <textarea id="manualOfferIn" style="width: 100%; height: 60px; background: #000; color: #fff; font-size: 9px; border: 1px solid #333;"></textarea>
+                <button onclick="procesarOfertaManual()" style="background: #28a745; color: white; border: none; padding: 8px; cursor: pointer; font-family: monospace; margin-top: 10px; width: 100%;">GENERAR RESPUESTA</button>
+                
+                <p style="font-size: 10px; color: #888; margin: 10px 0 5px 0;">PASO 2: COPIA TU RESPUESTA Y ENVÍALA AL HOST:</p>
+                <textarea id="manualAnswerOut" style="width: 100%; height: 60px; background: #000; color: #0f0; font-size: 9px; border: 1px solid #333;" readonly></textarea>
+            </div>
+
+            <button onclick="regresarAlLobby()" style="background: none; border: none; color: #888; text-decoration: underline; cursor: pointer; font-size: 12px;">VOLVER AL MENÚ</button>
+        </div>
+
+        <div id="lobbyFirebase" style="display: none; width: 100%; max-width: 600px; flex-direction: column; align-items: center;">
+            <div id="firebaseWarning" style="display: none; background: #500; color: #fff; padding: 10px; margin-bottom: 10px; border: 1px solid #f00; font-size: 11px;">
+                ⚠️ FIREBASE NO CONFIGURADO. Las credenciales son de ejemplo y no funcionarán.
+            </div>
+            <h2 style="color: #28a745; margin-bottom: 10px;">PARTIDAS ACTIVAS</h2>
+            <div id="listaPartidas" style="width: 100%; max-height: 300px; overflow-y: auto; background: #111; border: 1px solid #333; border-radius: 5px; padding: 10px; margin-bottom: 15px;">
+                <!-- Las partidas se cargarán aquí dinámicamente -->
+                <p style="color: #666; font-style: italic;">Buscando partidas...</p>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button onclick="listarPartidasFirestore()" style="background: #444; color: #fff; border: none; padding: 5px 10px; cursor: pointer; font-family: monospace; font-size: 12px;">REFRESCAR</button>
+                <button onclick="regresarAlLobby()" style="background: none; border: none; color: #888; text-decoration: underline; cursor: pointer; font-size: 12px;">VOLVER AL MENÚ</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="chatModal" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 20;">
+        <div style="background: #222; padding: 20px; border: 2px solid #007bff; border-radius: 10px; width: 80%; max-width: 400px;">
+            <p style="color: #007bff; margin-top: 0; font-weight: bold;">CHAT</p>
+            <input type="text" id="chatInput" style="width: 100%; padding: 10px; background: #000; color: #fff; border: 1px solid #555; font-family: 'Courier New', monospace; box-sizing: border-box;" maxlength="50" placeholder="Escribe tu mensaje...">
+            <p style="color: #666; font-size: 10px; margin-bottom: 0;">Presiona ENTER para enviar</p>
+        </div>
+    </div>
+
+    <canvas id="mazeCanvas" style="display: none;"></canvas>
+
+    <script>
+        // --- CONFIGURACIÓN FIREBASE (Placeholder) ---
+        // IMPORTANTE: El usuario deberá sustituir esto por sus credenciales reales.
+              const firebaseConfig = {
+            apiKey: "__FIREBASE_API_KEY__",
+            authDomain: "__FIREBASE_AUTH_DOMAIN__",
+            projectId: "__FIREBASE_PROJECT_ID__",
+            storageBucket: "__FIREBASE_STORAGE_BUCKET__",
+            messagingSenderId: "__FIREBASE_MESSAGING_SENDER_ID__",
+            appId: "__FIREBASE_APP_ID__",
+            measurementId: "__FIREBASE_MEASUREMENT_ID__" // Opcional
+        };
+
+        // Inicializamos Firebase solo si la config no es la de placeholder
+        if (firebaseConfig.apiKey.includes("__")) {
+            console.warn("Atención: Firebase se está ejecutando con placeholders. Configura las variables de entorno.");
+        } else {
+            // Aquí iría tu firebase.initializeApp(firebaseConfig);
+            console.log("Firebase configurado correctamente.");
+        }
+
+        // --- ESTADO GLOBAL Y CORE ---
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let multiplayerActivo = false;
+        let mundoSincronizado = false;
+        let idPartidaActual = null;
+        let idLocal = "L" + Math.random().toString(36).substr(2, 9);
+        let jugadoresRemotos = new Map(); // id -> { pc, dc, entidad, unsubscribes }
+        let esHost = false;
+        let motorIniciado = false;
+        let aceptandoJugadores = false;
+        let unsubConexionesHost = null;
+
+        /**
+         * Configuración global del juego optimizada para pantalla completa.
+         */
+        const NUMERO_FILAS = 60;
+        const NUMERO_COLUMNAS = 60;
+        
+        const TAMANO_CELDA = 32;
+        const ALTO_UI_TOP = 60;
+        const ALTO_UI_BOTTOM = 100;
+
+        let CELDAS_VISIBLES_X = 10;
+        let CELDAS_VISIBLES_Y = 10;
+
+        const RADIO_VISION = 3;
+        const TIEMPO_DESVANECIMIENTO_NIEBLA = 10000;
+
+        /**
+         * Ajusta dinámicamente el tamaño del canvas y el viewport al tamaño de la ventana.
+         */
+        function ajustarDimensiones() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            CELDAS_VISIBLES_X = Math.floor(canvas.width / TAMANO_CELDA);
+            CELDAS_VISIBLES_Y = Math.floor((canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM) / TAMANO_CELDA);
+            
+            console.log(`Dimensiones ajustadas: ${CELDAS_VISIBLES_X}x${CELDAS_VISIBLES_Y} celdas.`);
+        }
+
+        window.addEventListener('resize', ajustarDimensiones);
+        ajustarDimensiones();
+
+        /**
+         * Representa una unidad básica del laberinto.
+         * Cada celda conoce su posición, si es transitable y el estado de sus muros.
+         */
+        class Celda {
+            constructor(fila, columna) {
+                this.fila = fila;
+                this.columna = columna;
+                this.ultimoAvistamiento = 0; // Marca de tiempo (timestamp) para la Niebla de Guerra
+                this.esTransitable = false;   // Determina si los personajes pueden caminar por aquí
+                this.muros = {
+                    superior: true,
+                    derecho: true,
+                    inferior: true,
+                    izquierdo: true
+                };
+                this.visitada = false; // Propiedad técnica para algoritmos de generación
+            }
+
+        }
+
+        /**
+         * Serializa el mapa en una cadena compacta para evitar límites de WebRTC.
+         * Cada celda se representa con un carácter hexadecimal (0-F) + un bit para transitabilidad.
+         * Usaremos 2 caracteres por celda para mayor claridad y seguridad.
+         */
+        function serializarMapa() {
+            let resultado = "";
+            for (let f = 0; f < NUMERO_FILAS; f++) {
+                for (let c = 0; c < NUMERO_COLUMNAS; c++) {
+                    const celda = mapaLaberinto[f][c];
+                    let valor = 0;
+                    if (celda.muros.superior) valor |= 1;
+                    if (celda.muros.derecho)  valor |= 2;
+                    if (celda.muros.inferior) valor |= 4;
+                    if (celda.muros.izquierdo) valor |= 8;
+                    if (celda.esTransitable)  valor |= 16;
+                    resultado += valor.toString(36); // Base 36 (0-z) es muy compacta
+                }
+            }
+            return resultado;
+        }
+
+        function deserializarMapa(datos) {
+            let i = 0;
+            for (let f = 0; f < NUMERO_FILAS; f++) {
+                for (let c = 0; c < NUMERO_COLUMNAS; c++) {
+                    const valor = parseInt(datos[i++], 36);
+                    const celda = mapaLaberinto[f][c];
+                    celda.muros.superior = !!(valor & 1);
+                    celda.muros.derecho  = !!(valor & 2);
+                    celda.muros.inferior = !!(valor & 4);
+                    celda.muros.izquierdo = !!(valor & 8);
+                    celda.esTransitable  = !!(valor & 16);
+                }
+            }
+        }
+
+        /**
+         * Calcula el desplazamiento de la cámara para centrar la vista en el jugador.
+         */
+        function obtenerOffsetCamara() {
+            // Guard para evitar errores durante la inicialización
+            if (typeof protagonista === 'undefined' || !protagonista) {
+                return { colOffset: 0, filaOffset: 0 };
+            }
+
+            let colOffset = protagonista ? protagonista.columna - Math.floor(CELDAS_VISIBLES_X / 2) : 0;
+            let filaOffset = protagonista ? protagonista.fila - Math.floor(CELDAS_VISIBLES_Y / 2) : 0;
+
+            // Restringimos el desplazamiento para no mostrar áreas fuera de los límites del mapa
+            colOffset = Math.max(0, Math.min(colOffset, NUMERO_COLUMNAS - CELDAS_VISIBLES_X));
+            filaOffset = Math.max(0, Math.min(filaOffset, NUMERO_FILAS - CELDAS_VISIBLES_Y));
+
+            return { colOffset, filaOffset };
+        }
+
+        // Inicializamos la matriz del laberinto (el tablero de juego)
+        let mapaLaberinto = [];
+        for (let fila = 0; fila < NUMERO_FILAS; fila++) {
+            let filaCeldas = [];
+            for (let columna = 0; columna < NUMERO_COLUMNAS; columna++) {
+                filaCeldas.push(new Celda(fila, columna));
+            }
+            mapaLaberinto.push(filaCeldas);
+        }
+
+        /**
+         * Obtiene las celdas adyacentes que no han sido visitadas aún.
+         * Útil para los algoritmos de generación.
+         */
+        function obtenerVecinosNoVisitados(celda) {
+            const { fila, columna } = celda;
+            let vecinos = [];
+
+            if (fila > 0) vecinos.push(mapaLaberinto[fila - 1][columna]);
+            if (fila < NUMERO_FILAS - 1) vecinos.push(mapaLaberinto[fila + 1][columna]);
+            if (columna > 0) vecinos.push(mapaLaberinto[fila][columna - 1]);
+            if (columna < NUMERO_COLUMNAS - 1) vecinos.push(mapaLaberinto[fila][columna + 1]);
+
+            return vecinos.filter(v => !v.visitada);
+        }
+
+        /**
+         * Elimina los muros físicos entre dos celdas adyacentes para crear un camino.
+         */
+        function eliminarMurosEntre(celdaA, celdaB) {
+            const diferenciaFila = celdaA.fila - celdaB.fila;
+            const diferenciaColumna = celdaA.columna - celdaB.columna;
+
+            if (diferenciaFila === 1) {
+                celdaA.muros.superior = false;
+                celdaB.muros.inferior = false;
+            } else if (diferenciaFila === -1) {
+                celdaA.muros.inferior = false;
+                celdaB.muros.superior = false;
+            }
+
+            if (diferenciaColumna === 1) {
+                celdaA.muros.izquierdo = false;
+                celdaB.muros.derecho = false;
+            } else if (diferenciaColumna === -1) {
+                celdaA.muros.derecho = false;
+                celdaB.muros.izquierdo = false;
+            }
+        }
+
+        /**
+         * Implementación del algoritmo A* para encontrar el camino más corto entre dos puntos.
+         * Es didáctico porque utiliza una heurística (distancia Manhattan) para priorizar celdas.
+         */
+        function algoritmoBusquedaAStar(filaInicio, colInicio, filaFin, colFin) {
+            const inicio = mapaLaberinto[filaInicio][colInicio];
+            const destino = mapaLaberinto[filaFin][colFin];
+            
+            let conjuntoAbierto = [inicio];
+            let origenDelCamino = new Map();
+            
+            // Coste desde el inicio hasta la celda actual
+            let puntuacionG = new Map();
+            puntuacionG.set(inicio, 0);
+            
+            // Coste total estimado (G + Heurística)
+            let puntuacionF = new Map();
+            puntuacionF.set(inicio, calcularHeuristicaManhattan(inicio, destino));
+            
+            let seguridad = 0;
+            const MAX_A_STAR = 2000; // Límite de expansión para evitar cuelgues
+
+            while (conjuntoAbierto.length > 0) {
+                seguridad++;
+                if (seguridad > MAX_A_STAR) {
+                    console.warn("A* abortado por seguridad (demasiadas iteraciones)");
+                    return null;
+                }
+
+                // Ordenamos para obtener siempre la celda con menor coste estimado
+                conjuntoAbierto.sort((a, b) => (puntuacionF.get(a) || Infinity) - (puntuacionF.get(b) || Infinity));
+                let celdaActual = conjuntoAbierto.shift();
+                
+                if (celdaActual === destino) {
+                    return reconstruirRuta(origenDelCamino, celdaActual);
+                }
+                
+                for (let vecino of obtenerVecinosTransitables(celdaActual)) {
+                    let puntuacionGTentativa = (puntuacionG.get(celdaActual) || 0) + 1;
+                    if (puntuacionGTentativa < (puntuacionG.get(vecino) || Infinity)) {
+                        origenDelCamino.set(vecino, celdaActual);
+                        puntuacionG.set(vecino, puntuacionGTentativa);
+                        puntuacionF.set(vecino, puntuacionGTentativa + calcularHeuristicaManhattan(vecino, destino));
+                        if (!conjuntoAbierto.includes(vecino)) {
+                            conjuntoAbierto.push(vecino);
+                        }
+                    }
+                }
+            }
+            console.warn(`No se encontró camino de [${filaInicio},${colInicio}] a [${filaFin},${colFin}]`);
+            return null;
+        }
+
+        /**
+         * Estima la distancia entre dos puntos ignorando muros.
+         */
+        function calcularHeuristicaManhattan(celdaA, celdaB) {
+            return Math.abs(celdaA.fila - celdaB.fila) + Math.abs(celdaA.columna - celdaB.columna);
+        }
+
+        /**
+         * Devuelve las celdas a las que se puede acceder físicamente (sin muros y transitables).
+         */
+        function obtenerVecinosTransitables(celda) {
+            const { fila, columna } = celda;
+            let vecinos = [];
+            if (!celda.muros.superior && fila > 0 && mapaLaberinto[fila - 1][columna].esTransitable) vecinos.push(mapaLaberinto[fila - 1][columna]);
+            if (!celda.muros.inferior && fila < NUMERO_FILAS - 1 && mapaLaberinto[fila + 1][columna].esTransitable) vecinos.push(mapaLaberinto[fila + 1][columna]);
+            if (!celda.muros.izquierdo && columna > 0 && mapaLaberinto[fila][columna - 1].esTransitable) vecinos.push(mapaLaberinto[fila][columna - 1]);
+            if (!celda.muros.derecho && columna < NUMERO_COLUMNAS - 1 && mapaLaberinto[fila][columna + 1].esTransitable) vecinos.push(mapaLaberinto[fila][columna + 1]);
+            return vecinos;
+        }
+
+        /**
+         * Recompone la ruta desde el destino hacia atrás usando el mapa de orígenes.
+         * Se ha incluido un límite de seguridad para evitar bucles infinitos en caso de corrupción de datos.
+         */
+        function reconstruirRuta(origenDelCamino, celdaFinal) {
+            let rutaTotal = [celdaFinal];
+            let celdaActual = celdaFinal;
+            let iteracionesDeSeguridad = 0;
+            const MAX_ITERACIONES = NUMERO_FILAS * NUMERO_COLUMNAS;
+
+            while (origenDelCamino.has(celdaActual)) {
+                celdaActual = origenDelCamino.get(celdaActual);
+                rutaTotal.unshift(celdaActual);
+                
+                iteracionesDeSeguridad++;
+                if (iteracionesDeSeguridad > MAX_ITERACIONES) {
+                    console.error("Bucle infinito detectado en reconstruirRuta. Abortando.");
+                    console.log("Estado de origenDelCamino:", origenDelCamino);
+                    break;
+                }
+            }
+            return rutaTotal;
+        }
+
+        /**
+         * Genera el mapa del laberinto utilizando una partición binaria del espacio (BSP).
+         * Este enfoque didáctico permite crear salas rectangulares conectadas por pasillos,
+         * garantizando que el diseño parezca una mazmorra y no un simple laberinto de rejilla.
+         */
+        function generarLaberintoBSP() {
+            console.log("Iniciando generación de laberinto BSP...");
+            const TAMANO_MINIMO_NODO = 6;
+
+            /**
+             * Representa una región del mapa que puede ser dividida o contener una sala.
+             */
+            class NodoEspacial {
+                constructor(fila, columna, alto, ancho) {
+                    this.fila = fila;
+                    this.columna = columna;
+                    this.alto = alto;
+                    this.ancho = ancho;
+                    this.hijoIzquierdo = null;
+                    this.hijoDerecho = null;
+                    this.sala = null;
+                }
+
+                /**
+                 * Intenta dividir el nodo en dos sub-nodos más pequeños.
+                 */
+                dividir() {
+                    if (this.hijoIzquierdo || this.hijoDerecho) return false;
+
+                    let dividirHorizontalmente = Math.random() > 0.5;
+                    // Forzamos la dirección si el nodo es muy alargado
+                    if (this.ancho > this.alto && this.ancho / this.alto >= 1.25) dividirHorizontalmente = false;
+                    else if (this.alto > this.ancho && this.alto / this.ancho >= 1.25) dividirHorizontalmente = true;
+
+                    const maximoEspacio = (dividirHorizontalmente ? this.alto : this.ancho) - TAMANO_MINIMO_NODO;
+                    if (maximoEspacio < TAMANO_MINIMO_NODO) return false;
+
+                    const puntoDeCorte = Math.floor(Math.random() * (maximoEspacio - TAMANO_MINIMO_NODO)) + TAMANO_MINIMO_NODO;
+                    
+                    if (dividirHorizontalmente) {
+                        this.hijoIzquierdo = new NodoEspacial(this.fila, this.columna, puntoDeCorte, this.ancho);
+                        this.hijoDerecho = new NodoEspacial(this.fila + puntoDeCorte, this.columna, this.alto - puntoDeCorte, this.ancho);
+                    } else {
+                        this.hijoIzquierdo = new NodoEspacial(this.fila, this.columna, this.alto, puntoDeCorte);
+                        this.hijoDerecho = new NodoEspacial(this.fila, this.columna + puntoDeCorte, this.alto, this.ancho - puntoDeCorte);
+                    }
+                    return true;
+                }
+
+                /**
+                 * Crea salas en los nodos hoja y las conecta.
+                 */
+                crearSalasYPasillos() {
+                    if (this.hijoIzquierdo || this.hijoDerecho) {
+                        if (this.hijoIzquierdo) this.hijoIzquierdo.crearSalasYPasillos();
+                        if (this.hijoDerecho) this.hijoDerecho.crearSalasYPasillos();
+                        
+                        if (this.hijoIzquierdo && this.hijoDerecho) {
+                            this.crearPasilloEntre(this.hijoIzquierdo.obtenerSala(), this.hijoDerecho.obtenerSala());
+                        }
+                    } else {
+                        // Dimensiones aleatorias para la sala dentro del nodo
+                        const altoSala = Math.floor(Math.random() * (this.alto - 4)) + 3;
+                        const anchoSala = Math.floor(Math.random() * (this.ancho - 4)) + 3;
+                        const filaSala = this.fila + Math.floor(Math.random() * (this.alto - altoSala - 2)) + 1;
+                        const colSala = this.columna + Math.floor(Math.random() * (this.ancho - anchoSala - 2)) + 1;
+                        
+                        this.sala = { fila: filaSala, columna: colSala, alto: altoSala, ancho: anchoSala };
+                        
+                        for (let f = filaSala; f < filaSala + altoSala; f++) {
+                            for (let c = colSala; c < colSala + anchoSala; c++) {
+                                mapaLaberinto[f][c].esTransitable = true;
+                                if (f + 1 < filaSala + altoSala) eliminarMurosEntre(mapaLaberinto[f][c], mapaLaberinto[f + 1][c]);
+                                if (c + 1 < colSala + anchoSala) eliminarMurosEntre(mapaLaberinto[f][c], mapaLaberinto[f][c + 1]);
+                            }
+                        }
+                    }
+                }
+
+                obtenerSala() {
+                    if (this.sala) return this.sala;
+                    let salaIzq, salaDer;
+                    if (this.hijoIzquierdo) salaIzq = this.hijoIzquierdo.obtenerSala();
+                    if (this.hijoDerecho) salaDer = this.hijoDerecho.obtenerSala();
+                    if (!salaIzq && !salaDer) return null;
+                    if (!salaIzq) return salaDer;
+                    if (!salaDer) return salaIzq;
+                    return Math.random() > 0.5 ? salaIzq : salaDer;
+                }
+
+                crearPasilloEntre(salaA, salaB) {
+                    let puntoA = { f: salaA.fila + Math.floor(salaA.alto / 2), c: salaA.columna + Math.floor(salaA.ancho / 2) };
+                    let puntoB = { f: salaB.fila + Math.floor(salaB.alto / 2), c: salaB.columna + Math.floor(salaB.ancho / 2) };
+
+                    let fActual = puntoA.f;
+                    let cActual = puntoA.c;
+
+                    // Pasillo en L: primero horizontal, luego vertical
+                    while (cActual !== puntoB.c) {
+                        let siguienteC = cActual < puntoB.c ? cActual + 1 : cActual - 1;
+                        mapaLaberinto[fActual][cActual].esTransitable = true;
+                        mapaLaberinto[fActual][siguienteC].esTransitable = true;
+                        eliminarMurosEntre(mapaLaberinto[fActual][cActual], mapaLaberinto[fActual][siguienteC]);
+                        cActual = siguienteC;
+                    }
+                    while (fActual !== puntoB.f) {
+                        let siguienteF = fActual < puntoB.f ? fActual + 1 : fActual - 1;
+                        mapaLaberinto[fActual][cActual].esTransitable = true;
+                        mapaLaberinto[siguienteF][cActual].esTransitable = true;
+                        eliminarMurosEntre(mapaLaberinto[fActual][cActual], mapaLaberinto[siguienteF][cActual]);
+                        fActual = siguienteF;
+                    }
+                }
+            }
+
+            let raiz = new NodoEspacial(0, 0, NUMERO_FILAS, NUMERO_COLUMNAS);
+            let todosLosNodos = [raiz];
+            let huboDivision = true;
+            let seguridadBSP = 0;
+
+            while (huboDivision && seguridadBSP < 500) {
+                seguridadBSP++;
+                huboDivision = false;
+                for (let i = 0; i < todosLosNodos.length; i++) {
+                    if (!todosLosNodos[i].hijoIzquierdo && !todosLosNodos[i].hijoDerecho) {
+                        if (todosLosNodos[i].dividir()) {
+                            todosLosNodos.push(todosLosNodos[i].hijoIzquierdo);
+                            todosLosNodos.push(todosLosNodos[i].hijoDerecho);
+                            huboDivision = true;
+                        }
+                    }
+                }
+            }
+            raiz.crearSalasYPasillos();
+            
+            // Garantizar conectividad de entrada (0,0) y salida (final)
+            if (!mapaLaberinto[0][0].esTransitable) {
+                for(let f=0; f<NUMERO_FILAS; f++) {
+                    for(let c=0; c<NUMERO_COLUMNAS; c++) {
+                        if(mapaLaberinto[f][c].esTransitable) {
+                            trazarRutaDirecta(0, 0, f, c);
+                            break;
+                        }
+                    }
+                    if(mapaLaberinto[0][0].esTransitable) break;
+                }
+            }
+            
+            if (!mapaLaberinto[NUMERO_FILAS-1][NUMERO_COLUMNAS-1].esTransitable) {
+                for(let f=NUMERO_FILAS-1; f>=0; f--) {
+                    for(let c=NUMERO_COLUMNAS-1; c>=0; c--) {
+                        if(mapaLaberinto[f][c].esTransitable) {
+                            trazarRutaDirecta(NUMERO_FILAS-1, NUMERO_COLUMNAS-1, f, c);
+                            break;
+                        }
+                    }
+                    if(mapaLaberinto[NUMERO_FILAS-1][NUMERO_COLUMNAS-1].esTransitable) break;
+                }
+            }
+
+            function trazarRutaDirecta(f1, c1, f2, c2) {
+                let fActual = f1, cActual = c1;
+                while (cActual !== c2) {
+                    let sigC = cActual < c2 ? cActual + 1 : cActual - 1;
+                    mapaLaberinto[fActual][cActual].esTransitable = true;
+                    mapaLaberinto[fActual][sigC].esTransitable = true;
+                    eliminarMurosEntre(mapaLaberinto[fActual][cActual], mapaLaberinto[fActual][sigC]);
+                    cActual = sigC;
+                }
+                while (fActual !== f2) {
+                    let sigF = fActual < f2 ? fActual + 1 : fActual - 1;
+                    mapaLaberinto[fActual][cActual].esTransitable = true;
+                    mapaLaberinto[sigF][cActual].esTransitable = true;
+                    eliminarMurosEntre(mapaLaberinto[fActual][cActual], mapaLaberinto[sigF][cActual]);
+                    fActual = sigF;
+                }
+            }
+            console.log("Laberinto BSP generado correctamente.");
+        }
+
+        /**
+         * Dibuja el estado actual del laberinto, incluyendo salas y zonas vacías (negras).
+         * Implementa el Viewport dibujando solo el área cercana al jugador.
+         */
+        function dibujarLaberinto() {
+            const { colOffset, filaOffset } = obtenerOffsetCamara();
+
+            // Fondo negro para toda el área de juego (celdas infranqueables)
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, ALTO_UI_TOP, canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
+
+            for (let fila = filaOffset; fila < filaOffset + CELDAS_VISIBLES_Y; fila++) {
+                if (fila < 0 || fila >= NUMERO_FILAS) continue;
+                for (let columna = colOffset; columna < colOffset + CELDAS_VISIBLES_X; columna++) {
+                    if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
+
+                    const celda = mapaLaberinto[fila][columna];
+                    if (celda.esTransitable) {
+                        // Celdas transitables en Blanco
+                        ctx.fillStyle = '#FFF';
+                        ctx.fillRect((columna - colOffset) * TAMANO_CELDA, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP, TAMANO_CELDA, TAMANO_CELDA);
+                    }
+                }
+            }
+            
+            // Marcamos la Salida (Meta) si está en el área visible
+            const filaMeta = NUMERO_FILAS - 1;
+            const colMeta = NUMERO_COLUMNAS - 1;
+            if (filaMeta >= filaOffset && filaMeta < filaOffset + CELDAS_VISIBLES_Y &&
+                colMeta >= colOffset && colMeta < colOffset + CELDAS_VISIBLES_X) {
+                ctx.fillStyle = 'rgba(0, 200, 0, 0.6)';
+                ctx.fillRect((colMeta - colOffset) * TAMANO_CELDA + 2, (filaMeta - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2, TAMANO_CELDA - 4, TAMANO_CELDA - 4);
+                ctx.fillStyle = '#050';
+                ctx.font = 'bold 10px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('META', (colMeta - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (filaMeta - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 4);
+                ctx.textAlign = 'left';
+            }
+        }
+
+        /**
+         * Superpone una capa de oscuridad que se desvanece sobre las celdas ya visitadas.
+         * En modo debug, esta capa no se dibuja.
+         */
+        function dibujarNiebla() {
+            if (vistaDebugActivada) return;
+            const { colOffset, filaOffset } = obtenerOffsetCamara();
+            
+            const tiempoActual = Date.now();
+            for (let fila = filaOffset; fila < filaOffset + CELDAS_VISIBLES_Y; fila++) {
+                if (fila < 0 || fila >= NUMERO_FILAS) continue;
+                for (let columna = colOffset; columna < colOffset + CELDAS_VISIBLES_X; columna++) {
+                    if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
+
+                    const celda = mapaLaberinto[fila][columna];
+                    let opacidad = 1;
+
+                    if (celda.ultimoAvistamiento > 0) {
+                        const tiempoDesdeVisto = tiempoActual - celda.ultimoAvistamiento;
+                        // Si está dentro del radio de visión actual, opacidad 0
+                        if (tiempoDesdeVisto < 50) { // Margen pequeño para suavidad
+                            opacidad = 0;
+                        } else {
+                            opacidad = Math.min(1, tiempoDesdeVisto / TIEMPO_DESVANECIMIENTO_NIEBLA);
+                        }
+                    }
+                    
+                    if (opacidad > 0) {
+                        ctx.fillStyle = `rgba(0, 0, 0, ${opacidad})`;
+                        ctx.fillRect((columna - colOffset) * TAMANO_CELDA, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP, TAMANO_CELDA, TAMANO_CELDA);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Clase base para todas las entidades con estadísticas RPG (Jugador y NPCs).
+         */
+        class TextoFlotante {
+            constructor(x, y, texto, color) {
+                this.x = x;
+                this.y = y;
+                this.texto = texto;
+                this.color = color;
+                this.opacidad = 1.0;
+                this.vida = 60; // Duración en frames (aprox 1 segundo)
+            }
+
+            actualizar() {
+                this.y -= 0.5; // Sube progresivamente
+                this.vida--;
+                this.opacidad = Math.max(0, this.vida / 60);
+            }
+
+            dibujar() {
+                ctx.save();
+                ctx.globalAlpha = this.opacidad;
+                ctx.fillStyle = this.color;
+                ctx.font = 'bold 14px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.texto, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        const listaTextosFlotantes = [];
+        const listaMensajesChat = [];
+
+        class MensajeChat {
+            constructor(nombre, texto, esLocal, esVisible) {
+                this.nombre = nombre;
+                this.texto = texto;
+                this.esLocal = esLocal;
+                this.esVisible = esVisible;
+                this.vida = 300; // 5 segundos
+                this.opacidad = 1.0;
+                
+                if (!esVisible) {
+                    this.posicionToast = this.calcularPosicionToast(nombre);
+                    this.progresoToast = 0; 
+                }
+            }
+
+            calcularPosicionToast(nombre) {
+                let emisor = obtenerEntidadPorNombre(nombre);
+                if (!emisor) return 'arriba';
+
+                const df = emisor.fila - protagonista.fila;
+                const dc = emisor.columna - protagonista.columna;
+
+                if (Math.abs(dc) > Math.abs(df)) {
+                    return dc > 0 ? 'derecha' : 'izquierda';
+                } else {
+                    return df > 0 ? 'abajo' : 'arriba';
+                }
+            }
+
+            actualizar() {
+                this.vida--;
+                if (this.vida < 60) {
+                    this.opacidad = this.vida / 60;
+                }
+                if (!this.esVisible && this.progresoToast < 1) {
+                    this.progresoToast += 0.02;
+                }
+            }
+
+            dibujar() {
+                if (this.esVisible) {
+                    this.dibujarBocadillo();
+                } else {
+                    this.dibujarToast();
+                }
+            }
+
+            dibujarBocadillo() {
+                const emisor = obtenerEntidadPorNombre(this.nombre);
+                if (!emisor) return;
+
+                const { colOffset, filaOffset } = obtenerOffsetCamara();
+                const x = (emisor.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+                const y = (emisor.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP - 15;
+
+                ctx.save();
+                ctx.globalAlpha = this.opacidad;
+                ctx.font = '12px monospace';
+                const metrics = ctx.measureText(this.texto);
+                const padding = 6;
+                const w = metrics.width + padding * 2;
+                const h = 20;
+
+                ctx.fillStyle = 'rgba(0,0,0,0.8)';
+                ctx.strokeStyle = '#007bff';
+                ctx.beginPath();
+                ctx.roundRect(x - w/2, y - h, w, h, 5);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5);
+                ctx.fill();
+
+                ctx.fillStyle = '#fff';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.texto, x, y - 6);
+                ctx.restore();
+            }
+
+            dibujarToast() {
+                const centroX = canvas.width / 2;
+                const centroY = ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) / 2;
+                const margen = 40;
+                let x, y;
+                const maxDX = canvas.width / 4;
+                const maxDY = (CELDAS_VISIBLES_Y * TAMANO_CELDA) / 4;
+
+                switch(this.posicionToast) {
+                    case 'arriba': x = centroX; y = ALTO_UI_TOP + margen + (maxDY * this.progresoToast); break;
+                    case 'abajo': x = centroX; y = ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - margen - (maxDY * this.progresoToast); break;
+                    case 'izquierda': x = margen + (maxDX * this.progresoToast); y = centroY; break;
+                    case 'derecha': x = canvas.width - margen - (maxDX * this.progresoToast); y = centroY; break;
+                }
+
+                ctx.save();
+                ctx.globalAlpha = this.opacidad;
+                ctx.font = 'bold 12px monospace';
+                const msj = `${this.nombre}: ${this.texto}`;
+                const metrics = ctx.measureText(msj);
+                const w = metrics.width + 20;
+                const h = 30;
+
+                ctx.fillStyle = 'rgba(0,0,0,0.85)';
+                ctx.strokeStyle = '#28a745';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(x - w/2, y - h/2, w, h, 8);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#fff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(msj, x, y);
+                ctx.restore();
+            }
+        }
+
+        function obtenerEntidadPorNombre(nombre) {
+            if (nombre === protagonista.nombre) return protagonista;
+            for (let j of jugadoresRemotos.values()) {
+                if (j.entidad && j.entidad.nombre === nombre) return j.entidad;
+            }
+            return null;
+        }
+
+        function manejarMensajeChat(nombre, texto, esLocal) {
+            let esVisible = false;
+            let emisor = obtenerEntidadPorNombre(nombre);
+            if (emisor) {
+                const celda = mapaLaberinto[emisor.fila][emisor.columna];
+                const tiempoActual = Date.now();
+                const tiempoDesdeVisto = tiempoActual - celda.ultimoAvistamiento;
+                if (vistaDebugActivada || (celda.ultimoAvistamiento > 0 && tiempoDesdeVisto < TIEMPO_DESVANECIMIENTO_NIEBLA)) {
+                    esVisible = true;
+                }
+            }
+            listaMensajesChat.push(new MensajeChat(nombre, texto, esLocal, esVisible));
+            registrarEventoLog(`CHAT - ${nombre}: ${texto}`);
+        }
+
+        function crearTextoFlotanteEnCelda(f, c, texto, color) {
+            const { colOffset, filaOffset } = obtenerOffsetCamara();
+            // Comprobamos si está en el viewport antes de crear el objeto
+            if (f < filaOffset || f >= filaOffset + CELDAS_VISIBLES_Y ||
+                c < colOffset || c >= colOffset + CELDAS_VISIBLES_X) return;
+
+            const x = (c - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+            const y = (f - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+            listaTextosFlotantes.push(new TextoFlotante(x, y, texto, color));
+        }
+
+        class EntidadRPG {
+            constructor(fila, columna, nombre) {
+                this.fila = fila;
+                this.columna = columna;
+                this.nombre = nombre;
+                
+                // Estadísticas base aleatorias (1-10)
+                this.fuerza = Math.floor(Math.random() * 10) + 1;
+                this.agilidad = Math.floor(Math.random() * 10) + 1;
+                this.inteligencia = Math.floor(Math.random() * 10) + 1;
+                this.modDano = 0;
+                
+                // Vida calculada según la fórmula: 10 * ((fuerza * 2 + agilidad) / 3)
+                this.vidaMaxima = Math.floor(10 * ((this.fuerza * 2 + this.agilidad) / 3));
+                this.vidaActual = this.vidaMaxima;
+                
+                this.estaVivo = true;
+                this.estaCaminando = false;
+                this.ultimaVezMovido = 0;
+                this.enCombateCon = null; // Referencia a la entidad contra la que pelea
+            }
+
+            /**
+             * Calcula el valor de iniciativa para el turno de combate.
+             * Fórmula: D10 + (Agilidad + (Inteligencia * 2)) / 3
+             */
+            obtenerIniciativa() {
+                const dado = Math.floor(Math.random() * 10) + 1;
+                return dado + (this.agilidad + (this.inteligencia * 2)) / 3;
+            }
+
+            /**
+             * Calcula el daño generado en un ataque.
+             * Fórmula: D10 + Fuerza
+             */
+            generarAtaque() {
+                const dado = Math.floor(Math.random() * 10) + 1;
+                return dado + this.fuerza + this.modDano;
+            }
+
+            /**
+             * Calcula el valor de defensa ante un ataque.
+             * Fórmula: D10 + Agilidad
+             */
+            generarDefensa() {
+                const dado = Math.floor(Math.random() * 10) + 1;
+                return dado + this.agilidad;
+            }
+
+            /**
+             * Aplica daño a la salud de la entidad.
+             */
+            recibirDano(cantidad, atacante = null) {
+                this.vidaActual = Math.max(0, this.vidaActual - cantidad);
+                
+                // Si el jugador recibe daño, se resetea el contador de pasos para regeneración
+                if (this instanceof Jugador && cantidad > 0) {
+                    this.pasosDesdeUltimoDano = 0;
+                }
+
+                // Feedback visual: verde para daño infligido a enemigos, rojo para daño a jugadores
+                const colorTexto = (this instanceof EnemigoNPC) ? "#00ff00" : "#ff0000";
+                crearTextoFlotanteEnCelda(this.fila, this.columna, `-${cantidad}`, colorTexto);
+
+                if (this.vidaActual <= 0) {
+                    this.estaVivo = false;
+                    this.vidaActual = 0;
+                }
+                
+                // Sincronización multijugador para NPCs dañados
+                if (multiplayerActivo && this instanceof EnemigoNPC) {
+                    if (esHost) {
+                        // El Host informa a todos del nuevo estado del NPC
+                        enviarMensaje({
+                            tipo: 'npc_update',
+                            id: this.id,
+                            f: this.fila,
+                            c: this.columna,
+                            v: this.vidaActual
+                        });
+                    } else {
+                        // El Guest informa al Host que ha dañado a un NPC
+                        enviarMensaje({
+                            tipo: 'npc_damaged_by_guest',
+                            id: this.id,
+                            dano: cantidad
+                        });
+                    }
+                }
+
+                return cantidad;
+            }
+
+            dibujarBarraVida() {
+                const { colOffset, filaOffset } = obtenerOffsetCamara();
+                if (this.fila < filaOffset || this.fila >= filaOffset + CELDAS_VISIBLES_Y ||
+                    this.columna < colOffset || this.columna >= colOffset + CELDAS_VISIBLES_X) return;
+
+                // Para enemigos, solo dibujar si son visibles por la niebla
+                if (this instanceof EnemigoNPC && !vistaDebugActivada) {
+                    const celdaActual = mapaLaberinto[this.fila][this.columna];
+                    const tiempoDesdeUltimoVisto = Date.now() - celdaActual.ultimoAvistamiento;
+                    if (celdaActual.ultimoAvistamiento === 0 || tiempoDesdeUltimoVisto > TIEMPO_DESVANECIMIENTO_NIEBLA) {
+                        return;
+                    }
+                }
+
+                const x = (this.columna - colOffset) * TAMANO_CELDA + 2;
+                const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2;
+                const anchoBarra = TAMANO_CELDA - 4;
+                const altoBarra = 4;
+
+                const pct = this.vidaActual / this.vidaMaxima;
+                // Color transiciona de verde (120) a rojo (0)
+                const hue = pct * 120;
+                
+                ctx.fillStyle = "#333";
+                ctx.fillRect(x, y, anchoBarra, altoBarra);
+                
+                ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                ctx.fillRect(x, y, anchoBarra * pct, altoBarra);
+            }
+        }
+
+        /**
+         * Representa al otro jugador en modo multijugador.
+         */
+        class JugadorRemoto extends EntidadRPG {
+            constructor(f, c, nombre) {
+                super(f, c, nombre);
+            }
+
+            dibujar() {
+                const { colOffset, filaOffset } = obtenerOffsetCamara();
+                if (this.fila < filaOffset || this.fila >= filaOffset + CELDAS_VISIBLES_Y ||
+                    this.columna < colOffset || this.columna >= colOffset + CELDAS_VISIBLES_X) return;
+
+                const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+                const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+                const escala = TAMANO_CELDA * 0.6;
+
+                // Color Verde para el compañero
+                ctx.strokeStyle = '#28a745';
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+
+                // Dibujar stickman
+                ctx.beginPath();
+                ctx.arc(x, y - escala/3, escala/6, 0, Math.PI * 2);
+                ctx.moveTo(x, y - escala/6);
+                ctx.lineTo(x, y + escala/6);
+                let desfasePierna = this.estaCaminando ? Math.sin(Date.now() / 100) * (escala/4) : 0;
+                ctx.moveTo(x, y + escala/6); ctx.lineTo(x - escala/6 + desfasePierna, y + escala/2);
+                ctx.moveTo(x, y + escala/6); ctx.lineTo(x + escala/6 - desfasePierna, y + escala/2);
+                ctx.moveTo(x - escala/4, y); ctx.lineTo(x + escala/4, y);
+                ctx.stroke();
+
+                // Nick del compañero
+                ctx.fillStyle = '#28a745';
+                ctx.font = 'bold 10px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.nombre, x, y - escala);
+                ctx.textAlign = 'left';
+            }
+        }
+
+        /**
+         * El Personaje Principal controlado por el usuario.
+         */
+        class Jugador extends EntidadRPG {
+            constructor() {
+                super(0, 0, "Jugador");
+                this.pasosDesdeUltimoDano = 0;
+            }
+
+            /**
+             * Dibuja al hombrecillo con animación de caminar, considerando el Viewport.
+             */
+            dibujar() {
+                const { colOffset, filaOffset } = obtenerOffsetCamara();
+                const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+                const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+                const escala = TAMANO_CELDA * 0.6;
+
+                // Color Azul vibrante para que el jugador destaque siempre
+                ctx.strokeStyle = '#007bff';
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+
+                // Cabeza
+                ctx.beginPath();
+                ctx.arc(x, y - escala/3, escala/6, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Cuerpo
+                ctx.beginPath();
+                ctx.moveTo(x, y - escala/6);
+                ctx.lineTo(x, y + escala/6);
+                ctx.stroke();
+
+                // Animación de piernas
+                let desfasePierna = 0;
+                if (this.estaCaminando) {
+                    desfasePierna = Math.sin(Date.now() / 100) * (escala/4);
+                }
+
+                // Pierna izquierda
+                ctx.beginPath();
+                ctx.moveTo(x, y + escala/6);
+                ctx.lineTo(x - escala/6 + desfasePierna, y + escala/2);
+                ctx.stroke();
+
+                // Pierna derecha
+                ctx.beginPath();
+                ctx.moveTo(x, y + escala/6);
+                ctx.lineTo(x + escala/6 - desfasePierna, y + escala/2);
+                ctx.stroke();
+
+                // Brazos
+                ctx.beginPath();
+                ctx.moveTo(x - escala/4, y);
+                ctx.lineTo(x + escala/4, y);
+                ctx.stroke();
+
+                // Glow opcional para mejor visibilidad
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#007bff';
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            /**
+             * Intenta mover al jugador. Gestiona colisiones, combate y huida.
+             */
+            intentarMover(deltaFila, deltaColumna) {
+                if (!this.estaVivo) return false;
+
+                const sigFila = this.fila + deltaFila;
+                const sigColumna = this.columna + deltaColumna;
+
+                // Detectar si chocamos con un enemigo
+                const enemigoEnCasilla = listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
+                if (enemigoEnCasilla) {
+                    if (this.enCombateCon === enemigoEnCasilla) {
+                        // Continuar combate
+                        resolverRondaDeCombate(this, enemigoEnCasilla);
+                        return false;
+                    } else {
+                        // Iniciar combate
+                        iniciarCombate(this, enemigoEnCasilla);
+                        return false;
+                    }
+                }
+
+                // Si estamos en combate y tratamos de movernos a otro sitio, intentamos huir
+                if (this.enCombateCon) {
+                    if (intentarRehuirCombate(this)) {
+                        // Éxito al huir, continuamos con el movimiento normal abajo
+                    } else {
+                        return false; // Fallo al huir, el enemigo ataca (gestionado en intentarRehuirCombate)
+                    }
+                }
+
+                const celdaActual = mapaLaberinto[this.fila][this.columna];
+                let esMovimientoValido = false;
+
+                // Comprobación de muros y zonas transitables
+                if (deltaFila === -1 && !celdaActual.muros.superior && mapaLaberinto[this.fila - 1][this.columna].esTransitable) esMovimientoValido = true;
+                if (deltaFila === 1 && !celdaActual.muros.inferior && mapaLaberinto[this.fila + 1][this.columna].esTransitable) esMovimientoValido = true;
+                if (deltaColumna === -1 && !celdaActual.muros.izquierdo && mapaLaberinto[this.fila][this.columna - 1].esTransitable) esMovimientoValido = true;
+                if (deltaColumna === 1 && !celdaActual.muros.derecho && mapaLaberinto[this.fila][this.columna + 1].esTransitable) esMovimientoValido = true;
+
+                if (esMovimientoValido) {
+                    this.fila += deltaFila;
+                    this.columna += deltaColumna;
+                    this.estaCaminando = true;
+                    this.ultimaVezMovido = Date.now();
+                    
+                    // Lógica de regeneración: cada 10 movimientos sin daño
+                    this.pasosDesdeUltimoDano++;
+                    if (this.pasosDesdeUltimoDano >= 10) {
+                        this.pasosDesdeUltimoDano = 0;
+                        if (this.vidaActual < this.vidaMaxima) {
+                            const probabilidad = ((this.fuerza * 4) + (this.agilidad * 2)) / 6;
+                            if (Math.random() * 100 < probabilidad) {
+                                this.vidaActual = Math.min(this.vidaMaxima, this.vidaActual + 1);
+                                crearTextoFlotanteEnCelda(this.fila, this.columna, "+1", "#00ff00");
+                                registrarEventoLog("Te sientes un poco mejor. +1 HP");
+                            }
+                        }
+                    }
+
+                    if (multiplayerActivo) {
+                        enviarMensaje({ tipo: 'posicion', f: this.fila, c: this.columna, cam: true, id: idLocal, nick: protagonista.nombre });
+                    }
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        /**
+         * Enemigo autónomo que patrulla o persigue al jugador.
+         */
+        class EnemigoNPC extends EntidadRPG {
+            constructor(fila, columna, nombre, tipo, id) {
+                super(fila, columna, nombre);
+                this.id = id;
+                this.tipo = tipo; // "Esqueleto", "Orco", "Goblin", "Minotauro"
+                this.ultimaVezActuadoIA = 0;
+                this.radioDeVisionIA = 5;
+                this.aplicarPenalizadores();
+            }
+
+            aplicarPenalizadores() {
+                if (this.tipo === "Esqueleto") {
+                    this.modDano = -1;
+                    this.inteligencia = Math.max(1, this.inteligencia - 2);
+                    this.agilidad = Math.max(1, this.agilidad - 1);
+                    this.fuerza = Math.max(1, this.fuerza - 2);
+                    this.vidaMaxima = Math.max(1, this.vidaMaxima - 3);
+                    this.vidaActual = this.vidaMaxima;
+                } else if (this.tipo === "Orco" || this.tipo === "Goblin") {
+                    this.inteligencia = Math.max(1, this.inteligencia - 1);
+                    this.fuerza = Math.max(1, this.fuerza - 2);
+                    this.vidaMaxima = Math.max(1, this.vidaMaxima - 3);
+                    this.vidaActual = this.vidaMaxima;
+                }
+            }
+
+            /**
+             * Lógica de inteligencia artificial. Se ejecuta periódicamente.
+             */
+            actualizarIA() {
+                if (!this.estaVivo || this.enCombateCon || juegoTerminado) return;
+                
+                const ahora = Date.now();
+                if (ahora - this.ultimaVezActuadoIA < 800) return; // Retraso entre acciones para que sea visible
+
+                // En multijugador, la IA debe perseguir al jugador más cercano
+                let objetivoInteres = protagonista;
+                let minD = Math.sqrt(Math.pow(this.fila - protagonista.fila, 2) + Math.pow(this.columna - protagonista.columna, 2));
+
+                jugadoresRemotos.forEach(j => {
+                    if (j.entidad && j.entidad.estaVivo) {
+                        const distRemoto = Math.sqrt(Math.pow(this.fila - j.entidad.fila, 2) + Math.pow(this.columna - j.entidad.columna, 2));
+                        if (distRemoto < minD) {
+                            minD = distRemoto;
+                            objetivoInteres = j.entidad;
+                        }
+                    }
+                });
+                
+                if (minD <= this.radioDeVisionIA) {
+                    // Si ve a un jugador, busca el camino inteligente usando A*
+                    const ruta = algoritmoBusquedaAStar(this.fila, this.columna, objetivoInteres.fila, objetivoInteres.columna);
+                    if (ruta && ruta.length > 1) {
+                        const siguientePaso = ruta[1];
+                        this.ejecutarMovimientoIA(siguientePaso.fila - this.fila, siguientePaso.columna - this.columna);
+                    } else {
+                        // Si falla A*, intenta acercarse de forma simple
+                        this.moverseHaciaJugadorDirectamente();
+                    }
+                } else {
+                    // Si no lo ve, vaga aleatoriamente
+                    this.vagarAleatoriamente();
+                }
+                this.ultimaVezActuadoIA = ahora;
+            }
+
+            moverseHaciaJugadorDirectamente(objetivo) {
+                let dFila = 0, dColumna = 0;
+                if (objetivo.fila > this.fila) dFila = 1;
+                else if (objetivo.fila < this.fila) dFila = -1;
+                
+                if (objetivo.columna > this.columna) dColumna = 1;
+                else if (objetivo.columna < this.columna) dColumna = -1;
+
+                if (dFila !== 0 && this.puedeAtravesar(dFila, 0)) {
+                    this.ejecutarMovimientoIA(dFila, 0);
+                } else if (dColumna !== 0 && this.puedeAtravesar(0, dColumna)) {
+                    this.ejecutarMovimientoIA(0, dColumna);
+                } else {
+                    this.vagarAleatoriamente();
+                }
+            }
+
+            vagarAleatoriamente() {
+                const direcciones = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+                const direccionesValidas = direcciones.filter(d => this.puedeAtravesar(d[0], d[1]));
+                if (direccionesValidas.length > 0) {
+                    const d = direccionesValidas[Math.floor(Math.random() * direccionesValidas.length)];
+                    this.ejecutarMovimientoIA(d[0], d[1]);
+                }
+            }
+
+            puedeAtravesar(deltaFila, deltaColumna) {
+                const celdaActual = mapaLaberinto[this.fila][this.columna];
+                if (deltaFila === -1 && celdaActual.muros.superior) return false;
+                if (deltaFila === 1 && celdaActual.muros.inferior) return false;
+                if (deltaColumna === -1 && celdaActual.muros.izquierdo) return false;
+                if (deltaColumna === 1 && celdaActual.muros.derecho) return false;
+                
+                const sigFila = this.fila + deltaFila;
+                const sigColumna = this.columna + deltaColumna;
+                if (sigFila < 0 || sigFila >= NUMERO_FILAS || sigColumna < 0 || sigColumna >= NUMERO_COLUMNAS) return false;
+                if (!mapaLaberinto[sigFila][sigColumna].esTransitable) return false;
+
+                return true;
+            }
+
+            ejecutarMovimientoIA(deltaFila, deltaColumna) {
+                const sigFila = this.fila + deltaFila;
+                const sigColumna = this.columna + deltaColumna;
+
+                let jugadorChocado = null;
+                if (sigFila === protagonista.fila && sigColumna === protagonista.columna) {
+                    jugadorChocado = protagonista;
+                } else {
+                    jugadoresRemotos.forEach(j => {
+                        if (j.entidad && j.entidad.estaVivo && j.entidad.fila === sigFila && j.entidad.columna === sigColumna) {
+                            jugadorChocado = j.entidad;
+                        }
+                    });
+                }
+
+                if (jugadorChocado) {
+                    iniciarCombate(this, jugadorChocado);
+                } else {
+                    this.fila = sigFila;
+                    this.columna = sigColumna;
+                }
+
+                if (esHost && multiplayerActivo) {
+                    enviarMensaje({
+                        tipo: 'npc_update',
+                        id: this.id,
+                        f: this.fila,
+                        c: this.columna,
+                        v: this.vidaActual
+                    });
+                }
+            }
+
+            dibujar() {
+                const { colOffset, filaOffset } = obtenerOffsetCamara();
+                
+                if (this.fila < filaOffset || this.fila >= filaOffset + CELDAS_VISIBLES_Y ||
+                    this.columna < colOffset || this.columna >= colOffset + CELDAS_VISIBLES_X) {
+                    return;
+                }
+
+                const celdaActual = mapaLaberinto[this.fila][this.columna];
+                const tiempoDesdeUltimoVisto = Date.now() - celdaActual.ultimoAvistamiento;
+                if (!vistaDebugActivada && (celdaActual.ultimoAvistamiento === 0 || tiempoDesdeUltimoVisto > TIEMPO_DESVANECIMIENTO_NIEBLA)) {
+                    return; 
+                }
+
+                const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+                const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+                const escala = TAMANO_CELDA * 0.4;
+
+                if (this.tipo === "Esqueleto") {
+                    // Dibujamos una calavera simplificada
+                    ctx.fillStyle = '#FFF';
+                    ctx.strokeStyle = '#000';
+                    ctx.beginPath();
+                    ctx.arc(x, y - escala/2, escala, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = '#000';
+                    ctx.beginPath();
+                    ctx.arc(x - 3, y - escala/2, 2, 0, Math.PI * 2);
+                    ctx.arc(x + 3, y - escala/2, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.tipo === "Orco") {
+                    ctx.fillStyle = '#228B22'; // Verde bosque
+                    ctx.beginPath();
+                    ctx.rect(x - escala, y - escala, escala * 2, escala * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    // Colmillos
+                    ctx.fillStyle = '#FFF';
+                    ctx.beginPath();
+                    ctx.moveTo(x - 4, y + 2); ctx.lineTo(x - 2, y - 2); ctx.lineTo(x, y + 2);
+                    ctx.moveTo(x + 4, y + 2); ctx.lineTo(x + 2, y - 2); ctx.lineTo(x, y + 2);
+                    ctx.fill();
+                } else if (this.tipo === "Goblin") {
+                    ctx.fillStyle = '#32CD32'; // Verde claro
+                    ctx.beginPath();
+                    ctx.moveTo(x, y - escala * 1.5);
+                    ctx.lineTo(x - escala, y + escala);
+                    ctx.lineTo(x + escala, y + escala);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    // Minotauro o base
+                    ctx.fillStyle = '#8B4513';
+                    ctx.beginPath();
+                    ctx.rect(x - escala, y - escala, escala * 2, escala * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    // Cuernos
+                    ctx.beginPath();
+                    ctx.moveTo(x - escala, y - escala); ctx.lineTo(x - escala - 4, y - escala - 6);
+                    ctx.moveTo(x + escala, y - escala); ctx.lineTo(x + escala + 4, y - escala - 6);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        /**
+         * Actualiza la interfaz de usuario con las estadísticas actuales.
+         */
+        /**
+         * Dibuja toda la interfaz de usuario integrada en el canvas.
+         */
+        function dibujarUI() {
+            // Fondo de las barras de UI
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, ALTO_UI_TOP);
+            ctx.fillRect(0, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA), canvas.width, ALTO_UI_BOTTOM);
+
+            // Borde separador
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, ALTO_UI_TOP); ctx.lineTo(canvas.width, ALTO_UI_TOP);
+            ctx.moveTo(0, canvas.height - ALTO_UI_BOTTOM); ctx.lineTo(canvas.width, canvas.height - ALTO_UI_BOTTOM);
+            ctx.stroke();
+
+            // Estadísticas del Jugador (Top Left)
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px monospace';
+            ctx.fillText("HÉROE", 10, 20);
+            ctx.font = '11px monospace';
+            ctx.fillText(`HP: ${protagonista.vidaActual}/${protagonista.vidaMaxima}`, 10, 35);
+            ctx.fillText(`FUE:${protagonista.fuerza} AGI:${protagonista.agilidad} INT:${protagonista.inteligencia}`, 10, 50);
+
+            // Estadísticas del Enemigo (Top Right)
+            let enemigoVisible = listaDeEnemigos.find(e => {
+                if (e.enCombateCon === protagonista) return true;
+                for (let j of jugadoresRemotos.values()) {
+                    if (j.entidad && e.enCombateCon === j.entidad) return true;
+                }
+                return false;
+            }) || 
+            listaDeEnemigos.filter(e => e.estaVivo && mapaLaberinto[e.fila][e.columna].ultimoAvistamiento > 0 && Date.now() - mapaLaberinto[e.fila][e.columna].ultimoAvistamiento < TIEMPO_DESVANECIMIENTO_NIEBLA)
+                           .sort((a,b) => calcularHeuristicaManhattan(a, protagonista) - calcularHeuristicaManhattan(b, protagonista))[0];
+
+            if (enemigoVisible) {
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#f55';
+                ctx.font = 'bold 12px monospace';
+                ctx.fillText(enemigoVisible.nombre.toUpperCase(), canvas.width - 10, 20);
+                ctx.font = '11px monospace';
+                ctx.fillText(`HP: ${enemigoVisible.vidaActual}/${enemigoVisible.vidaMaxima}`, canvas.width - 10, 35);
+                ctx.fillText(`FUE:${enemigoVisible.fuerza} AGI:${enemigoVisible.agilidad}`, canvas.width - 10, 50);
+                ctx.textAlign = 'left';
+            }
+
+            // Registro de Combate (Bottom)
+            ctx.fillStyle = '#aaa';
+            ctx.font = '10px monospace';
+            colaDeMensajes.forEach((msj, i) => {
+                ctx.fillText(msj, 10, canvas.height - ALTO_UI_BOTTOM + 20 + (i * 15));
+            });
+
+            // Mensaje de estado principal (Overlay)
+            if (juegoTerminado) {
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(0, ALTO_UI_TOP, canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 16px monospace';
+                ctx.textAlign = 'center';
+                const msjFin = protagonista.vidaActual > 0 ? "¡VICTORIA!" : "HAS CAÍDO";
+                ctx.fillText(msjFin, canvas.width / 2, ALTO_UI_TOP + 100);
+                ctx.textAlign = 'left';
+            }
+        }
+
+        /**
+         * Dibuja marcadores visuales en los bordes para indicar zonas de movimiento.
+         */
+        function dibujarMarcadoresMovimiento() {
+            if (juegoTerminado) return;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            const tam = 20;
+            const centroX = canvas.width / 2;
+            const centroY = ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) / 2;
+            const gap = 10;
+
+            // Arriba
+            ctx.beginPath();
+            ctx.moveTo(centroX, ALTO_UI_TOP + gap);
+            ctx.lineTo(centroX - tam, ALTO_UI_TOP + gap + tam);
+            ctx.lineTo(centroX + tam, ALTO_UI_TOP + gap + tam);
+            ctx.fill();
+
+            // Abajo
+            ctx.beginPath();
+            ctx.moveTo(centroX, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap);
+            ctx.lineTo(centroX - tam, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap - tam);
+            ctx.lineTo(centroX + tam, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap - tam);
+            ctx.fill();
+
+            // Izquierda
+            ctx.beginPath();
+            ctx.moveTo(gap, centroY);
+            ctx.lineTo(gap + tam, centroY - tam);
+            ctx.lineTo(gap + tam, centroY + tam);
+            ctx.fill();
+
+            // Derecha
+            ctx.beginPath();
+            ctx.moveTo(canvas.width - gap, centroY);
+            ctx.lineTo(canvas.width - gap - tam, centroY - tam);
+            ctx.lineTo(canvas.width - gap - tam, centroY + tam);
+            ctx.fill();
+        }
+
+        /**
+         * Cola de mensajes para el registro de combate en canvas.
+         */
+        let colaDeMensajes = [];
+        const MAX_MENSAJES = 5;
+
+        /**
+         * Añade un mensaje al registro de combate visible en pantalla.
+         */
+        function registrarEventoLog(mensaje) {
+            const texto = `[${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}] ${mensaje}`;
+            colaDeMensajes.unshift(texto);
+            if (colaDeMensajes.length > MAX_MENSAJES) colaDeMensajes.pop();
+            console.log(mensaje);
+        }
+
+        /**
+         * Inicia el estado de combate entre dos entidades.
+         */
+        function iniciarCombate(atacante, objetivo) {
+            // Si ya están en combate el uno con el otro, solo resolvemos ronda
+            if (atacante.enCombateCon === objetivo) {
+                resolverRondaDeCombate(atacante, objetivo);
+                return;
+            }
+
+            // Permitimos que múltiples jugadores ataquen al mismo objetivo.
+            // El objetivo pasará a centrar su atención (contraataque) en el último atacante.
+            atacante.enCombateCon = objetivo;
+            objetivo.enCombateCon = atacante;
+
+            registrarEventoLog(`¡Combate iniciado: ${atacante.nombre} vs ${objetivo.nombre}!`);
+            resolverRondaDeCombate(atacante, objetivo);
+        }
+
+        /**
+         * Resuelve un turno de combate aplicando las reglas de iniciativa y daño.
+         */
+        function resolverRondaDeCombate(participanteA, participanteB) {
+            const iniciativaA = participanteA.obtenerIniciativa();
+            const iniciativaB = participanteB.obtenerIniciativa();
+            
+            // Ataca primero quien tenga mayor iniciativa
+            const combatientes = iniciativaA >= iniciativaB ? [participanteA, participanteB] : [participanteB, participanteA];
+            
+            combatientes.forEach((luchador, indice) => {
+                if (!luchador.estaVivo || luchador.vidaActual <= 0) return;
+                const oponente = combatientes[1 - indice];
+                if (!oponente.estaVivo || oponente.vidaActual <= 0) return;
+
+                const valorAtaque = luchador.generarAtaque();
+                const valorDefensa = oponente.generarDefensa();
+                const danoNeto = Math.max(0, valorAtaque - valorDefensa);
+                
+                oponente.recibirDano(danoNeto);
+                registrarEventoLog(`${luchador.nombre} ataca a ${oponente.nombre}: ${valorAtaque} vs ${valorDefensa} DEF. Daño: ${danoNeto}. Vida restante: ${oponente.vidaActual}`);
+                
+                if (!oponente.estaVivo) {
+                    registrarEventoLog(`¡${oponente.nombre} ha sido derrotado!`);
+                    luchador.enCombateCon = null;
+                    
+                    // Limpieza de combate para otros jugadores si el enemigo muere
+                    if (oponente instanceof EnemigoNPC) {
+                        if (protagonista && protagonista.enCombateCon === oponente) protagonista.enCombateCon = null;
+                        jugadoresRemotos.forEach(j => {
+                            if (j.entidad && j.entidad.enCombateCon === oponente) j.entidad.enCombateCon = null;
+                        });
+                    }
+
+                    if (oponente === protagonista) {
+                        juegoTerminado = true;
+                    }
+                }
+            });
+        }
+
+        /**
+         * Lógica para que una entidad intente escapar del combate actual.
+         */
+        function intentarRehuirCombate(luchador) {
+            const oponente = luchador.enCombateCon;
+            if (!oponente) return true;
+
+            // Tirada de salvación basada en agilidad
+            const tiradaPropia = Math.floor(Math.random() * 10) + 1 + luchador.agilidad;
+            const tiradaOponente = Math.floor(Math.random() * 10) + 1 + oponente.agilidad;
+
+            if (tiradaPropia > tiradaOponente) {
+                registrarEventoLog(`${luchador.nombre} ha logrado rehuir el combate con éxito.`);
+                luchador.enCombateCon = null;
+                oponente.enCombateCon = null;
+                return true;
+            } else {
+                registrarEventoLog(`${luchador.nombre} falló al intentar rehuir el combate.`);
+                // El oponente aprovecha para atacar
+                resolverRondaDeCombate(oponente, luchador);
+                return false;
+            }
+        }
+
+        let juegoTerminado = false;
+        let vistaDebugActivada = false;
+        let temporizadorDebug = null;
+
+        /**
+         * Manejo del chat modal y WebRTC.
+         */
+        function toggleDebugManual() {
+            vistaDebugActivada = !vistaDebugActivada;
+            registrarEventoLog(`Modo Desarrollo ${vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
+            registrarLogConexion(`Debug toggled: ${vistaDebugActivada}`);
+        }
+
+        function toggleAceptarJugadores(forzarValor = null) {
+            if (!esHost) return;
+            
+            aceptandoJugadores = (forzarValor !== null) ? forzarValor : !aceptandoJugadores;
+            
+            const btn = document.getElementById('btnAceptarJugadores');
+            btn.innerText = `ACEPTAR JUGADORES: ${aceptandoJugadores ? 'ON' : 'OFF'}`;
+            btn.classList.toggle('active', aceptandoJugadores);
+            registrarLogConexion(`Estado recepción: ${aceptandoJugadores ? 'ACTIVO' : 'INACTIVO'}`);
+            
+            if (aceptandoJugadores) {
+                if (!unsubConexionesHost && db && idPartidaActual) {
+                    registrarLogConexion("Escuchando nuevas conexiones en Firestore...");
+                    unsubConexionesHost = db.collection('partidas').doc(idPartidaActual).collection('conexiones')
+                        .onSnapshot(snapshot => {
+                            if (!aceptandoJugadores) return;
+                            snapshot.docChanges().forEach(change => {
+                                if (change.type === 'added') {
+                                    const guestId = change.id;
+                                    if (guestId !== idLocal) {
+                                        registrarLogConexion(`Nuevo candidato detectado: ${guestId}`);
+                                        setupWebRTCHost(guestId);
+                                    }
+                                }
+                            });
+                        }, err => {
+                            registrarLogConexion("Error en listener de conexiones: " + err.message);
+                        });
+                }
+            } else {
+                if (unsubConexionesHost) {
+                    unsubConexionesHost();
+                    unsubConexionesHost = null;
+                    registrarLogConexion("Listener de conexiones detenido.");
+                }
+            }
+        }
+
+        function toggleLogPanel() {
+            document.getElementById('logPanel').classList.toggle('visible');
+        }
+
+        function registrarLogConexion(msg) {
+            const area = document.getElementById('logTextArea');
+            const timestamp = new Date().toLocaleTimeString();
+            const fullMsg = `[${timestamp}] ${msg}\n`;
+            area.value += fullMsg;
+            area.scrollTop = area.scrollHeight;
+            console.log(`[CONN-LOG] ${msg}`);
+        }
+
+        function toggleChat() {
+            const modal = document.getElementById('chatModal');
+            const input = document.getElementById('chatInput');
+            
+            if (modal.style.display === 'flex') {
+                // Enviar mensaje
+                const texto = input.value.trim();
+                if (texto) {
+                    enviarChat(texto);
+                }
+                input.value = "";
+                modal.style.display = 'none';
+            } else {
+                // Abrir modal
+                if (juegoTerminado || canvas.style.display === 'none') return;
+                modal.style.display = 'flex';
+                input.focus();
+            }
+        }
+
+        function enviarChat(texto) {
+            // Mostrar localmente
+            manejarMensajeChat(protagonista.nombre, texto, true);
+            // Enviar remoto
+            if (multiplayerActivo) {
+                enviarMensaje({ tipo: 'chat', texto: texto, id: idLocal });
+            }
+        }
+
+        /**
+         * Controlador de eventos de teclado.
+         */
+        window.addEventListener('keydown', (evento) => {
+            // Abrir/cerrar chat con Enter
+            if (evento.key === 'Enter') {
+                toggleChat();
+                return;
+            }
+
+            // Si el chat está abierto, ignoramos otras teclas de juego
+            if (document.getElementById('chatModal').style.display === 'flex') {
+                return;
+            }
+
+            // Tecla de Debug: 'd' para revelar el mapa
+            if (evento.key === 'd') {
+                vistaDebugActivada = !vistaDebugActivada;
+                registrarEventoLog(`Modo Desarrollo ${vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
+                return;
+            }
+
+            if (juegoTerminado) return;
+            if (typeof protagonista === 'undefined' || !protagonista) return;
+
+            // Evitar scroll con las flechas
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(evento.key)) {
+                evento.preventDefault();
+            }
+
+            let haMovido = false;
+            if (evento.key === 'ArrowUp') haMovido = protagonista.intentarMover(-1, 0);
+            if (evento.key === 'ArrowDown') haMovido = protagonista.intentarMover(1, 0);
+            if (evento.key === 'ArrowLeft') haMovido = protagonista.intentarMover(0, -1);
+            if (evento.key === 'ArrowRight') haMovido = protagonista.intentarMover(0, 1);
+
+            if (haMovido) {
+                comprobarVictoria();
+            }
+        });
+
+        window.addEventListener('keyup', (evento) => {
+            if (typeof protagonista !== 'undefined' && protagonista && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(evento.key)) {
+                protagonista.estaCaminando = false;
+                if (multiplayerActivo) {
+                    enviarMensaje({ tipo: 'posicion', f: protagonista.fila, c: protagonista.columna, cam: false, id: idLocal, nick: protagonista.nombre });
+                }
+            }
+        });
+
+        /**
+         * Verifica si el jugador ha llegado a la meta.
+         */
+        function comprobarVictoria() {
+            if (protagonista.fila === NUMERO_FILAS - 1 && protagonista.columna === NUMERO_COLUMNAS - 1) {
+                juegoTerminado = true;
+                registrarEventoLog("¡Has escapado del laberinto!");
+                if (multiplayerActivo) {
+                    enviarMensaje({ tipo: 'victoria', nick: protagonista.nombre });
+                }
+            }
+        }
+
+        /**
+         * Función de actualización de la lógica del juego.
+         */
+        function actualizar() {
+            if (juegoTerminado) return;
+            if (!protagonista) return;
+
+            const ahora = Date.now();
+            
+            // Actualización de la Niebla de Guerra: revelamos celdas cercanas al protagonista
+            const radioFilaInicio = Math.max(0, protagonista.fila - RADIO_VISION);
+            const radioFilaFin = Math.min(NUMERO_FILAS - 1, protagonista.fila + RADIO_VISION);
+            const radioColInicio = Math.max(0, protagonista.columna - RADIO_VISION);
+            const radioColFin = Math.min(NUMERO_COLUMNAS - 1, protagonista.columna + RADIO_VISION);
+
+            for (let f = radioFilaInicio; f <= radioFilaFin; f++) {
+                for (let c = radioColInicio; c <= radioColFin; c++) {
+                    const distancia = Math.sqrt(Math.pow(f - protagonista.fila, 2) + Math.pow(c - protagonista.columna, 2));
+                    if (distancia <= RADIO_VISION) {
+                        mapaLaberinto[f][c].ultimoAvistamiento = ahora;
+                    }
+                }
+            }
+
+            // Actualización de la IA de los enemigos
+            listaDeEnemigos.forEach(enemigo => enemigo.actualizarIA());
+
+            // Actualización de textos flotantes
+            for (let i = listaTextosFlotantes.length - 1; i >= 0; i--) {
+                listaTextosFlotantes[i].actualizar();
+                if (listaTextosFlotantes[i].vida <= 0) {
+                    listaTextosFlotantes.splice(i, 1);
+                }
+            }
+
+            // Actualización de mensajes de chat
+            for (let i = listaMensajesChat.length - 1; i >= 0; i--) {
+                listaMensajesChat[i].actualizar();
+                if (listaMensajesChat[i].vida <= 0) {
+                    listaMensajesChat.splice(i, 1);
+                }
+            }
+        }
+
+        /**
+         * Ciclo principal de renderizado (Game Loop).
+         */
+        function cicloDeJuego() {
+            actualizar();
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            dibujarLaberinto();
+            dibujarNiebla(); // Dibujamos la niebla sobre el mapa pero bajo las entidades
+            
+            if (protagonista && protagonista.estaVivo) {
+                protagonista.dibujar();
+                protagonista.dibujarBarraVida();
+            }
+            jugadoresRemotos.forEach(j => {
+                if (j.entidad && j.entidad.estaVivo) {
+                    j.entidad.dibujar();
+                    j.entidad.dibujarBarraVida();
+                }
+            });
+
+            listaDeEnemigos.forEach(enemigo => {
+                if (enemigo.estaVivo) {
+                    enemigo.dibujar();
+                    enemigo.dibujarBarraVida();
+                }
+            });
+
+            // Dibujar textos flotantes sobre todo lo demás en la escena
+            listaTextosFlotantes.forEach(t => t.dibujar());
+            
+            dibujarMarcadoresMovimiento();
+            dibujarUI();
+
+            // Dibujar bocadillos y toasts de chat (siempre encima de la UI)
+            listaMensajesChat.forEach(m => m.dibujar());
+            
+            requestAnimationFrame(cicloDeJuego);
+        }
+
+        // --- GESTIÓN DE MULTIJUGADOR ---
+        function mostrarErrorTecnico(error, contexto) {
+            console.error(`[${contexto}]`, error);
+            alert(`Error en ${contexto}: ${error.message}`);
+        }
+
+        async function limpiarSignalingFirestore(partidaId, guestId) {
+            if (!db) return;
+            console.log(`Borrando rastro de signaling para ${guestId}...`);
+            const connRef = db.collection('partidas').doc(partidaId).collection('conexiones').doc(guestId);
+            try {
+                const hostCandidates = await connRef.collection('iceCandidatesHost').limit(50).get();
+                hostCandidates.forEach(doc => doc.ref.delete());
+                const guestCandidates = await connRef.collection('iceCandidatesGuest').limit(50).get();
+                guestCandidates.forEach(doc => doc.ref.delete());
+                await connRef.delete();
+            } catch (e) {
+                console.warn("Error limpiando signaling:", e);
+            }
+        }
+
+        function setupDataChannelHandlers(canal, idEmisor) {
+            canal.addEventListener('open', () => {
+                multiplayerActivo = true;
+                protagonista.nombre = document.getElementById('nickInput').value || "Héroe";
+                enviarMensaje({ tipo: 'handshake', nick: protagonista.nombre, id: idLocal });
+                
+                if (esHost) {
+                    registrarEventoLog(`Jugador conectado (${idEmisor})`);
+                    mundoSincronizado = true; 
+                }
+            });
+
+            canal.onmessage = (evento) => {
+                try {
+                    const mensaje = JSON.parse(evento.data);
+                    procesarMensajeMultiplayer(mensaje, idEmisor);
+                } catch(e) {
+                    console.error("Error al procesar mensaje P2P:", e);
+                }
+            };
+        }
+
+        let colaMensajesPendientes = [];
+
+        function procesarMensajeMultiplayer(msg, idEmisor) {
+            // Si el mundo no está listo, encolamos mensajes de juego
+            if (!mundoSincronizado && ['posicion', 'victoria', 'spawn'].includes(msg.tipo)) {
+                colaMensajesPendientes.push({ msg, idEmisor });
+                return;
+            }
+
+            const idSujeto = msg.id || idEmisor;
+
+            switch (msg.tipo) {
+                case 'handshake':
+                    registrarEventoLog(`Handshake de ${msg.nick}`);
+                    if (!jugadoresRemotos.has(idSujeto)) {
+                        jugadoresRemotos.set(idSujeto, { pc: null, dc: null, entidad: null });
+                    }
+                    const jInfo = jugadoresRemotos.get(idSujeto);
+                    if (esHost) {
+                        // El Host asocia el DataChannel con el ID real del jugador
+                        const jRel = jugadoresRemotos.get(idEmisor);
+                        if (jRel && jRel !== jInfo) {
+                            jInfo.pc = jRel.pc;
+                            jInfo.dc = jRel.dc;
+                            jInfo.unsubscribes = jRel.unsubscribes;
+                            jugadoresRemotos.delete(idEmisor);
+                        }
+                    }
+                    if (!jInfo.entidad) {
+                        jInfo.entidad = new JugadorRemoto(0, 0, msg.nick);
+                    }
+                    if (!esHost) {
+                        enviarMensaje({ tipo: 'handshake_ack', nick: protagonista.nombre, id: idLocal });
+                    }
+                    break;
+                case 'handshake_ack':
+                    if (esHost) {
+                        const jInfoAck = jugadoresRemotos.get(idSujeto);
+                        if (jInfoAck && jInfoAck.entidad) jInfoAck.entidad.nombre = msg.nick;
+                        enviarMapaAlInvitado(idSujeto);
+                    }
+                    break;
+                case 'mapa':
+                    deserializarMapa(msg.datos);
+                    break;
+                case 'enemigos':
+                    listaDeEnemigos.length = 0;
+                    msg.lista.forEach(d => {
+                        const e = new EnemigoNPC(d.f, d.c, d.n, d.t, d.id);
+                        e.vidaActual = d.v; e.vidaMaxima = d.vm;
+                        listaDeEnemigos.push(e);
+                    });
+                    mundoSincronizado = true;
+                    ocultarLobby();
+                    iniciarMotorJuego();
+                    while (colaMensajesPendientes.length > 0) {
+                        const { msg: m, idEmisor: id } = colaMensajesPendientes.shift();
+                        procesarMensajeMultiplayer(m, id);
+                    }
+                    break;
+                case 'posicion':
+                    if (!jugadoresRemotos.has(idSujeto)) {
+                        jugadoresRemotos.set(idSujeto, { entidad: new JugadorRemoto(msg.f, msg.c, msg.nick || "Jugador") });
+                    }
+                    const jPos = jugadoresRemotos.get(idSujeto);
+                    if (jPos && jPos.entidad) {
+                        jPos.entidad.fila = msg.f;
+                        jPos.entidad.columna = msg.c;
+                        jPos.entidad.estaCaminando = msg.cam;
+                        if (msg.nick) jPos.entidad.nombre = msg.nick;
+                    }
+                    // El Host retransmite la posición a los demás
+                    if (esHost) {
+                        enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
+                    }
+                    break;
+                case 'spawn':
+                    protagonista.fila = msg.f;
+                    protagonista.columna = msg.c;
+                    break;
+                case 'victoria':
+                    juegoTerminado = true;
+                    registrarEventoLog(`¡${msg.nick} ha ganado!`);
+                    break;
+                case 'npc_update':
+                    const npc = listaDeEnemigos.find(e => e.id === msg.id);
+                    if (npc) {
+                        npc.fila = msg.f; npc.columna = msg.c; npc.vidaActual = msg.v;
+                        if (npc.vidaActual <= 0) npc.estaVivo = false;
+                    }
+                    break;
+                case 'npc_damaged_by_guest':
+                    if (esHost) {
+                        const targetNpc = listaDeEnemigos.find(e => e.id === msg.id);
+                        if (targetNpc) targetNpc.recibirDano(msg.dano);
+                    }
+                    break;
+                case 'chat':
+                    const jChat = jugadoresRemotos.get(idSujeto);
+                    const nickChat = jChat && jChat.entidad ? jChat.entidad.nombre : (msg.nick || "Desconocido");
+                    manejarMensajeChat(nickChat, msg.texto, false);
+                    if (esHost) {
+                        enviarMensaje({ ...msg, id: idSujeto, nick: nickChat }, idEmisor); // Retransmitir
+                    }
+                    break;
+            }
+        }
+
+        function enviarMapaAlInvitado(guestId) {
+            const jInfo = jugadoresRemotos.get(guestId);
+            if (!jInfo || !jInfo.dc || jInfo.dc.readyState !== "open") return;
+
+            const mapaCompacto = serializarMapa();
+            const enemigos = listaDeEnemigos.map(e => ({ 
+                id: e.id, f: e.fila, c: e.columna, n: e.nombre, t: e.tipo, v: e.vidaActual, vm: e.vidaMaxima 
+            }));
+
+            // Enviamos específicamente a este invitado a través de su canal directo
+            jInfo.dc.send(JSON.stringify({ tipo: 'mapa', datos: mapaCompacto }));
+            jInfo.dc.send(JSON.stringify({ tipo: 'enemigos', lista: enemigos }));
+
+            // Calcular spawn
+            let sf = protagonista.fila, sc = protagonista.columna;
+            let spawnEncontrado = false;
+            let intentos = 0;
+            while (!spawnEncontrado && intentos < 100) {
+                const df = Math.floor(Math.random() * 29) - 14;
+                const dc = Math.floor(Math.random() * 29) - 14;
+                let tf = protagonista.fila + df;
+                let tc = protagonista.columna + dc;
+                if (tf >= 0 && tf < NUMERO_FILAS && tc >= 0 && tc < NUMERO_COLUMNAS && mapaLaberinto[tf][tc].esTransitable) {
+                    sf = tf; sc = tc; spawnEncontrado = true;
+                }
+                intentos++;
+            }
+            jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: sf, c: sc }));
+            
+            // Enviamos posiciones de todos los demás jugadores (incluyendo host) para que se creen en el guest
+            jugadoresRemotos.forEach((other, otherId) => {
+                if (otherId !== guestId && other.entidad) {
+                    jInfo.dc.send(JSON.stringify({ 
+                        tipo: 'posicion', f: other.entidad.fila, c: other.entidad.columna, 
+                        cam: false, nick: other.entidad.nombre, id: otherId 
+                    }));
+                }
+            });
+            jInfo.dc.send(JSON.stringify({ 
+                tipo: 'posicion', f: protagonista.fila, c: protagonista.columna, 
+                cam: false, nick: protagonista.nombre, id: idLocal 
+            }));
+        }
+
+        function enviarMensaje(objeto, exceptId = null) {
+            const data = JSON.stringify(objeto);
+            jugadoresRemotos.forEach((j, id) => {
+                if (id !== exceptId && j.dc && j.dc.readyState === "open") {
+                    try {
+                        j.dc.send(data);
+                    } catch (e) {
+                        console.error(`Error enviando a ${id}:`, e);
+                    }
+                }
+            });
+        }
+
+        function empezarSolo() {
+            protagonista.nombre = document.getElementById('nickInput').value || "Héroe";
+            mundoSincronizado = true; // Modo solo no requiere sincronización P2P
+            ocultarLobby();
+            iniciarMotorJuego();
+        }
+
+        function ocultarLobby() {
+            document.getElementById('lobby').style.display = 'none';
+            canvas.style.display = 'block';
+            ajustarDimensiones();
+        }
+
+        function regresarAlLobby() {
+            document.getElementById('lobbyInitial').style.display = 'block';
+            document.getElementById('lobbyFirebase').style.display = 'none';
+            document.getElementById('lobbyManual').style.display = 'none';
+            if (typeof unsubscribeLobby === 'function') unsubscribeLobby();
+        }
+
+        function mostrarLobbyManual() {
+            document.getElementById('lobbyInitial').style.display = 'none';
+            document.getElementById('lobbyManual').style.display = 'flex';
+        }
+
+        function mostrarLobbyFirebase() {
+            if (unsubscribeLobby) {
+                unsubscribeLobby();
+                unsubscribeLobby = null;
+            }
+            document.getElementById('lobbyInitial').style.display = 'none';
+            document.getElementById('lobbyFirebase').style.display = 'flex';
+            
+            if (firebaseConfig.apiKey === "API_KEY_PLACEHOLDER") {
+                document.getElementById('firebaseWarning').style.display = 'block';
+            } else {
+                document.getElementById('firebaseWarning').style.display = 'none';
+            }
+
+            listarPartidasFirestore();
+        }
+
+        function iniciarComoHostManual() {
+            esHost = true;
+            protagonista.nombre = document.getElementById('nickInput').value || "Host";
+            registrarLogConexion("Iniciando Host en modo manual...");
+
+            const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+            const dc = pc.createDataChannel("mazeRPG");
+            
+            const info = { pc, dc, entidad: null, unsubscribes: [] };
+            jugadoresRemotos.set('manual', info);
+            setupDataChannelHandlers(dc, 'manual');
+
+            dc.addEventListener('open', () => {
+                registrarLogConexion("✅ Canal P2P Manual abierto. Iniciando partida...");
+                ocultarLobby();
+            });
+
+            pc.onicecandidate = (event) => {
+                // Actualizamos la oferta en cada candidato para que el usuario pueda copiarla en cualquier momento
+                const offer = pc.localDescription;
+                document.getElementById('manualOfferOut').value = btoa(JSON.stringify(offer));
+                
+                if (event.candidate) {
+                    registrarLogConexion("Candidato ICE generado...");
+                } else {
+                    registrarLogConexion("Oferta generada con éxito (ICE completo). Cópiala y envíala.");
+                }
+            };
+
+            pc.onicegatheringstatechange = () => {
+                registrarLogConexion("Estado de recolección ICE: " + pc.iceGatheringState);
+                if (pc.iceGatheringState === 'complete') {
+                    const offer = pc.localDescription;
+                    document.getElementById('manualOfferOut').value = btoa(JSON.stringify(offer));
+                    registrarLogConexion("Recolección ICE completada.");
+                }
+            };
+
+            pc.createOffer().then(offer => pc.setLocalDescription(offer));
+            
+            // Iniciamos motor por si acaso, aunque el guest no se ha unido
+            iniciarMotorJuego();
+        }
+
+        function procesarRespuestaManual() {
+            const answerBase64 = document.getElementById('manualAnswerIn').value.trim();
+            if (!answerBase64) return alert("Pega primero la respuesta del invitado");
+
+            try {
+                const answer = JSON.parse(atob(answerBase64));
+                const info = jugadoresRemotos.get('manual');
+                if (!info || !info.pc) return alert("No hay una conexión manual iniciada");
+
+                info.pc.setRemoteDescription(new RTCSessionDescription(answer))
+                    .then(() => registrarLogConexion("Respuesta manual procesada. Esperando apertura de canal..."))
+                    .catch(e => registrarLogConexion("Error al procesar respuesta: " + e.message));
+            } catch (e) {
+                alert("Código de respuesta inválido: " + e.message);
+            }
+        }
+
+        async function procesarOfertaManual() {
+            const offerBase64 = document.getElementById('manualOfferIn').value.trim();
+            if (!offerBase64) return alert("Pega primero la oferta del anfitrión");
+
+            protagonista.nombre = document.getElementById('nickInput').value || "Invitado";
+            esHost = false;
+            registrarLogConexion("Procesando oferta manual como invitado...");
+
+            try {
+                const offer = JSON.parse(atob(offerBase64));
+                const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+                const info = { pc, dc: null, entidad: null, unsubscribes: [] };
+                
+                pc.ondatachannel = (event) => {
+                    const dc = event.channel;
+                    info.dc = dc;
+                    jugadoresRemotos.set('manual', info);
+                    setupDataChannelHandlers(dc, 'manual');
+                    
+                    dc.addEventListener('open', () => {
+                        registrarLogConexion("✅ Canal P2P Manual abierto con el Host.");
+                        ocultarLobby();
+                        iniciarMotorJuego();
+                    });
+                };
+
+                pc.onicecandidate = (event) => {
+                    const answer = pc.localDescription;
+                    document.getElementById('manualAnswerOut').value = btoa(JSON.stringify(answer));
+                    
+                    if (event.candidate) {
+                        registrarLogConexion("Candidato ICE generado...");
+                    } else {
+                        registrarLogConexion("Respuesta generada con éxito (ICE completo). Cópiala y envíala al Host.");
+                    }
+                };
+
+                pc.onicegatheringstatechange = () => {
+                    registrarLogConexion("Estado de recolección ICE: " + pc.iceGatheringState);
+                    if (pc.iceGatheringState === 'complete') {
+                        const answer = pc.localDescription;
+                        document.getElementById('manualAnswerOut').value = btoa(JSON.stringify(answer));
+                        registrarLogConexion("Recolección ICE completada.");
+                    }
+                };
+
+                await pc.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+
+            } catch (e) {
+                alert("Código de oferta inválido: " + e.message);
+            }
+        }
+
+        function iniciarComoHostFirebase() {
+            esHost = true;
+            protagonista.nombre = document.getElementById('nickInput').value || "Host";
+            
+            // Habilitar controles de host
+            const btn = document.getElementById('btnAceptarJugadores');
+            btn.disabled = false;
+
+            crearPartidaFirestore();
+        }
+
+        let unsubscribeLobby = null;
+        function listarPartidasFirestore() {
+            if (!db) {
+                registrarLogConexion("Lobby: Error - DB no inicializada.");
+                return;
+            }
+            const listaContainer = document.getElementById('listaPartidas');
+            registrarLogConexion("Lobby: Consultando partidas activas...");
+            
+            unsubscribeLobby = db.collection('partidas')
+                .where('estado', '==', 'activa')
+                .onSnapshot(snapshot => {
+                    registrarLogConexion(`Lobby: Snapshot recibido (${snapshot.size} partidas).`);
+                    listaContainer.innerHTML = "";
+                    
+                    // Filtrar partidas "zombis" (sin actualización en > 60 seg)
+                    const ahora = Date.now();
+                    const partidasValidas = [];
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        if (ahora - (data.lastSeen || 0) < 60000) {
+                            partidasValidas.push({id: doc.id, ...data});
+                        }
+                    });
+
+                    if (partidasValidas.length === 0) {
+                        listaContainer.innerHTML = '<p style="color: #666; font-style: italic; text-align: center;">No hay partidas disponibles.</p>';
+                        return;
+                    }
+
+                    partidasValidas.forEach(partida => {
+                        const tiempoActiva = Math.floor((ahora - (partida.creacion || ahora)) / 1000);
+                        const mins = Math.floor(tiempoActiva / 60);
+                        const segs = tiempoActiva % 60;
+                        
+                        const item = document.createElement('div');
+                        item.style = "background: #222; margin-bottom: 5px; padding: 10px; border-radius: 3px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444;";
+                        item.innerHTML = `
+                            <div style="text-align: left;">
+                                <strong style="color: #007bff;">ID: ${partida.id}</strong><br>
+                                <span style="font-size: 10px; color: #888;">Host: ${partida.hostNick || '?' } | Jugadores: ${partida.numJugadores || 1} | ${mins}m ${segs}s</span>
+                            </div>
+                            <button onclick="unirseAPartidaFirestore('${partida.id}')" style="background: #28a745; color: white; border: none; padding: 5px 10px; cursor: pointer; font-family: monospace; font-weight: bold;">UNIRSE</button>
+                        `;
+                        listaContainer.appendChild(item);
+                    });
+                }, err => {
+                    registrarLogConexion("Lobby: Error snapshot - " + err.message);
+                    listaContainer.innerHTML = `<p style="color: #f55;">Error: ${err.message}</p>`;
+                });
+        }
+        
+        async function crearPartidaFirestore() {
+            if (!db) {
+                registrarLogConexion("Error: Firebase no inicializado. Iniciando solo.");
+                ocultarLobby();
+                iniciarMotorJuego();
+                return;
+            }
+
+            idPartidaActual = Math.random().toString(36).substr(2, 6).toUpperCase();
+            
+            try {
+                await db.collection('partidas').doc(idPartidaActual).set({
+                    hostId: idLocal,
+                    hostNick: protagonista.nombre,
+                    creacion: Date.now(),
+                    numJugadores: 1,
+                    estado: 'activa',
+                    lastSeen: Date.now()
+                });
+                registrarLogConexion(`Documento de partida ${idPartidaActual} creado.`);
+            } catch (e) {
+                registrarLogConexion("Error fatal al crear partida: " + e.message);
+                alert("No se pudo crear la partida en Firebase. Revisa la consola/logs.");
+                return;
+            }
+
+            // Heartbeat y actualización de metadatos (solo Host)
+            setInterval(async () => {
+                if (esHost && idPartidaActual) {
+                    try {
+                        await db.collection('partidas').doc(idPartidaActual).update({
+                            numJugadores: jugadoresRemotos.size + 1,
+                            lastSeen: Date.now()
+                        });
+                    } catch (e) {
+                        registrarLogConexion("Error en heartbeat: " + e.message);
+                    }
+                }
+            }, 10000); // Cada 10 segundos
+
+            // Escuchar nuevas conexiones de invitados (Forzamos ON)
+            toggleAceptarJugadores(true); 
+
+            registrarLogConexion(`Partida creada: ${idPartidaActual}.`);
+            ocultarLobby();
+            iniciarMotorJuego();
+        }
+
+        async function unirseAPartidaFirestore(partidaId) {
+            if (!db) return;
+            if (unsubscribeLobby) {
+                unsubscribeLobby();
+                unsubscribeLobby = null;
+            }
+            idPartidaActual = partidaId;
+            protagonista.nombre = document.getElementById('nickInput').value || "Invitado";
+            esHost = false;
+
+            registrarEventoLog(`Uniéndote a la partida ${partidaId}...`);
+            setupWebRTCGuest(partidaId);
+        }
+
+        /**
+         * MÉTODO CRÍTICO: Establece la conexión WebRTC desde el lado del Host.
+         * 
+         * Este método se encarga de:
+         * 1. Crear la RTCPeerConnection y el DataChannel.
+         * 2. Generar la oferta SDP (Offer) y subirla a Firestore.
+         * 3. Escuchar la respuesta SDP (Answer) del Invitado.
+         * 4. Intercambiar candidatos ICE de forma asíncrona.
+         * 5. Limpiar todos los recursos de Firebase una vez establecida la conexión P2P.
+         * 
+         * @param {string} guestId - ID único del invitado que intenta unirse.
+         */
+        function setupWebRTCHost(guestId) {
+            // Evitar duplicidad si ya estamos conectando o conectados
+            if (jugadoresRemotos.has(guestId)) {
+                const existing = jugadoresRemotos.get(guestId);
+                if (existing.pc && (existing.pc.connectionState === 'connected' || existing.pc.connectionState === 'connecting')) {
+                    registrarLogConexion(`Intento de conexión duplicado para ${guestId} ignorado.`);
+                    return;
+                }
+            }
+
+            registrarLogConexion(`Iniciando PeerConnection para Invitado: ${guestId}`);
+            
+            const pc = new RTCPeerConnection({ 
+                iceServers: [{ urls: "stun:stun.l.google.com:19302" }] 
+            });
+            
+            // Creamos el canal de datos principal para el juego
+            const dc = pc.createDataChannel("mazeRPG");
+            
+            // Buffer para candidatos ICE que llegan antes de procesar la Answer
+            const iceBuffer = [];
+            
+            const info = { pc, dc, entidad: null, unsubscribes: [] };
+            jugadoresRemotos.set(guestId, info);
+            setupDataChannelHandlers(dc, guestId);
+
+            // Handler de apertura de canal: MOMENTO DE CORTE CON FIREBASE
+            dc.addEventListener('open', () => {
+                registrarLogConexion(`✅ CANAL P2P ABIERTO con ${guestId}. Desconectando de Firestore.`);
+                // Detenemos todos los listeners de signaling para este par
+                info.unsubscribes.forEach(unsub => unsub());
+                info.unsubscribes = [];
+                // Detenemos el envío de candidatos ICE locales
+                pc.onicecandidate = null;
+                // Borramos los documentos temporales de handshake (si existen)
+                if (idPartidaActual) limpiarSignalingFirestore(idPartidaActual, guestId);
+                
+                // Si es manual, ocultamos el lobby al conectar
+                if (guestId === 'manual') {
+                    ocultarLobby();
+                }
+            });
+
+            // Gestión de candidatos ICE locales
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    registrarLogConexion(`Enviando ICE local para ${guestId}`);
+                    db.collection('partidas').doc(idPartidaActual)
+                      .collection('conexiones').doc(guestId)
+                      .collection('iceCandidatesHost').add(event.candidate.toJSON())
+                      .catch(e => registrarLogConexion(`Error enviando ICE: ${e.message}`));
+                }
+            };
+
+            // Creamos la oferta SDP
+            pc.createOffer().then(async offer => {
+                registrarLogConexion(`Oferta SDP creada para ${guestId}. Subiendo a Firestore...`);
+                await pc.setLocalDescription(offer);
+                try {
+                    await db.collection('partidas').doc(idPartidaActual)
+                            .collection('conexiones').doc(guestId).set({
+                                offer: { type: offer.type, sdp: offer.sdp }
+                            }, { merge: true });
+                } catch (e) {
+                    registrarLogConexion(`Error subiendo oferta: ${e.message}`);
+                }
+            }).catch(e => registrarLogConexion(`Error en createOffer: ${e.message}`));
+
+            // LISTENER 1: Esperar Answer del invitado
+            const unsubAnswer = db.collection('partidas').doc(idPartidaActual)
+              .collection('conexiones').doc(guestId).onSnapshot(doc => {
+                  const data = doc.data();
+                  if (data && data.answer && !pc.currentRemoteDescription) {
+                      registrarLogConexion(`Respuesta SDP (Answer) recibida de ${guestId}`);
+                      pc.setRemoteDescription(new RTCSessionDescription(data.answer)).then(() => {
+                          registrarLogConexion(`RemoteDescription establecida para ${guestId}. Procesando buffer ICE (${iceBuffer.length})...`);
+                          while(iceBuffer.length > 0) {
+                              pc.addIceCandidate(new RTCIceCandidate(iceBuffer.shift()));
+                          }
+                      }).catch(e => registrarLogConexion(`Error setRemoteDescription: ${e.message}`));
+                  }
+              });
+
+            // LISTENER 2: Recibir candidatos ICE del invitado
+            const unsubIce = db.collection('partidas').doc(idPartidaActual)
+              .collection('conexiones').doc(guestId)
+              .collection('iceCandidatesGuest').onSnapshot(snapshot => {
+                  snapshot.docChanges().forEach(change => {
+                      if (change.type === 'added') {
+                          const cand = change.doc.data();
+                          if (pc.remoteDescription) {
+                              pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => {
+                                  registrarLogConexion(`Error añadiendo ICE remoto: ${e.message}`);
+                              });
+                          } else {
+                              // Si aún no tenemos Answer, lo guardamos en el buffer
+                              iceBuffer.push(cand);
+                          }
+                      }
+                  });
+              });
+              
+            // Almacenamos unsubs para limpieza posterior
+            info.unsubscribes.push(unsubAnswer, unsubIce);
+        }
+
+        /**
+         * Establece la conexión WebRTC desde el lado del Invitado.
+         * 
+         * @param {string} partidaId - ID de la sala a la que unirse.
+         */
+        async function setupWebRTCGuest(partidaId) {
+            registrarLogConexion(`Uniéndose a partida ${partidaId} como invitado.`);
+            
+            const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+            const iceBuffer = [];
+            const info = { pc, dc: null, entidad: null, unsubscribes: [] };
+            
+            // El invitado espera a que el Host abra el DataChannel
+            pc.ondatachannel = (event) => {
+                const dc = event.channel;
+                info.dc = dc;
+                jugadoresRemotos.set('host', info);
+                setupDataChannelHandlers(dc, 'host');
+
+                dc.addEventListener('open', () => {
+                    registrarLogConexion(`✅ CANAL P2P ABIERTO con Host. Deteniendo listeners Firestore.`);
+                    info.unsubscribes.forEach(unsub => unsub());
+                    info.unsubscribes = [];
+                    // Detenemos el envío de candidatos ICE locales
+                    pc.onicecandidate = null;
+                    // Nota: El Host se encarga de borrar los documentos de signaling.
+                });
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    registrarLogConexion(`Enviando ICE local al Host`);
+                    db.collection('partidas').doc(partidaId)
+                      .collection('conexiones').doc(idLocal)
+                      .collection('iceCandidatesGuest').add(event.candidate.toJSON())
+                      .catch(e => registrarLogConexion("Error enviando ICE guest: " + e.message));
+                }
+            };
+
+            // Notificamos nuestra presencia al Host
+            try {
+                await db.collection('partidas').doc(partidaId).collection('conexiones').doc(idLocal).set({
+                    id: idLocal,
+                    nick: protagonista.nombre
+                });
+                registrarLogConexion("Notificación de presencia enviada al Host.");
+            } catch (e) {
+                registrarLogConexion("Error al notificar presencia: " + e.message);
+            }
+
+            // LISTENER 1: Esperar Oferta del Host
+            const unsubOffer = db.collection('partidas').doc(partidaId)
+              .collection('conexiones').doc(idLocal).onSnapshot(async doc => {
+                  const data = doc.data();
+                  if (data && data.offer && !pc.currentRemoteDescription) {
+                      registrarLogConexion(`Oferta SDP recibida del Host.`);
+                      await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+                      
+                      // Procesar ICEs acumulados
+                      while(iceBuffer.length > 0) {
+                          pc.addIceCandidate(new RTCIceCandidate(iceBuffer.shift()));
+                      }
+                      
+                      const answer = await pc.createAnswer();
+                      await pc.setLocalDescription(answer);
+                      try {
+                          await db.collection('partidas').doc(partidaId)
+                                  .collection('conexiones').doc(idLocal).set({
+                                      answer: { type: answer.type, sdp: answer.sdp }
+                                  }, { merge: true });
+                          registrarLogConexion(`Respuesta SDP (Answer) enviada al Host.`);
+                      } catch (e) {
+                          registrarLogConexion(`Error al subir respuesta: ${e.message}`);
+                      }
+                  }
+              });
+
+            // LISTENER 2: Recibir candidatos ICE del Host
+            const unsubIce = db.collection('partidas').doc(partidaId)
+              .collection('conexiones').doc(idLocal)
+              .collection('iceCandidatesHost').onSnapshot(snapshot => {
+                  snapshot.docChanges().forEach(change => {
+                      if (change.type === 'added') {
+                          const cand = change.doc.data();
+                          if (pc.remoteDescription) {
+                              pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => {
+                                  registrarLogConexion(`Error ICE Host: ${e.message}`);
+                              });
+                          } else {
+                              iceBuffer.push(cand);
+                          }
+                      }
+                  });
+              });
+
+            info.unsubscribes.push(unsubOffer, unsubIce);
+        }
+
+        // --- INICIALIZACIÓN FINAL ---
+        const protagonista = new Jugador();
+        const listaDeEnemigos = [];
+
+        function iniciarMotorJuego() {
+            if (motorIniciado) return;
+            motorIniciado = true;
+
+            console.log("Generando laberinto...");
+            if (esHost || !multiplayerActivo) {
+                generarLaberintoBSP();
+                generarEnemigos();
+            }
+
+            console.log("Iniciando motor de juego...");
+            cicloDeJuego();
+        }
+
+        function generarEnemigos() {
+            const tiposEnemigos = ["Esqueleto", "Orco", "Goblin", "Minotauro"];
+            for (let i = 0; i < 40; i++) {
+                let fila, columna;
+                let seguridad = 0;
+                do {
+                    fila = Math.floor(Math.random() * NUMERO_FILAS);
+                    columna = Math.floor(Math.random() * NUMERO_COLUMNAS);
+                    seguridad++;
+                } while (((fila < 5 && columna < 5) || !mapaLaberinto[fila][columna].esTransitable) && seguridad < 1000);
+                
+                const tipo = tiposEnemigos[i % tiposEnemigos.length];
+                listaDeEnemigos.push(new EnemigoNPC(fila, columna, tipo, tipo, i));
+            }
+        }
+
+        /**
+         * Manejo de interacción por "taps" en el canvas.
+         * Divide el canvas en 4 zonas triangulares para determinar la dirección.
+         */
+        function manejarTap(clientX, clientY) {
+            if (juegoTerminado || !protagonista) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+
+            const centroX = canvas.width / 2;
+            const centroY = ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) / 2;
+
+            const dx = x - centroX;
+            const dy = y - centroY;
+
+            let deltaFila = 0;
+            let deltaColumna = 0;
+
+            // Determinamos la dirección predominante (basada en el triángulo de la pulsación)
+            if (Math.abs(dx) > Math.abs(dy)) {
+                deltaColumna = dx > 0 ? 1 : -1;
+            } else {
+                deltaFila = dy > 0 ? 1 : -1;
+            }
+
+            const haMovido = protagonista.intentarMover(deltaFila, deltaColumna);
+            if (haMovido) {
+                comprobarVictoria();
+                // Breve animación de caminata para el tap
+                setTimeout(() => {
+                    if (protagonista) protagonista.estaCaminando = false;
+                }, 150);
+            }
+        }
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const toque = e.touches[0];
+            manejarTap(toque.clientX, toque.clientY);
+        }, { passive: false });
+
+        canvas.addEventListener('mousedown', (e) => {
+            manejarTap(e.clientX, e.clientY);
+        });
+    </script>
+</body>
+</html>

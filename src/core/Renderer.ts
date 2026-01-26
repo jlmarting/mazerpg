@@ -1,0 +1,148 @@
+import { Celda } from '../world/Celda';
+
+export class Renderer {
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d')!;
+  }
+
+  limpiar() {
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  obtenerOffsetCamara(protagonista: any, config: any) {
+    if (!protagonista) return { colOffset: 0, filaOffset: 0 };
+
+    const { NUMERO_COLUMNAS, NUMERO_FILAS, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+
+    let colOffset = protagonista.columna - Math.floor(CELDAS_VISIBLES_X / 2);
+    let filaOffset = protagonista.fila - Math.floor(CELDAS_VISIBLES_Y / 2);
+
+    colOffset = Math.max(0, Math.min(colOffset, NUMERO_COLUMNAS - CELDAS_VISIBLES_X));
+    filaOffset = Math.max(0, Math.min(filaOffset, NUMERO_FILAS - CELDAS_VISIBLES_Y));
+
+    return { colOffset, filaOffset };
+  }
+
+  dibujarLaberinto(mapaLaberinto: Celda[][], offset: { colOffset: number, filaOffset: number }, config: any) {
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
+
+    this.ctx.fillStyle = '#000';
+    this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
+
+    for (let fila = filaOffset; fila < filaOffset + CELDAS_VISIBLES_Y; fila++) {
+      if (fila < 0 || fila >= NUMERO_FILAS) continue;
+      for (let columna = colOffset; columna < colOffset + CELDAS_VISIBLES_X; columna++) {
+        if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
+
+        const celda = mapaLaberinto[fila][columna];
+        if (celda.esTransitable) {
+          this.ctx.fillStyle = '#FFF';
+          this.ctx.fillRect((columna - colOffset) * TAMANO_CELDA, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP, TAMANO_CELDA, TAMANO_CELDA);
+        }
+      }
+    }
+
+    // Meta
+    const filaMeta = NUMERO_FILAS - 1;
+    const colMeta = NUMERO_COLUMNAS - 1;
+    if (filaMeta >= filaOffset && filaMeta < filaOffset + CELDAS_VISIBLES_Y &&
+        colMeta >= colOffset && colMeta < colOffset + CELDAS_VISIBLES_X) {
+      this.ctx.fillStyle = 'rgba(0, 200, 0, 0.6)';
+      this.ctx.fillRect((colMeta - colOffset) * TAMANO_CELDA + 2, (filaMeta - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2, TAMANO_CELDA - 4, TAMANO_CELDA - 4);
+      this.ctx.fillStyle = '#050';
+      this.ctx.font = 'bold 10px monospace';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText('META', (colMeta - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (filaMeta - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 4);
+      this.ctx.textAlign = 'left';
+    }
+  }
+
+  dibujarNiebla(mapaLaberinto: Celda[][], offset: { colOffset: number, filaOffset: number }, config: any) {
+    if (config.vistaDebugActivada) return;
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
+
+    const tiempoActual = Date.now();
+    for (let fila = filaOffset; fila < filaOffset + CELDAS_VISIBLES_Y; fila++) {
+      if (fila < 0 || fila >= NUMERO_FILAS) continue;
+      for (let columna = colOffset; columna < colOffset + CELDAS_VISIBLES_X; columna++) {
+        if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
+
+        const celda = mapaLaberinto[fila][columna];
+        let opacidad = 1;
+
+        if (celda.ultimoAvistamiento > 0) {
+          const tiempoDesdeVisto = tiempoActual - celda.ultimoAvistamiento;
+          if (tiempoDesdeVisto < 50) {
+            opacidad = 0;
+          } else {
+            opacidad = Math.min(1, tiempoDesdeVisto / TIEMPO_DESVANECIMIENTO_NIEBLA);
+          }
+        }
+
+        if (opacidad > 0) {
+          this.ctx.fillStyle = `rgba(0, 0, 0, ${opacidad})`;
+          this.ctx.fillRect((columna - colOffset) * TAMANO_CELDA, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP, TAMANO_CELDA, TAMANO_CELDA);
+        }
+      }
+    }
+  }
+
+  dibujarUI(game: any) {
+    const { ALTO_UI_TOP, ALTO_UI_BOTTOM, CELDAS_VISIBLES_Y, TAMANO_CELDA } = game.config;
+
+    this.ctx.fillStyle = '#111';
+    this.ctx.fillRect(0, 0, this.canvas.width, ALTO_UI_TOP);
+    this.ctx.fillRect(0, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA), this.canvas.width, ALTO_UI_BOTTOM);
+
+    this.ctx.strokeStyle = '#555';
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, ALTO_UI_TOP); this.ctx.lineTo(this.canvas.width, ALTO_UI_TOP);
+    this.ctx.moveTo(0, this.canvas.height - ALTO_UI_BOTTOM); this.ctx.lineTo(this.canvas.width, this.canvas.height - ALTO_UI_BOTTOM);
+    this.ctx.stroke();
+
+    this.ctx.fillStyle = '#fff';
+    this.ctx.font = 'bold 12px monospace';
+    this.ctx.fillText("HÉROE", 10, 20);
+    this.ctx.font = '11px monospace';
+    this.ctx.fillText(`HP: ${game.protagonista.vidaActual}/${game.protagonista.vidaMaxima}`, 10, 35);
+    this.ctx.fillText(`FUE:${game.protagonista.fuerza} AGI:${game.protagonista.agilidad} INT:${game.protagonista.inteligencia}`, 10, 50);
+
+    let enemigoVisible = game.obtenerEnemigoAMostrar();
+    if (enemigoVisible) {
+      this.ctx.textAlign = 'right';
+      this.ctx.fillStyle = '#f55';
+      this.ctx.font = 'bold 12px monospace';
+      this.ctx.fillText(enemigoVisible.nombre.toUpperCase(), this.canvas.width - 10, 20);
+      this.ctx.font = '11px monospace';
+      this.ctx.fillText(`HP: ${enemigoVisible.vidaActual}/${enemigoVisible.vidaMaxima}`, this.canvas.width - 10, 35);
+      this.ctx.fillText(`FUE:${enemigoVisible.fuerza} AGI:${enemigoVisible.agilidad}`, this.canvas.width - 10, 50);
+      this.ctx.textAlign = 'left';
+    }
+
+    this.ctx.fillStyle = '#aaa';
+    this.ctx.font = '10px monospace';
+    game.colaDeMensajes.forEach((msj: string, i: number) => {
+      this.ctx.fillText(msj, 10, this.canvas.height - ALTO_UI_BOTTOM + 20 + (i * 15));
+    });
+
+    if (game.juegoTerminado) {
+      this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
+      this.ctx.fillStyle = '#fff';
+      this.ctx.font = 'bold 16px monospace';
+      this.ctx.textAlign = 'center';
+      const msjFin = game.protagonista.vidaActual > 0 ? "¡VICTORIA!" : "HAS CAÍDO";
+      this.ctx.fillText(msjFin, this.canvas.width / 2, ALTO_UI_TOP + 100);
+      this.ctx.textAlign = 'left';
+    }
+  }
+
+  getCtx() { return this.ctx; }
+}

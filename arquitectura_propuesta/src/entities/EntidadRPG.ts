@@ -1,4 +1,3 @@
-
 export abstract class EntidadRPG {
   fila: number;
   columna: number;
@@ -68,7 +67,6 @@ export abstract class EntidadRPG {
 
     ctx.fillStyle = "#333";
     ctx.fillRect(x, y, anchoBarra, altoBarra);
-
     ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
     ctx.fillRect(x, y, anchoBarra * pct, altoBarra);
   }

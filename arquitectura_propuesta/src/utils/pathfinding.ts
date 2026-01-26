@@ -50,7 +50,6 @@ export function algoritmoBusquedaAStar(
       }
     }
   }
-  console.warn(`No se encontró camino de [${filaInicio},${colInicio}] a [${filaFin},${colFin}]`);
   return null;
 }
 
@@ -80,17 +79,11 @@ function reconstruirRuta(origenDelCamino: Map<Celda, Celda>, celdaFinal: Celda):
 
   while (origenDelCamino.has(celdaActual)) {
     let celdaSiguiente = origenDelCamino.get(celdaActual)!;
-    if (visitadosEnRuta.has(celdaSiguiente) || celdaSiguiente === celdaActual) {
-      console.error("Bucle infinito detectado en reconstruirRuta. Abortando reconstrucción.");
-      break;
-    }
+    if (visitadosEnRuta.has(celdaSiguiente) || celdaSiguiente === celdaActual) break;
     celdaActual = celdaSiguiente;
     visitadosEnRuta.add(celdaActual);
     rutaTotal.unshift(celdaActual);
-    if (rutaTotal.length > NUMERO_FILAS * NUMERO_COLUMNAS) {
-      console.error("Ruta excesivamente larga. Abortando.");
-      break;
-    }
+    if (rutaTotal.length > NUMERO_FILAS * NUMERO_COLUMNAS) break;
   }
   return rutaTotal;
 }

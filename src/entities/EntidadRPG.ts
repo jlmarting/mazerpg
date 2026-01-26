@@ -15,6 +15,7 @@ export abstract class EntidadRPG {
   ultimaVezMovido: number;
   enCombateCon: EntidadRPG | null;
   consecutiveInteractions: Map<string, number> = new Map();
+  public onDamageReceived?: (amount: number, entity: EntidadRPG) => void;
 
   constructor(fila: number, columna: number, nombre: string) {
     this.fila = fila;
@@ -56,17 +57,29 @@ export abstract class EntidadRPG {
       this.estaVivo = false;
       this.vidaActual = 0;
     }
+    if (this.onDamageReceived && cantidad > 0) {
+      this.onDamageReceived(cantidad, this);
+    }
     return cantidad;
   }
 
   abstract dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto?: any): void;
 
-  dibujarBarraVida(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
+  dibujarBarraVida(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto: any[][]) {
     const { colOffset, filaOffset } = offset;
-    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, vistaDebugActivada, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
 
     if (this.fila < filaOffset || this.fila >= filaOffset + CELDAS_VISIBLES_Y ||
         this.columna < colOffset || this.columna >= colOffset + CELDAS_VISIBLES_X) return;
+
+    // Niebla de guerra para barra de vida
+    const celdaActual = mapaLaberinto[this.fila][this.columna];
+    if (!vistaDebugActivada && celdaActual) {
+        const tiempoDesdeVisto = Date.now() - celdaActual.ultimoAvistamiento;
+        if (celdaActual.ultimoAvistamiento === 0 || tiempoDesdeVisto > TIEMPO_DESVANECIMIENTO_NIEBLA) {
+            return;
+        }
+    }
 
     const x = (this.columna - colOffset) * TAMANO_CELDA + 2;
     const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2;

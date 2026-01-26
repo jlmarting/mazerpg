@@ -1,6 +1,6 @@
 import { EntidadRPG } from './EntidadRPG';
 import { algoritmoBusquedaAStar } from '../utils/pathfinding';
-import { CameraOffset, GameConfig } from '../types';
+import { CameraOffset, GameConfig, IGame } from '../types';
 import { Celda } from '../world/Celda';
 
 export class EnemigoNPC extends EntidadRPG {
@@ -32,8 +32,25 @@ export class EnemigoNPC extends EntidadRPG {
     }
   }
 
-  actualizarIA(game: any) {
-    if (!this.estaVivo || this.enCombateCon || game.juegoTerminado) return;
+  actualizarIA(game: IGame) {
+    if (!this.estaVivo || game.juegoTerminado) return;
+
+    // Si ya estamos en combate, resolvemos ronda si el objetivo sigue cerca
+    if (this.enCombateCon) {
+        const dF = Math.abs(this.fila - this.enCombateCon.fila);
+        const dC = Math.abs(this.columna - this.enCombateCon.columna);
+        if (dF + dC <= 1) {
+            const ahora = Date.now();
+            if (ahora - this.ultimaVezActuadoIA >= 1000) {
+                game.resolverRondaDeCombate(this, this.enCombateCon);
+                this.ultimaVezActuadoIA = ahora;
+            }
+            return;
+        } else {
+            // Se alejó, rompemos el combate
+            this.enCombateCon = null;
+        }
+    }
 
     const ahora = Date.now();
     if (ahora - this.ultimaVezActuadoIA < 800) return;
@@ -65,7 +82,7 @@ export class EnemigoNPC extends EntidadRPG {
     this.ultimaVezActuadoIA = ahora;
   }
 
-  moverseHaciaJugadorDirectamente(objetivo: any, game: any) {
+  moverseHaciaJugadorDirectamente(objetivo: any, game: IGame) {
     let dFila = 0, dColumna = 0;
     if (objetivo.fila > this.fila) dFila = 1;
     else if (objetivo.fila < this.fila) dFila = -1;
@@ -82,7 +99,7 @@ export class EnemigoNPC extends EntidadRPG {
     }
   }
 
-  vagarAleatoriamente(game: any) {
+  vagarAleatoriamente(game: IGame) {
     const direcciones = [[-1, 0], [1, 0], [0, -1], [0, 1]];
     const direccionesValidas = direcciones.filter(d => this.puedeAtravesar(d[0], d[1], game));
     if (direccionesValidas.length > 0) {
@@ -91,7 +108,7 @@ export class EnemigoNPC extends EntidadRPG {
     }
   }
 
-  puedeAtravesar(deltaFila: number, deltaColumna: number, game: any): boolean {
+  puedeAtravesar(deltaFila: number, deltaColumna: number, game: IGame): boolean {
     const celdaActual = game.mapaLaberinto[this.fila][this.columna];
     if (deltaFila === -1 && celdaActual.muros.superior) return false;
     if (deltaFila === 1 && celdaActual.muros.inferior) return false;
@@ -106,7 +123,7 @@ export class EnemigoNPC extends EntidadRPG {
     return true;
   }
 
-  ejecutarMovimientoIA(deltaFila: number, deltaColumna: number, game: any) {
+  ejecutarMovimientoIA(deltaFila: number, deltaColumna: number, game: IGame) {
     const sigFila = this.fila + deltaFila;
     const sigColumna = this.columna + deltaColumna;
 

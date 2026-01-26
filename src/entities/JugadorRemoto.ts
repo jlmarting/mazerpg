@@ -2,8 +2,10 @@ import { EntidadRPG } from './EntidadRPG';
 import { CameraOffset, GameConfig } from '../types';
 
 export class JugadorRemoto extends EntidadRPG {
-  constructor(fila: number, columna: number, nombre: string) {
+  public id: string;
+  constructor(fila: number, columna: number, nombre: string, id: string) {
     super(fila, columna, nombre);
+    this.id = id;
   }
 
   dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {

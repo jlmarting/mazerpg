@@ -1,3 +1,5 @@
+import { IGame } from '../types';
+
 export class UIManager {
   private logTextArea: HTMLTextAreaElement | null = null;
   private listaTextosFlotantes: any[] = [];
@@ -23,7 +25,7 @@ export class UIManager {
     console.log(`[CONN-LOG] ${msg}`);
   }
 
-  toggleChat(game: any) {
+  toggleChat(game: IGame) {
     const modal = document.getElementById('chatModal');
     const input = document.getElementById('chatInput') as HTMLInputElement;
 
@@ -40,14 +42,14 @@ export class UIManager {
     }
   }
 
-  enviarChat(texto: string, game: any) {
+  enviarChat(texto: string, game: IGame) {
     this.manejarMensajeChat(game.protagonista.nombre, texto, true, game);
     if (game.network && game.network.activo) {
       game.network.enviarMensaje({ tipo: 'chat', texto: texto, id: game.network.idLocal });
     }
   }
 
-  manejarMensajeChat(nombre: string, texto: string, _esLocal: boolean, game: any) {
+  manejarMensajeChat(nombre: string, texto: string, _esLocal: boolean, game: IGame) {
     let emisor = game.obtenerEntidadPorNombre(nombre);
     if (emisor) {
       const celda = game.mapaLaberinto[emisor.fila][emisor.columna];
@@ -60,7 +62,7 @@ export class UIManager {
     game.registrarEventoLog(`CHAT - ${nombre}: ${texto}`);
   }
 
-  crearTextoFlotanteEnCelda(f: number, c: number, texto: string, color: string, game: any) {
+  crearTextoFlotanteEnCelda(f: number, c: number, texto: string, color: string, game: IGame) {
     const offset = game.renderer.obtenerOffsetCamara(game.protagonista, game.config);
     const { colOffset, filaOffset } = offset;
     if (f < filaOffset || f >= filaOffset + game.config.CELDAS_VISIBLES_Y ||

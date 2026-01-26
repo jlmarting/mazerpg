@@ -1,5 +1,5 @@
 import { EntidadRPG } from './EntidadRPG';
-import { CameraOffset, GameConfig } from '../types';
+import { CameraOffset, GameConfig, IGame } from '../types';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
@@ -70,7 +70,7 @@ export class Jugador extends EntidadRPG {
     return result;
   }
 
-  intentarMover(deltaFila: number, deltaColumna: number, game: any): boolean {
+  intentarMover(deltaFila: number, deltaColumna: number, game: IGame): boolean {
     if (!this.estaVivo) return false;
 
     const sigFila = this.fila + deltaFila;
@@ -85,9 +85,9 @@ export class Jugador extends EntidadRPG {
         }
     });
 
-    if (jugadorRemotoEnCasilla && jugadorRemotoEnCasilla.estaVivo) {
+    if (jugadorRemotoEnCasilla) {
         const interactions = (this.consecutiveInteractions.get(jugadorId) || 0) + 1;
-        if (interactions >= 2) {
+        if (interactions >= 2 && this.estaVivo && jugadorRemotoEnCasilla.estaVivo) {
             this.consecutiveInteractions.set(jugadorId, 0);
             if (this.vidaActual > 1) {
                 this.vidaActual -= 1;

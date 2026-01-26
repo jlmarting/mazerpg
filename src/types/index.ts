@@ -18,9 +18,38 @@ export interface CameraOffset {
     filaOffset: number;
 }
 
-export interface DrawingContext {
-    ctx: CanvasRenderingContext2D;
-    offset: CameraOffset;
-    config: GameConfig;
+export interface IEntidadRPG {
+    fila: number;
+    columna: number;
+    nombre: string;
+    vidaActual: number;
+    vidaMaxima: number;
+    estaVivo: boolean;
+    enCombateCon: IEntidadRPG | null;
+    recibirDano(cantidad: number, atacante?: IEntidadRPG | null): number;
+    obtenerIniciativa(): number;
+    generarAtaque(): number;
+    generarDefensa(): number;
+}
+
+export interface IGame {
     mapaLaberinto: Celda[][];
+    config: GameConfig;
+    protagonista: IEntidadRPG;
+    listaDeEnemigos: IEntidadRPG[];
+    jugadoresRemotos: Map<string, any>;
+    esHost: boolean;
+    juegoTerminado: boolean;
+    firebase: any;
+    network: any;
+    ui: any;
+    renderer: any;
+    registrarEventoLog(mensaje: string): void;
+    resolverRondaDeCombate(pA: IEntidadRPG, pB: IEntidadRPG): void;
+    iniciarCombate(atacante: IEntidadRPG, objetivo: IEntidadRPG): void;
+    intentarRehuirCombate(l: IEntidadRPG): boolean;
+    procesarMensajeMultiplayer(msg: any, idEmisor: string): void;
+    iniciarEleccionHost(): void;
+    unirseAPartidaFirestore(id: string): Promise<void>;
+    obtenerEntidadPorNombre(nombre: string): IEntidadRPG | null;
 }

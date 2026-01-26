@@ -9,17 +9,18 @@ import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
 import { generarLaberintoBSP } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
-import { GameConfig } from './types';
+import { GameConfig, IGame } from './types';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
     TIEMPO_DESVANECIMIENTO_NIEBLA
 } from './world/constants';
 
-class Game {
+class Game implements IGame {
   public mapaLaberinto: Celda[][] = [];
   public protagonista: Jugador = new Jugador();
   public listaDeEnemigos: EnemigoNPC[] = [];
+  public jugadoresRemotos: Map<string, any> = new Map();
   public renderer: Renderer;
   public ui: UIManager = new UIManager();
   public firebase: FirebaseManager = new FirebaseManager();
@@ -41,6 +42,7 @@ class Game {
   constructor() {
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas);
+    this.setupEntity(this.protagonista);
     this.initMap();
     this.ajustarDimensiones();
     window.addEventListener('resize', () => this.ajustarDimensiones());
@@ -168,6 +170,15 @@ class Game {
         }
     }, 10000);
 
+    setInterval(() => {
+        if (this.esHost && this.network.multiplayerActivo) {
+            const lista = this.listaDeEnemigos.map(e => ({
+                id: e.id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
+            }));
+            this.network.enviarMensaje({ tipo: 'npc_sync_all', lista });
+        }
+    }, 5000);
+
     this.ui.registrarLogConexion(`Partida creada: ${id}`);
     const roomDisp = document.getElementById('roomDisplay');
     const roomIdVal = document.getElementById('roomIdVal');
@@ -284,6 +295,15 @@ class Game {
             }
         }, 10000);
 
+        setInterval(() => {
+            if (this.esHost && this.network.multiplayerActivo) {
+                const lista = this.listaDeEnemigos.map(e => ({
+                    id: e.id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
+                }));
+                this.network.enviarMensaje({ tipo: 'npc_sync_all', lista });
+            }
+        }, 5000);
+
         (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
     }
   }
@@ -311,6 +331,39 @@ class Game {
     this.cicloDeJuego();
   }
 
+  setupEntity(entity: any) {
+    entity.onDamageReceived = (amount: number, e: any) => {
+        const color = (e instanceof EnemigoNPC) ? "#00ff00" : "#ff0000";
+        this.ui.crearTextoFlotanteEnCelda(e.fila, e.columna, `-${amount}`, color, this);
+
+        if (e instanceof EnemigoNPC && this.network && this.network.multiplayerActivo) {
+            if (this.esHost) {
+                this.network.enviarMensaje({
+                    tipo: 'npc_update',
+                    id: e.id,
+                    f: e.fila,
+                    c: e.columna,
+                    v: e.vidaActual
+                });
+            } else {
+                this.network.enviarMensaje({
+                    tipo: 'npc_damaged_by_guest',
+                    id: e.id,
+                    dano: amount
+                });
+            }
+        }
+
+        if (e instanceof JugadorRemoto && this.esHost && this.network && this.network.multiplayerActivo) {
+            this.network.enviarMensaje({
+                tipo: 'hp_loss',
+                id: e.id,
+                amount: amount
+            });
+        }
+    };
+  }
+
   generarEnemigos() {
     const tipos = ["Esqueleto", "Orco", "Goblin", "Minotauro"];
     for (let i = 0; i < 40; i++) {
@@ -322,7 +375,9 @@ class Game {
             s++;
         } while (((f < 5 && c < 5) || !this.mapaLaberinto[f][c].esTransitable) && s < 1000);
         const t = tipos[i % tipos.length];
-        this.listaDeEnemigos.push(new EnemigoNPC(f, c, t, t, i));
+        const e = new EnemigoNPC(f, c, t, t, i);
+        this.setupEntity(e);
+        this.listaDeEnemigos.push(e);
     }
   }
 
@@ -357,20 +412,20 @@ class Game {
 
     if (this.protagonista.estaVivo) {
         this.protagonista.dibujar(this.renderer.getCtx(), offset, this.config);
-        this.protagonista.dibujarBarraVida(this.renderer.getCtx(), offset, this.config);
+        this.protagonista.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
     }
 
     this.network.jugadoresRemotos.forEach(j => {
         if (j.entidad && j.entidad.estaVivo) {
             j.entidad.dibujar(this.renderer.getCtx(), offset, this.config);
-            j.entidad.dibujarBarraVida(this.renderer.getCtx(), offset, this.config);
+            j.entidad.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
         }
     });
 
     this.listaDeEnemigos.forEach(e => {
         if (e.estaVivo) {
             e.dibujar(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-            e.dibujarBarraVida(this.renderer.getCtx(), offset, this.config);
+            e.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
         }
     });
 
@@ -384,6 +439,11 @@ class Game {
   actualizar() {
     if (this.juegoTerminado || !this.protagonista) return;
     const ahora = Date.now();
+
+    if (this.esHost || !this.network.multiplayerActivo) {
+        this.listaDeEnemigos.forEach(e => e.actualizarIA(this));
+    }
+
     const r = this.config.RADIO_VISION;
     for (let f = Math.max(0, this.protagonista.fila - r); f <= Math.min(this.config.NUMERO_FILAS - 1, this.protagonista.fila + r); f++) {
         for (let c = Math.max(0, this.protagonista.columna - r); c <= Math.min(this.config.NUMERO_COLUMNAS - 1, this.protagonista.columna + r); c++) {
@@ -392,7 +452,6 @@ class Game {
             }
         }
     }
-    this.listaDeEnemigos.forEach(e => e.actualizarIA(this));
 
     if (!this.protagonista.estaVivo && !this.juegoTerminado) {
         document.getElementById('respawnUI')!.style.display = 'flex';
@@ -517,7 +576,10 @@ class Game {
                 this.network.jugadoresRemotos.set(idSujeto, { pc, dc, entidad: null, unsubscribes: [] });
             }
             const jInfo = this.network.jugadoresRemotos.get(idSujeto)!;
-            if (!jInfo.entidad) jInfo.entidad = new JugadorRemoto(0, 0, msg.nick);
+            if (!jInfo.entidad) {
+                jInfo.entidad = new JugadorRemoto(0, 0, msg.nick, idSujeto);
+                this.setupEntity(jInfo.entidad);
+            }
 
             if (this.esHost) {
                 this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
@@ -539,6 +601,7 @@ class Game {
             this.listaDeEnemigos = msg.lista.map((d: any) => {
                 const e = new EnemigoNPC(d.f, d.c, d.n, d.t, d.id);
                 e.vidaActual = d.v; e.vidaMaxima = d.vm;
+                this.setupEntity(e);
                 return e;
             });
             this.mundoSincronizado = true;
@@ -583,6 +646,39 @@ class Game {
                 }
             }
             if (this.esHost) this.network.enviarMensaje({ ...msg }, idEmisor);
+            break;
+        case 'npc_update':
+            const npc = this.listaDeEnemigos.find(e => e.id === msg.id);
+            if (npc) {
+                npc.fila = msg.f; npc.columna = msg.c; npc.vidaActual = msg.v;
+                if (npc.vidaActual <= 0) npc.estaVivo = false;
+            }
+            break;
+        case 'npc_damaged_by_guest':
+            if (this.esHost) {
+                const targetNpc = this.listaDeEnemigos.find(e => e.id === msg.id);
+                if (targetNpc) targetNpc.recibirDano(msg.dano);
+            }
+            break;
+        case 'victoria':
+            this.juegoTerminado = true;
+            this.registrarEventoLog(`${msg.nick} ha ganado!`);
+            break;
+        case 'spawn':
+            this.protagonista.fila = msg.f;
+            this.protagonista.columna = msg.c;
+            break;
+        case 'npc_sync_all':
+            msg.lista.forEach((d: any) => {
+                const npc = this.listaDeEnemigos.find(e => e.id === d.id);
+                if (npc) {
+                    npc.fila = d.f;
+                    npc.columna = d.c;
+                    npc.vidaActual = d.v;
+                    npc.vidaMaxima = d.vm;
+                    npc.estaVivo = npc.vidaActual > 0;
+                }
+            });
             break;
     }
   }

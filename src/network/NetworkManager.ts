@@ -1,3 +1,5 @@
+import { IGame } from '../types';
+
 export interface RemotePlayer {
     pc: RTCPeerConnection;
     dc: RTCDataChannel;
@@ -26,7 +28,7 @@ export class NetworkManager {
     });
   }
 
-  setupDataChannelHandlers(canal: RTCDataChannel, idEmisor: string, game: any) {
+  setupDataChannelHandlers(canal: RTCDataChannel, idEmisor: string, game: IGame) {
     canal.addEventListener('open', () => {
       this.activo = true;
       this.multiplayerActivo = true;
@@ -35,7 +37,6 @@ export class NetworkManager {
 
       if (this.esHost) {
         game.registrarEventoLog(`Jugador conectado (${idEmisor})`);
-        game.mundoSincronizado = true;
       }
     });
 
@@ -64,7 +65,7 @@ export class NetworkManager {
     });
   }
 
-  async setupWebRTCHost(guestId: string, game: any) {
+  async setupWebRTCHost(guestId: string, game: IGame) {
     if (!guestId) return;
     if (this.jugadoresRemotos.has(guestId)) {
       const existing = this.jugadoresRemotos.get(guestId)!;
@@ -134,7 +135,7 @@ export class NetworkManager {
     info.unsubscribes.push(unsubAnswer, unsubIce);
   }
 
-  async setupWebRTCGuest(partidaId: string, game: any) {
+  async setupWebRTCGuest(partidaId: string, game: IGame) {
     this.idPartidaActual = partidaId;
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     const iceBuffer: any[] = [];

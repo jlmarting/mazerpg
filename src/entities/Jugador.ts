@@ -1,4 +1,5 @@
 import { EntidadRPG } from './EntidadRPG';
+import { CameraOffset, GameConfig } from '../types';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
@@ -7,7 +8,7 @@ export class Jugador extends EntidadRPG {
     super(0, 0, nombre);
   }
 
-  dibujar(ctx: CanvasRenderingContext2D, offset: { colOffset: number, filaOffset: number }, config: any) {
+  dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
     const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
@@ -17,11 +18,10 @@ export class Jugador extends EntidadRPG {
     ctx.save();
 
     if (!this.estaVivo) {
-        // Rotar 90 grados para mostrarlo "en horizontal"
         ctx.translate(x, y);
         ctx.rotate(Math.PI / 2);
         ctx.translate(-x, -y);
-        ctx.strokeStyle = '#555'; // Color más apagado
+        ctx.strokeStyle = '#555';
     } else {
         ctx.strokeStyle = '#007bff';
     }
@@ -29,39 +29,32 @@ export class Jugador extends EntidadRPG {
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
 
-    // Cabeza
     ctx.beginPath();
     ctx.arc(x, y - escala / 3, escala / 6, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Cuerpo
     ctx.beginPath();
     ctx.moveTo(x, y - escala / 6);
     ctx.lineTo(x, y + escala / 6);
     ctx.stroke();
 
-    // Animación de piernas
     let desfasePierna = (this.estaCaminando && this.estaVivo) ? Math.sin(Date.now() / 100) * (escala / 4) : 0;
 
-    // Pierna izquierda
     ctx.beginPath();
     ctx.moveTo(x, y + escala / 6);
     ctx.lineTo(x - escala / 6 + desfasePierna, y + escala / 2);
     ctx.stroke();
 
-    // Pierna derecha
     ctx.beginPath();
     ctx.moveTo(x, y + escala / 6);
     ctx.lineTo(x + escala / 6 - desfasePierna, y + escala / 2);
     ctx.stroke();
 
-    // Brazos
     ctx.beginPath();
     ctx.moveTo(x - escala / 4, y);
     ctx.lineTo(x + escala / 4, y);
     ctx.stroke();
 
-    // Glow
     ctx.shadowBlur = this.estaVivo ? 10 : 0;
     ctx.shadowColor = '#007bff';
     ctx.stroke();
@@ -83,7 +76,6 @@ export class Jugador extends EntidadRPG {
     const sigFila = this.fila + deltaFila;
     const sigColumna = this.columna + deltaColumna;
 
-    // Detectar si chocamos con otro jugador (interacción / transferencia de vida)
     let jugadorRemotoEnCasilla: any = null;
     let jugadorId: string = "";
     game.network.jugadoresRemotos.forEach((v: any, k: string) => {
@@ -127,7 +119,6 @@ export class Jugador extends EntidadRPG {
         return false;
     }
 
-    // Limpiar interacciones si nos movemos a otro lado o interactuamos con otro
     this.consecutiveInteractions.forEach((_v, k) => {
         if (k !== jugadorId) this.consecutiveInteractions.set(k, 0);
     });

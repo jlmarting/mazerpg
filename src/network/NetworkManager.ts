@@ -1,9 +1,16 @@
+export interface RemotePlayer {
+    pc: RTCPeerConnection;
+    dc: RTCDataChannel;
+    entidad: any;
+    unsubscribes: (() => void)[];
+}
+
 export class NetworkManager {
   public idLocal: string = "L" + Math.random().toString(36).substr(2, 9);
   public multiplayerActivo: boolean = false;
   public esHost: boolean = false;
   public idPartidaActual: string | null = null;
-  public jugadoresRemotos: Map<string, any> = new Map();
+  public jugadoresRemotos: Map<string, RemotePlayer> = new Map();
   public activo: boolean = false;
 
   constructor() {}
@@ -60,7 +67,7 @@ export class NetworkManager {
   async setupWebRTCHost(guestId: string, game: any) {
     if (!guestId) return;
     if (this.jugadoresRemotos.has(guestId)) {
-      const existing = this.jugadoresRemotos.get(guestId);
+      const existing = this.jugadoresRemotos.get(guestId)!;
       if (existing.pc && (existing.pc.connectionState === 'connected' || existing.pc.connectionState === 'connecting')) {
         return;
       }
@@ -70,7 +77,7 @@ export class NetworkManager {
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     const dc = pc.createDataChannel("mazeRPG");
     const iceBuffer: any[] = [];
-    const info = { pc, dc, entidad: null, unsubscribes: [] as any[] };
+    const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [] };
     this.jugadoresRemotos.set(guestId, info);
     this.setupDataChannelHandlers(dc, guestId, game);
 
@@ -131,7 +138,7 @@ export class NetworkManager {
     this.idPartidaActual = partidaId;
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     const iceBuffer: any[] = [];
-    const info = { pc, dc: null as any, entidad: null, unsubscribes: [] as any[] };
+    const info: RemotePlayer = { pc, dc: null as any, entidad: null, unsubscribes: [] };
 
     pc.ondatachannel = (event) => {
       const dc = event.channel;

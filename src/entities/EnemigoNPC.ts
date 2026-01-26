@@ -1,5 +1,7 @@
 import { EntidadRPG } from './EntidadRPG';
 import { algoritmoBusquedaAStar } from '../utils/pathfinding';
+import { CameraOffset, GameConfig } from '../types';
+import { Celda } from '../world/Celda';
 
 export class EnemigoNPC extends EntidadRPG {
   id: number;
@@ -36,7 +38,6 @@ export class EnemigoNPC extends EntidadRPG {
     const ahora = Date.now();
     if (ahora - this.ultimaVezActuadoIA < 800) return;
 
-    // Buscar objetivo más cercano
     let objetivoInteres = game.protagonista;
     let minD = Math.sqrt(Math.pow(this.fila - game.protagonista.fila, 2) + Math.pow(this.columna - game.protagonista.columna, 2));
 
@@ -138,9 +139,9 @@ export class EnemigoNPC extends EntidadRPG {
     }
   }
 
-  dibujar(ctx: CanvasRenderingContext2D, offset: { colOffset: number, filaOffset: number }, config: any) {
+  dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto: Celda[][]) {
     const { colOffset, filaOffset } = offset;
-    const { TAMANO_CELDA, ALTO_UI_TOP, TIEMPO_DESVANECIMIENTO_NIEBLA, vistaDebugActivada, mapaLaberinto } = config;
+    const { TAMANO_CELDA, ALTO_UI_TOP, TIEMPO_DESVANECIMIENTO_NIEBLA, vistaDebugActivada } = config;
 
     if (this.fila < filaOffset || this.fila >= filaOffset + config.CELDAS_VISIBLES_Y ||
         this.columna < colOffset || this.columna >= colOffset + config.CELDAS_VISIBLES_X) {

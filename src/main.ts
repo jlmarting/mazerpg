@@ -9,6 +9,7 @@ import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
 import { generarLaberintoBSP } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
+import { GameConfig } from './types';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
@@ -19,12 +20,11 @@ class Game {
   public mapaLaberinto: Celda[][] = [];
   public protagonista: Jugador = new Jugador();
   public listaDeEnemigos: EnemigoNPC[] = [];
-  public jugadoresRemotos: Map<string, any> = new Map();
   public renderer: Renderer;
   public ui: UIManager = new UIManager();
   public firebase: FirebaseManager = new FirebaseManager();
   public network: NetworkManager = new NetworkManager();
-  public config = {
+  public config: GameConfig = {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
     TIEMPO_DESVANECIMIENTO_NIEBLA,
@@ -69,7 +69,6 @@ class Game {
   }
 
   setupEventListeners() {
-    // Menu listeners
     document.getElementById('menuToggle')?.addEventListener('click', () => {
       document.getElementById('topMenu')?.classList.toggle('visible');
     });
@@ -91,7 +90,6 @@ class Game {
       document.getElementById('logPanel')?.classList.toggle('visible');
     });
 
-    // Lobby listeners
     document.getElementById('btnSolo')?.addEventListener('click', () => this.empezarSolo());
     document.getElementById('btnCrearPartida')?.addEventListener('click', () => this.iniciarComoHostFirebase());
     document.getElementById('btnUnirseLobby')?.addEventListener('click', () => this.mostrarLobbyFirebase());
@@ -107,7 +105,6 @@ class Game {
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnSalir')?.addEventListener('click', () => window.location.reload());
 
-    // Input Enter for chat
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         this.ui.toggleChat(this);
@@ -196,7 +193,7 @@ class Game {
         listaContainer.innerHTML = '<p style="color: #666; font-style: italic; text-align: center;">No hay partidas disponibles.</p>';
         return;
     }
-    partidas.forEach(p => {
+    partidas.forEach((p: any) => {
         const item = document.createElement('div');
         item.style.cssText = "background: #222; margin-bottom: 5px; padding: 10px; border-radius: 3px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444;";
         item.innerHTML = `
@@ -243,7 +240,6 @@ class Game {
   }
 
   iniciarEleccionHost() {
-    // Filtrar 'host' y cualquier ID que no sea un ID de jugador real
     const misJugadores = Array.from(this.network.jugadoresRemotos.keys())
         .filter(id => id !== 'host');
     misJugadores.push(this.network.idLocal);
@@ -255,7 +251,6 @@ class Game {
         this.promocionarAHost();
     } else {
         this.registrarEventoLog(`Esperando que ${candidatoId} tome el control como Host...`);
-        // El nuevo host actualizará Firestore y nosotros lo detectaremos
         this.esperarNuevoHost();
     }
   }
@@ -263,7 +258,7 @@ class Game {
   esperarNuevoHost() {
     if (!this.network.idPartidaActual) return;
     const unsub = this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual)
-        .onSnapshot(doc => {
+        .onSnapshot((doc: any) => {
             const data = doc.data();
             if (data && data.hostId && data.hostId !== this.network.idLocal && data.hostId !== 'L_placeholder') {
                 this.registrarEventoLog(`Nuevo Host detectado: ${data.hostNick}. Reconectando...`);
@@ -283,14 +278,12 @@ class Game {
         });
         this.registrarEventoLog("Ahora eres el Host de la partida.");
 
-        // Iniciar heartbeat si no está corriendo
         setInterval(() => {
             if (this.esHost && this.network.idPartidaActual) {
                 this.firebase.updateHeartbeat(this.network.idPartidaActual, this.network.jugadoresRemotos.size + 1);
             }
         }, 10000);
 
-        // Como nuevo host, debo empezar a procesar candidatos si los hay
         (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
     }
   }
@@ -376,7 +369,7 @@ class Game {
 
     this.listaDeEnemigos.forEach(e => {
         if (e.estaVivo) {
-            e.dibujar(this.renderer.getCtx(), offset, this.config);
+            e.dibujar(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
             e.dibujarBarraVida(this.renderer.getCtx(), offset, this.config);
         }
     });
@@ -391,7 +384,6 @@ class Game {
   actualizar() {
     if (this.juegoTerminado || !this.protagonista) return;
     const ahora = Date.now();
-    // Vision
     const r = this.config.RADIO_VISION;
     for (let f = Math.max(0, this.protagonista.fila - r); f <= Math.min(this.config.NUMERO_FILAS - 1, this.protagonista.fila + r); f++) {
         for (let c = Math.max(0, this.protagonista.columna - r); c <= Math.min(this.config.NUMERO_COLUMNAS - 1, this.protagonista.columna + r); c++) {
@@ -419,7 +411,6 @@ class Game {
     jInfo.dc.send(JSON.stringify({ tipo: 'mapa', datos: mapaCompacto }));
     jInfo.dc.send(JSON.stringify({ tipo: 'enemigos', lista: enemigos }));
 
-    // Spawn
     let sf = this.protagonista.fila, sc = this.protagonista.columna;
     let spawnEncontrado = false;
     let intentos = 0;
@@ -435,7 +426,6 @@ class Game {
     }
     jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: sf, c: sc }));
 
-    // Posiciones
     this.network.jugadoresRemotos.forEach((other, otherId) => {
         if (otherId !== guestId && other.entidad) {
             jInfo.dc.send(JSON.stringify({
@@ -522,13 +512,14 @@ class Game {
     switch (msg.tipo) {
         case 'handshake':
             if (!this.network.jugadoresRemotos.has(idSujeto)) {
-                this.network.jugadoresRemotos.set(idSujeto, { pc: null, dc: null, entidad: null });
+                const pc: any = null;
+                const dc: any = null;
+                this.network.jugadoresRemotos.set(idSujeto, { pc, dc, entidad: null, unsubscribes: [] });
             }
-            const jInfo = this.network.jugadoresRemotos.get(idSujeto);
+            const jInfo = this.network.jugadoresRemotos.get(idSujeto)!;
             if (!jInfo.entidad) jInfo.entidad = new JugadorRemoto(0, 0, msg.nick);
 
             if (this.esHost) {
-                // El Host retransmite el handshake a todos los demás para que los guests se conozcan
                 this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
             } else {
                 this.network.enviarMensaje({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.network.idLocal });
@@ -568,7 +559,6 @@ class Game {
             if (this.esHost) this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
             break;
         case 'hp_transfer':
-            // msg.fromId, msg.toId, msg.amount
             if (msg.toId === this.network.idLocal) {
                 this.protagonista.vidaActual = Math.min(this.protagonista.vidaMaxima, this.protagonista.vidaActual + msg.amount);
                 this.ui.crearTextoFlotanteEnCelda(this.protagonista.fila, this.protagonista.columna, `+${msg.amount} HP`, "#00ff00", this);
@@ -584,7 +574,6 @@ class Game {
             break;
         case 'hp_loss':
             if (msg.id === this.network.idLocal) {
-                // Not expected as sender should have updated locally, but for consistency:
                 this.protagonista.vidaActual = Math.max(0, this.protagonista.vidaActual - msg.amount);
             } else {
                 const target = this.network.jugadoresRemotos.get(msg.id);

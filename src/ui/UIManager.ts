@@ -54,7 +54,7 @@ export class UIManager {
       const tiempoActual = Date.now();
       const tiempoDesdeVisto = tiempoActual - celda.ultimoAvistamiento;
       if (game.config.vistaDebugActivada || (celda.ultimoAvistamiento > 0 && tiempoDesdeVisto < game.config.TIEMPO_DESVANECIMIENTO_NIEBLA)) {
-        // En el futuro, podríamos dibujar un bocadillo aquí
+        // ...
       }
     }
     game.registrarEventoLog(`CHAT - ${nombre}: ${texto}`);

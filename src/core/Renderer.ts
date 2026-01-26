@@ -1,4 +1,5 @@
 import { Celda } from '../world/Celda';
+import { CameraOffset, GameConfig } from '../types';
 
 export class Renderer {
   private canvas: HTMLCanvasElement;
@@ -13,7 +14,7 @@ export class Renderer {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  obtenerOffsetCamara(protagonista: any, config: any) {
+  obtenerOffsetCamara(protagonista: any, config: GameConfig): CameraOffset {
     if (!protagonista) return { colOffset: 0, filaOffset: 0 };
 
     const { NUMERO_COLUMNAS, NUMERO_FILAS, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
@@ -27,7 +28,7 @@ export class Renderer {
     return { colOffset, filaOffset };
   }
 
-  dibujarLaberinto(mapaLaberinto: Celda[][], offset: { colOffset: number, filaOffset: number }, config: any) {
+  dibujarLaberinto(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
 
@@ -47,7 +48,6 @@ export class Renderer {
       }
     }
 
-    // Meta
     const filaMeta = NUMERO_FILAS - 1;
     const colMeta = NUMERO_COLUMNAS - 1;
     if (filaMeta >= filaOffset && filaMeta < filaOffset + CELDAS_VISIBLES_Y &&
@@ -62,7 +62,7 @@ export class Renderer {
     }
   }
 
-  dibujarNiebla(mapaLaberinto: Celda[][], offset: { colOffset: number, filaOffset: number }, config: any) {
+  dibujarNiebla(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
     if (config.vistaDebugActivada) return;
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;

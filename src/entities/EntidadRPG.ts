@@ -1,3 +1,5 @@
+import { CameraOffset, GameConfig } from '../types';
+
 export abstract class EntidadRPG {
   fila: number;
   columna: number;
@@ -57,9 +59,9 @@ export abstract class EntidadRPG {
     return cantidad;
   }
 
-  abstract dibujar(ctx: CanvasRenderingContext2D, offset: { colOffset: number, filaOffset: number }, config: any): void;
+  abstract dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto?: any): void;
 
-  dibujarBarraVida(ctx: CanvasRenderingContext2D, offset: { colOffset: number, filaOffset: number }, config: any) {
+  dibujarBarraVida(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
 

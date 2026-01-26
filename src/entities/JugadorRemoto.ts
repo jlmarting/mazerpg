@@ -1,11 +1,12 @@
 import { EntidadRPG } from './EntidadRPG';
+import { CameraOffset, GameConfig } from '../types';
 
 export class JugadorRemoto extends EntidadRPG {
   constructor(fila: number, columna: number, nombre: string) {
     super(fila, columna, nombre);
   }
 
-  dibujar(ctx: CanvasRenderingContext2D, offset: { colOffset: number, filaOffset: number }, config: any) {
+  dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
 
@@ -46,5 +47,9 @@ export class JugadorRemoto extends EntidadRPG {
     ctx.fillText(this.nombre, x, y - escala);
 
     ctx.restore();
+  }
+
+  recibirDano(cantidad: number, _atacante?: EntidadRPG | null): number {
+    return super.recibirDano(cantidad, _atacante);
   }
 }

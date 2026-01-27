@@ -15,6 +15,7 @@ export abstract class EntidadRPG {
   ultimaVezMovido: number;
   enCombateCon: EntidadRPG | null;
   consecutiveInteractions: Map<string, number> = new Map();
+  public bubbleChat: { texto: string, expira: number } | null = null;
   public onDamageReceived?: (amount: number, entity: EntidadRPG) => void;
 
   constructor(fila: number, columna: number, nombre: string) {
@@ -64,6 +65,37 @@ export abstract class EntidadRPG {
   }
 
   abstract dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto?: any): void;
+
+  dibujarBubbleChat(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
+    if (!this.bubbleChat || Date.now() > this.bubbleChat.expira) {
+        this.bubbleChat = null;
+        return;
+    }
+
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
+    const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP - 10;
+
+    ctx.save();
+    ctx.font = '10px Arial';
+    const metrics = ctx.measureText(this.bubbleChat.texto);
+    const padding = 4;
+    const w = metrics.width + padding * 2;
+    const h = 14;
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.strokeStyle = '#000';
+    ctx.beginPath();
+    ctx.roundRect(x - w / 2, y - h, w, h, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#000';
+    ctx.textAlign = 'center';
+    ctx.fillText(this.bubbleChat.texto, x, y - 3);
+    ctx.restore();
+  }
 
   dibujarBarraVida(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto: any[][]) {
     const { colOffset, filaOffset } = offset;

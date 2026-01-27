@@ -116,7 +116,7 @@ export class Jugador extends EntidadRPG {
             if (this.vidaActual > 1) {
                 this.vidaActual -= 1;
                 jugadorRemotoEnCasilla.vidaActual = Math.min(jugadorRemotoEnCasilla.vidaMaxima, jugadorRemotoEnCasilla.vidaActual + 1);
-                game.registrarEventoLog(`Has transferido 1 HP a \${jugadorRemotoEnCasilla.nombre}`);
+                game.registrarEventoLog(`Has transferido 1 HP a ${jugadorRemotoEnCasilla.nombre}`);
                 game.ui.crearTextoFlotanteEnCelda(this.fila, this.columna, "-1 HP", "#ff0000", game);
                 game.ui.crearTextoFlotanteEnCelda(jugadorRemotoEnCasilla.fila, jugadorRemotoEnCasilla.columna, "+1 HP", "#00ff00", game);
 
@@ -138,7 +138,7 @@ export class Jugador extends EntidadRPG {
             }
         } else {
             this.consecutiveInteractions.set(jugadorId, interactions);
-            game.registrarEventoLog(`Interacción con \${jugadorRemotoEnCasilla.nombre} (\${interactions}/2)`);
+            game.registrarEventoLog(`Interacción con ${jugadorRemotoEnCasilla.nombre} (${interactions}/2)`);
         }
         return false;
     }

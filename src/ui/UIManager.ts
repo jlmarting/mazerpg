@@ -60,8 +60,14 @@ export class UIManager {
       const celda = game.mapaLaberinto[emisor.fila][emisor.columna];
       const tiempoActual = Date.now();
       const tiempoDesdeVisto = tiempoActual - celda.ultimoAvistamiento;
-      if (game.config.vistaDebugActivada || (celda.ultimoAvistamiento > 0 && tiempoDesdeVisto < game.config.TIEMPO_DESVANECIMIENTO_NIEBLA)) {
-        // ...
+
+      let visible = game.config.vistaDebugActivada;
+      if (celda.ultimoAvistamiento > 0 && tiempoDesdeVisto < game.config.TIEMPO_DESVANECIMIENTO_NIEBLA) {
+          visible = true;
+      }
+
+      if (visible) {
+        emisor.bubbleChat = { texto: texto, expira: Date.now() + 4000 };
       }
     }
     game.registrarEventoLog(`CHAT - ${nombre}: ${texto}`);

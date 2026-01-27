@@ -25,11 +25,16 @@ export interface IEntidadRPG {
     vidaActual: number;
     vidaMaxima: number;
     estaVivo: boolean;
+    estaCaminando: boolean;
     enCombateCon: IEntidadRPG | null;
+    bubbleChat: { texto: string, expira: number } | null;
     recibirDano(cantidad: number, atacante?: IEntidadRPG | null): number;
     obtenerIniciativa(): number;
     generarAtaque(): number;
     generarDefensa(): number;
+    dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto?: any): void;
+    dibujarBarraVida(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto: any[][]): void;
+    dibujarBubbleChat(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig): void;
 }
 
 export interface IGame {

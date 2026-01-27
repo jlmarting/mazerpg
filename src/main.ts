@@ -9,6 +9,7 @@ import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
 import { generarLaberintoBSP } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
+import { generateSessionName } from './utils/session';
 import { GameConfig, IGame } from './types';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
@@ -133,6 +134,11 @@ class Game implements IGame {
       if (e.key === 'ArrowLeft') haMovido = this.protagonista.intentarMover(0, -1, this);
       if (e.key === 'ArrowRight') haMovido = this.protagonista.intentarMover(0, 1, this);
 
+      if (e.key.toLowerCase() === 'd') {
+          this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
+          this.registrarEventoLog(`Modo Desarrollo ${this.config.vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
+      }
+
       if (haMovido) {
         this.comprobarVictoria();
       }
@@ -159,9 +165,6 @@ class Game implements IGame {
 
   empezarSolo() {
     this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
-    const pos = this.obtenerPosicionInicioAleatoria();
-    this.protagonista.fila = pos.f;
-    this.protagonista.columna = pos.c;
     this.mundoSincronizado = true;
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
@@ -176,11 +179,16 @@ class Game implements IGame {
   }
 
   async crearPartidaFirestore() {
-    const id = Math.random().toString(36).substr(2, 6).toUpperCase();
+    const id = generateSessionName();
     this.network.idPartidaActual = id;
-    const pos = this.obtenerPosicionInicioAleatoria();
-    this.protagonista.fila = pos.f;
-    this.protagonista.columna = pos.c;
+
+    const roomDisp = document.getElementById('roomDisplay');
+    const roomIdVal = document.getElementById('roomIdVal');
+    if (roomDisp && roomIdVal) {
+        roomDisp.style.display = 'block';
+        roomIdVal.textContent = id;
+    }
+
     await this.firebase.crearPartida(id, this.network.idLocal, this.protagonista.nombre);
 
     setInterval(() => {
@@ -199,12 +207,6 @@ class Game implements IGame {
     }, 5000);
 
     this.ui.registrarLogConexion(`Partida creada: ${id}`);
-    const roomDisp = document.getElementById('roomDisplay');
-    const roomIdVal = document.getElementById('roomIdVal');
-    if (roomDisp && roomIdVal) {
-        roomDisp.style.display = 'block';
-        roomIdVal.textContent = id;
-    }
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
   }
@@ -345,6 +347,9 @@ class Game implements IGame {
     this.motorIniciado = true;
     if (this.esHost || !this.network.multiplayerActivo) {
         generarLaberintoBSP(this.mapaLaberinto);
+        const pos = this.obtenerPosicionInicioAleatoria();
+        this.protagonista.fila = pos.f;
+        this.protagonista.columna = pos.c;
         this.generarEnemigos();
     }
     this.cicloDeJuego();
@@ -479,15 +484,15 @@ class Game implements IGame {
     this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config);
     this.renderer.dibujarNiebla(this.mapaLaberinto, offset, this.config);
 
-    if (this.protagonista.estaVivo) {
-        this.protagonista.dibujar(this.renderer.getCtx(), offset, this.config);
-        this.protagonista.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-    }
+    this.protagonista.dibujar(this.renderer.getCtx(), offset, this.config);
+    this.protagonista.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
+    this.protagonista.dibujarBubbleChat(this.renderer.getCtx(), offset, this.config);
 
     this.network.jugadoresRemotos.forEach(j => {
-        if (j.entidad && j.entidad.estaVivo) {
+        if (j.entidad) {
             j.entidad.dibujar(this.renderer.getCtx(), offset, this.config);
             j.entidad.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
+            j.entidad.dibujarBubbleChat(this.renderer.getCtx(), offset, this.config);
         }
     });
 
@@ -495,6 +500,7 @@ class Game implements IGame {
         if (e.estaVivo) {
             e.dibujar(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
             e.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
+            e.dibujarBubbleChat(this.renderer.getCtx(), offset, this.config);
         }
     });
 
@@ -507,7 +513,25 @@ class Game implements IGame {
   }
 
   actualizar() {
-    if (this.juegoTerminado || !this.protagonista) return;
+    if (!this.protagonista) return;
+
+    // Verificar UI de muerte incluso si el juego ha terminado (por muerte)
+    const btnEmpezar = document.getElementById('btnEmpezar') as HTMLButtonElement;
+    if (!this.protagonista.estaVivo) {
+        if (document.getElementById('respawnUI')!.style.display !== 'flex') {
+            document.getElementById('respawnUI')!.style.display = 'flex';
+            if (this.esHost && this.network.multiplayerActivo) {
+                this.network.enviarMensaje({ tipo: 'host_migration_trigger', reason: 'death' });
+                this.iniciarEleccionHost();
+            }
+        }
+        if (btnEmpezar) btnEmpezar.disabled = false;
+    } else {
+        if (btnEmpezar) btnEmpezar.disabled = true;
+    }
+
+    if (this.juegoTerminado) return;
+
     const ahora = Date.now();
 
     if (this.esHost || !this.network.multiplayerActivo) {
@@ -523,13 +547,6 @@ class Game implements IGame {
         }
     }
 
-    const btnEmpezar = document.getElementById('btnEmpezar') as HTMLButtonElement;
-    if (!this.protagonista.estaVivo && !this.juegoTerminado) {
-        document.getElementById('respawnUI')!.style.display = 'flex';
-        if (btnEmpezar) btnEmpezar.disabled = false;
-    } else {
-        if (btnEmpezar) btnEmpezar.disabled = true;
-    }
   }
 
   enviarMapaAlInvitado(guestId: string) {
@@ -602,7 +619,13 @@ class Game implements IGame {
         if (!o.estaVivo) return;
         const vA = l.generarAtaque();
         const vD = o.generarDefensa();
-        const d = Math.max(0, vA - vD);
+        let d = Math.max(0, vA - vD);
+
+        // Inmunidad en modo debug para el protagonista
+        if (o === this.protagonista && this.config.vistaDebugActivada) {
+            d = 0;
+        }
+
         o.recibirDano(d);
         this.registrarEventoLog(`${l.nombre} -> ${o.nombre} (-${d} HP)`);
         if (!o.estaVivo) {
@@ -732,6 +755,10 @@ class Game implements IGame {
         case 'victoria':
             this.juegoTerminado = true;
             this.registrarEventoLog(`${msg.nick} ha ganado!`);
+            break;
+        case 'host_migration_trigger':
+            this.registrarEventoLog(`Iniciando migración de Host (Razón: ${msg.reason})`);
+            this.iniciarEleccionHost();
             break;
         case 'spawn':
             this.protagonista.fila = msg.f;

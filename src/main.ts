@@ -47,6 +47,16 @@ class Game implements IGame {
     this.ajustarDimensiones();
     window.addEventListener('resize', () => this.ajustarDimensiones());
     this.setupEventListeners();
+
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const toque = e.touches[0];
+        this.manejarTap(toque.clientX, toque.clientY);
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (e) => {
+        this.manejarTap(e.clientX, e.clientY);
+    });
   }
 
   initMap() {
@@ -105,6 +115,7 @@ class Game implements IGame {
     document.getElementById('btnRefrescar')?.addEventListener('click', () => this.listarPartidasFirestore());
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
+    document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnSalir')?.addEventListener('click', () => window.location.reload());
 
     window.addEventListener('keydown', (e) => {
@@ -137,7 +148,9 @@ class Game implements IGame {
                     c: this.protagonista.columna,
                     cam: false,
                     id: this.network.idLocal,
-                    nick: this.protagonista.nombre
+                    nick: this.protagonista.nombre,
+                    hp: this.protagonista.vidaActual,
+                    maxHp: this.protagonista.vidaMaxima
                 });
             }
         }
@@ -146,6 +159,9 @@ class Game implements IGame {
 
   empezarSolo() {
     this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
+    const pos = this.obtenerPosicionInicioAleatoria();
+    this.protagonista.fila = pos.f;
+    this.protagonista.columna = pos.c;
     this.mundoSincronizado = true;
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
@@ -162,6 +178,9 @@ class Game implements IGame {
   async crearPartidaFirestore() {
     const id = Math.random().toString(36).substr(2, 6).toUpperCase();
     this.network.idPartidaActual = id;
+    const pos = this.obtenerPosicionInicioAleatoria();
+    this.protagonista.fila = pos.f;
+    this.protagonista.columna = pos.c;
     await this.firebase.crearPartida(id, this.network.idLocal, this.protagonista.nombre);
 
     setInterval(() => {
@@ -364,6 +383,37 @@ class Game implements IGame {
     };
   }
 
+  manejarTap(clientX: number, clientY: number) {
+    if (this.juegoTerminado || !this.protagonista) return;
+    const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    const centroX = canvas.width / 2;
+    const centroY = this.config.ALTO_UI_TOP + (this.config.CELDAS_VISIBLES_Y * this.config.TAMANO_CELDA) / 2;
+
+    const dx = x - centroX;
+    const dy = y - centroY;
+
+    let deltaFila = 0;
+    let deltaColumna = 0;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+        deltaColumna = dx > 0 ? 1 : -1;
+    } else {
+        deltaFila = dy > 0 ? 1 : -1;
+    }
+
+    const haMovido = this.protagonista.intentarMover(deltaFila, deltaColumna, this);
+    if (haMovido) {
+        this.comprobarVictoria();
+        setTimeout(() => {
+            if (this.protagonista) this.protagonista.estaCaminando = false;
+        }, 150);
+    }
+  }
+
   generarEnemigos() {
     const tipos = ["Esqueleto", "Orco", "Goblin", "Minotauro"];
     for (let i = 0; i < 40; i++) {
@@ -381,9 +431,26 @@ class Game implements IGame {
     }
   }
 
+  obtenerPosicionInicioAleatoria(): {f: number, c: number} {
+    let f = 0, c = 0;
+    let valid = false;
+    let attempts = 0;
+    while (!valid && attempts < 1000) {
+        f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
+        c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
+        const dist = Math.abs(f - (this.config.NUMERO_FILAS - 1)) + Math.abs(c - (this.config.NUMERO_COLUMNAS - 1));
+        if (this.mapaLaberinto[f][c].esTransitable && dist > 15) {
+            valid = true;
+        }
+        attempts++;
+    }
+    return { f, c };
+  }
+
   respawnPlayer() {
-    this.protagonista.fila = 0;
-    this.protagonista.columna = 0;
+    const pos = this.obtenerPosicionInicioAleatoria();
+    this.protagonista.fila = pos.f;
+    this.protagonista.columna = pos.c;
     this.protagonista.vidaActual = this.protagonista.vidaMaxima;
     this.protagonista.estaVivo = true;
     this.protagonista.enCombateCon = null;
@@ -398,7 +465,9 @@ class Game implements IGame {
             c: this.protagonista.columna,
             cam: false,
             id: this.network.idLocal,
-            nick: this.protagonista.nombre
+            nick: this.protagonista.nombre,
+            hp: this.protagonista.vidaActual,
+            maxHp: this.protagonista.vidaMaxima
         });
     }
   }
@@ -431,6 +500,7 @@ class Game implements IGame {
 
     this.ui.actualizarTextosFlotantes();
     this.ui.dibujarTextosFlotantes(this.renderer.getCtx());
+    this.renderer.dibujarMarcadoresMovimiento(this.config);
     this.renderer.dibujarUI(this);
 
     requestAnimationFrame(() => this.cicloDeJuego());
@@ -453,8 +523,12 @@ class Game implements IGame {
         }
     }
 
+    const btnEmpezar = document.getElementById('btnEmpezar') as HTMLButtonElement;
     if (!this.protagonista.estaVivo && !this.juegoTerminado) {
         document.getElementById('respawnUI')!.style.display = 'flex';
+        if (btnEmpezar) btnEmpezar.disabled = false;
+    } else {
+        if (btnEmpezar) btnEmpezar.disabled = true;
     }
   }
 
@@ -470,32 +544,22 @@ class Game implements IGame {
     jInfo.dc.send(JSON.stringify({ tipo: 'mapa', datos: mapaCompacto }));
     jInfo.dc.send(JSON.stringify({ tipo: 'enemigos', lista: enemigos }));
 
-    let sf = this.protagonista.fila, sc = this.protagonista.columna;
-    let spawnEncontrado = false;
-    let intentos = 0;
-    while (!spawnEncontrado && intentos < 100) {
-        const df = Math.floor(Math.random() * 29) - 14;
-        const dc = Math.floor(Math.random() * 29) - 14;
-        let tf = this.protagonista.fila + df;
-        let tc = this.protagonista.columna + dc;
-        if (tf >= 0 && tf < this.config.NUMERO_FILAS && tc >= 0 && tc < this.config.NUMERO_COLUMNAS && this.mapaLaberinto[tf][tc].esTransitable) {
-            sf = tf; sc = tc; spawnEncontrado = true;
-        }
-        intentos++;
-    }
-    jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: sf, c: sc }));
+    const posSpawn = this.obtenerPosicionInicioAleatoria();
+    jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: posSpawn.f, c: posSpawn.c }));
 
     this.network.jugadoresRemotos.forEach((other, otherId) => {
         if (otherId !== guestId && other.entidad) {
             jInfo.dc.send(JSON.stringify({
                 tipo: 'posicion', f: other.entidad.fila, c: other.entidad.columna,
-                cam: false, nick: other.entidad.nombre, id: otherId
+                cam: false, nick: other.entidad.nombre, id: otherId,
+                hp: other.entidad.vidaActual, maxHp: other.entidad.vidaMaxima
             }));
         }
     });
     jInfo.dc.send(JSON.stringify({
         tipo: 'posicion', f: this.protagonista.fila, c: this.protagonista.columna,
-        cam: false, nick: this.protagonista.nombre, id: this.network.idLocal
+        cam: false, nick: this.protagonista.nombre, id: this.network.idLocal,
+        hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
     }));
   }
 
@@ -614,6 +678,11 @@ class Game implements IGame {
                 jPos.entidad.fila = msg.f;
                 jPos.entidad.columna = msg.c;
                 jPos.entidad.estaCaminando = msg.cam;
+                if (msg.hp !== undefined) {
+                    jPos.entidad.vidaActual = msg.hp;
+                    jPos.entidad.vidaMaxima = msg.maxHp;
+                    jPos.entidad.estaVivo = msg.hp > 0;
+                }
             }
             if (this.esHost) this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
             break;

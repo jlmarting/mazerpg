@@ -18,46 +18,70 @@ export class Jugador extends EntidadRPG {
     ctx.save();
 
     if (!this.estaVivo) {
-        ctx.translate(x, y);
-        ctx.rotate(Math.PI / 2);
-        ctx.translate(-x, -y);
-        ctx.strokeStyle = '#555';
+        // Dibujar Lápida
+        ctx.fillStyle = '#888';
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 2;
+
+        // Base de la lápida
+        const w = TAMANO_CELDA * 0.7;
+        const h = TAMANO_CELDA * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x - w/2, y + h/2);
+        ctx.lineTo(x - w/2, y - h/4);
+        ctx.arc(x, y - h/4, w/2, Math.PI, 0);
+        ctx.lineTo(x + w/2, y + h/2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Inscripción "RIP"
+        ctx.fillStyle = '#444';
+        ctx.font = 'bold 8px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('RIP', x, y + 2);
     } else {
         ctx.strokeStyle = '#007bff';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+
+        // Cabeza
+        ctx.beginPath();
+        ctx.arc(x, y - escala / 3, escala / 6, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Cuerpo
+        ctx.beginPath();
+        ctx.moveTo(x, y - escala / 6);
+        ctx.lineTo(x, y + escala / 6);
+        ctx.stroke();
+
+        // Animación de piernas
+        let desfasePierna = this.estaCaminando ? Math.sin(Date.now() / 100) * (escala / 4) : 0;
+
+        // Pierna izquierda
+        ctx.beginPath();
+        ctx.moveTo(x, y + escala / 6);
+        ctx.lineTo(x - escala / 6 + desfasePierna, y + escala / 2);
+        ctx.stroke();
+
+        // Pierna derecha
+        ctx.beginPath();
+        ctx.moveTo(x, y + escala / 6);
+        ctx.lineTo(x + escala / 6 - desfasePierna, y + escala / 2);
+        ctx.stroke();
+
+        // Brazos
+        ctx.beginPath();
+        ctx.moveTo(x - escala / 4, y);
+        ctx.lineTo(x + escala / 4, y);
+        ctx.stroke();
+
+        // Glow
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#007bff';
+        ctx.stroke();
     }
-
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-
-    ctx.beginPath();
-    ctx.arc(x, y - escala / 3, escala / 6, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(x, y - escala / 6);
-    ctx.lineTo(x, y + escala / 6);
-    ctx.stroke();
-
-    let desfasePierna = (this.estaCaminando && this.estaVivo) ? Math.sin(Date.now() / 100) * (escala / 4) : 0;
-
-    ctx.beginPath();
-    ctx.moveTo(x, y + escala / 6);
-    ctx.lineTo(x - escala / 6 + desfasePierna, y + escala / 2);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(x, y + escala / 6);
-    ctx.lineTo(x + escala / 6 - desfasePierna, y + escala / 2);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(x - escala / 4, y);
-    ctx.lineTo(x + escala / 4, y);
-    ctx.stroke();
-
-    ctx.shadowBlur = this.estaVivo ? 10 : 0;
-    ctx.shadowColor = '#007bff';
-    ctx.stroke();
 
     ctx.restore();
   }
@@ -92,7 +116,7 @@ export class Jugador extends EntidadRPG {
             if (this.vidaActual > 1) {
                 this.vidaActual -= 1;
                 jugadorRemotoEnCasilla.vidaActual = Math.min(jugadorRemotoEnCasilla.vidaMaxima, jugadorRemotoEnCasilla.vidaActual + 1);
-                game.registrarEventoLog(`Has transferido 1 HP a ${jugadorRemotoEnCasilla.nombre}`);
+                game.registrarEventoLog(`Has transferido 1 HP a \${jugadorRemotoEnCasilla.nombre}`);
                 game.ui.crearTextoFlotanteEnCelda(this.fila, this.columna, "-1 HP", "#ff0000", game);
                 game.ui.crearTextoFlotanteEnCelda(jugadorRemotoEnCasilla.fila, jugadorRemotoEnCasilla.columna, "+1 HP", "#00ff00", game);
 
@@ -114,7 +138,7 @@ export class Jugador extends EntidadRPG {
             }
         } else {
             this.consecutiveInteractions.set(jugadorId, interactions);
-            game.registrarEventoLog(`Interacción con ${jugadorRemotoEnCasilla.nombre} (${interactions}/2)`);
+            game.registrarEventoLog(`Interacción con \${jugadorRemotoEnCasilla.nombre} (\${interactions}/2)`);
         }
         return false;
     }
@@ -175,7 +199,9 @@ export class Jugador extends EntidadRPG {
           c: this.columna,
           cam: true,
           id: game.network.idLocal,
-          nick: this.nombre
+          nick: this.nombre,
+          hp: this.vidaActual,
+          maxHp: this.vidaMaxima
         });
       }
 

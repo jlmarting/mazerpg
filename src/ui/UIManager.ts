@@ -45,7 +45,12 @@ export class UIManager {
   enviarChat(texto: string, game: IGame) {
     this.manejarMensajeChat(game.protagonista.nombre, texto, true, game);
     if (game.network && game.network.activo) {
-      game.network.enviarMensaje({ tipo: 'chat', texto: texto, id: game.network.idLocal });
+      game.network.enviarMensaje({
+        tipo: 'chat',
+        texto: texto,
+        id: game.network.idLocal,
+        nick: game.protagonista.nombre
+      });
     }
   }
 

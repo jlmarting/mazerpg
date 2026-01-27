@@ -144,5 +144,42 @@ export class Renderer {
     }
   }
 
+  dibujarMarcadoresMovimiento(config: GameConfig) {
+    const { ALTO_UI_TOP, CELDAS_VISIBLES_Y, TAMANO_CELDA } = config;
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    const tam = 20;
+    const centroX = this.canvas.width / 2;
+    const centroY = ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) / 2;
+    const gap = 10;
+
+    // Arriba
+    this.ctx.beginPath();
+    this.ctx.moveTo(centroX, ALTO_UI_TOP + gap);
+    this.ctx.lineTo(centroX - tam, ALTO_UI_TOP + gap + tam);
+    this.ctx.lineTo(centroX + tam, ALTO_UI_TOP + gap + tam);
+    this.ctx.fill();
+
+    // Abajo
+    this.ctx.beginPath();
+    this.ctx.moveTo(centroX, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap);
+    this.ctx.lineTo(centroX - tam, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap - tam);
+    this.ctx.lineTo(centroX + tam, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap - tam);
+    this.ctx.fill();
+
+    // Izquierda
+    this.ctx.beginPath();
+    this.ctx.moveTo(gap, centroY);
+    this.ctx.lineTo(gap + tam, centroY - tam);
+    this.ctx.lineTo(gap + tam, centroY + tam);
+    this.ctx.fill();
+
+    // Derecha
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.canvas.width - gap, centroY);
+    this.ctx.lineTo(this.canvas.width - gap - tam, centroY - tam);
+    this.ctx.lineTo(this.canvas.width - gap - tam, centroY + tam);
+    this.ctx.fill();
+  }
+
   getCtx() { return this.ctx; }
 }

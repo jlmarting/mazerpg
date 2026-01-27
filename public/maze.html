@@ -232,6 +232,85 @@
 
         // Inicializamos Firebase solo si la config no es la de placeholder
         let db = null;
+
+        // --- GESTIÓN DE ASSETS Y SPRITES ---
+        const ASSETS = {
+            tiles: {
+                sala: new Image(),
+                pasillo: new Image(),
+                vacio: new Image()
+            },
+            sprites: {
+                Heroe: new Image(),
+                Esqueleto: new Image(),
+                Orco: new Image(),
+                Goblin: new Image(),
+                Minotauro: new Image(),
+                Lapida: new Image()
+            }
+        };
+
+        const SPRITE_CONFIG = {
+            ancho: 32,
+            alto: 32,
+            animaciones: {
+                idle: { fila: 0, frames: 1 },
+                caminando: { fila: 1, frames: 4 },
+                ataque_exito: { fila: 2, frames: 3 },
+                ataque_fallo: { fila: 3, frames: 3 },
+                muerto: { fila: 4, frames: 1 }
+            }
+        };
+
+        let promesaAssets = null;
+
+        /**
+         * Carga todos los recursos gráficos necesarios.
+         */
+        function cargarAssets() {
+            const urls = {
+                'tiles.sala': 'https://picsum.photos/id/230/32/32',
+                'tiles.pasillo': 'https://picsum.photos/id/231/32/32',
+                'tiles.vacio': 'https://picsum.photos/id/232/32/32',
+                'sprites.Heroe': 'https://raw.githubusercontent.com/mozdevs/gamedev-js-tiles/gh-pages/sprites/hero.png',
+                'sprites.Esqueleto': 'https://picsum.photos/id/1062/32/32',
+                'sprites.Orco': 'https://picsum.photos/id/1063/32/32',
+                'sprites.Goblin': 'https://picsum.photos/id/1064/32/32',
+                'sprites.Minotauro': 'https://picsum.photos/id/1065/32/32',
+                'sprites.Lapida': 'https://picsum.photos/id/1066/32/32'
+            };
+
+            const promesas = [];
+
+            // Helper para cargar una imagen
+            const cargarUna = (obj, key, url) => {
+                return new Promise((resolve) => {
+                    obj[key].onload = () => resolve();
+                    obj[key].onerror = () => {
+                        console.warn(`Error cargando asset: ${url}. Usando fallback.`);
+                        resolve(); // Resolvemos de todos modos para no bloquear el juego
+                    };
+                    obj[key].src = url;
+                });
+            };
+
+            promesas.push(cargarUna(ASSETS.tiles, 'sala', urls['tiles.sala']));
+            promesas.push(cargarUna(ASSETS.tiles, 'pasillo', urls['tiles.pasillo']));
+            promesas.push(cargarUna(ASSETS.tiles, 'vacio', urls['tiles.vacio']));
+            promesas.push(cargarUna(ASSETS.sprites, 'Heroe', urls['sprites.Heroe']));
+            promesas.push(cargarUna(ASSETS.sprites, 'Esqueleto', urls['sprites.Esqueleto']));
+            promesas.push(cargarUna(ASSETS.sprites, 'Orco', urls['sprites.Orco']));
+            promesas.push(cargarUna(ASSETS.sprites, 'Goblin', urls['sprites.Goblin']));
+            promesas.push(cargarUna(ASSETS.sprites, 'Minotauro', urls['sprites.Minotauro']));
+            promesas.push(cargarUna(ASSETS.sprites, 'Lapida', urls['sprites.Lapida']));
+
+            promesaAssets = Promise.all(promesas).then(() => {
+                console.log("Todos los assets han sido procesados.");
+            });
+
+            return promesaAssets;
+        }
+
         if (firebaseConfig.apiKey !== "API_KEY_PLACEHOLDER") {
             firebase.initializeApp(firebaseConfig);
             db = firebase.firestore();
@@ -295,6 +374,7 @@
                 this.columna = columna;
                 this.ultimoAvistamiento = 0; // Marca de tiempo (timestamp) para la Niebla de Guerra
                 this.esTransitable = false;   // Determina si los personajes pueden caminar por aquí
+                this.tipo = 'vacio'; // 'vacio', 'sala', 'pasillo'
                 this.muros = {
                     superior: true,
                     derecho: true,
@@ -322,7 +402,15 @@
                     if (celda.muros.inferior) valor |= 4;
                     if (celda.muros.izquierdo) valor |= 8;
                     if (celda.esTransitable)  valor |= 16;
-                    resultado += valor.toString(36); // Base 36 (0-z) es muy compacta
+
+                    // Codificar tipo: 0=vacio, 1=sala, 2=pasillo (usando bits 5 y 6)
+                    let tipoVal = 0;
+                    if (celda.tipo === 'sala') tipoVal = 1;
+                    else if (celda.tipo === 'pasillo') tipoVal = 2;
+                    valor |= (tipoVal << 5);
+
+                    // Usamos 2 caracteres por celda para evitar desbordamiento en base 36 (max 1295)
+                    resultado += valor.toString(36).padStart(2, '0');
                 }
             }
             return resultado;
@@ -332,13 +420,19 @@
             let i = 0;
             for (let f = 0; f < NUMERO_FILAS; f++) {
                 for (let c = 0; c < NUMERO_COLUMNAS; c++) {
-                    const valor = parseInt(datos[i++], 36);
+                    const valor = parseInt(datos.substr(i, 2), 36);
+                    i += 2;
                     const celda = mapaLaberinto[f][c];
                     celda.muros.superior = !!(valor & 1);
                     celda.muros.derecho  = !!(valor & 2);
                     celda.muros.inferior = !!(valor & 4);
                     celda.muros.izquierdo = !!(valor & 8);
                     celda.esTransitable  = !!(valor & 16);
+
+                    const tipoVal = (valor >> 5) & 3;
+                    if (tipoVal === 1) celda.tipo = 'sala';
+                    else if (tipoVal === 2) celda.tipo = 'pasillo';
+                    else celda.tipo = 'vacio';
                 }
             }
         }
@@ -590,6 +684,7 @@
                         for (let f = filaSala; f < filaSala + altoSala; f++) {
                             for (let c = colSala; c < colSala + anchoSala; c++) {
                                 mapaLaberinto[f][c].esTransitable = true;
+                                mapaLaberinto[f][c].tipo = 'sala';
                                 if (f + 1 < filaSala + altoSala) eliminarMurosEntre(mapaLaberinto[f][c], mapaLaberinto[f + 1][c]);
                                 if (c + 1 < colSala + anchoSala) eliminarMurosEntre(mapaLaberinto[f][c], mapaLaberinto[f][c + 1]);
                             }
@@ -619,14 +714,18 @@
                     while (cActual !== puntoB.c) {
                         let siguienteC = cActual < puntoB.c ? cActual + 1 : cActual - 1;
                         mapaLaberinto[fActual][cActual].esTransitable = true;
+                        if (mapaLaberinto[fActual][cActual].tipo === 'vacio') mapaLaberinto[fActual][cActual].tipo = 'pasillo';
                         mapaLaberinto[fActual][siguienteC].esTransitable = true;
+                        if (mapaLaberinto[fActual][siguienteC].tipo === 'vacio') mapaLaberinto[fActual][siguienteC].tipo = 'pasillo';
                         eliminarMurosEntre(mapaLaberinto[fActual][cActual], mapaLaberinto[fActual][siguienteC]);
                         cActual = siguienteC;
                     }
                     while (fActual !== puntoB.f) {
                         let siguienteF = fActual < puntoB.f ? fActual + 1 : fActual - 1;
                         mapaLaberinto[fActual][cActual].esTransitable = true;
+                        if (mapaLaberinto[fActual][cActual].tipo === 'vacio') mapaLaberinto[fActual][cActual].tipo = 'pasillo';
                         mapaLaberinto[siguienteF][cActual].esTransitable = true;
+                        if (mapaLaberinto[siguienteF][cActual].tipo === 'vacio') mapaLaberinto[siguienteF][cActual].tipo = 'pasillo';
                         eliminarMurosEntre(mapaLaberinto[fActual][cActual], mapaLaberinto[siguienteF][cActual]);
                         fActual = siguienteF;
                     }
@@ -683,14 +782,18 @@
                 while (cActual !== c2) {
                     let sigC = cActual < c2 ? cActual + 1 : cActual - 1;
                     mapaLaberinto[fActual][cActual].esTransitable = true;
+                    if (mapaLaberinto[fActual][cActual].tipo === 'vacio') mapaLaberinto[fActual][cActual].tipo = 'pasillo';
                     mapaLaberinto[fActual][sigC].esTransitable = true;
+                    if (mapaLaberinto[fActual][sigC].tipo === 'vacio') mapaLaberinto[fActual][sigC].tipo = 'pasillo';
                     eliminarMurosEntre(mapaLaberinto[fActual][cActual], mapaLaberinto[fActual][sigC]);
                     cActual = sigC;
                 }
                 while (fActual !== f2) {
                     let sigF = fActual < f2 ? fActual + 1 : fActual - 1;
                     mapaLaberinto[fActual][cActual].esTransitable = true;
+                    if (mapaLaberinto[fActual][cActual].tipo === 'vacio') mapaLaberinto[fActual][cActual].tipo = 'pasillo';
                     mapaLaberinto[sigF][cActual].esTransitable = true;
+                    if (mapaLaberinto[sigF][cActual].tipo === 'vacio') mapaLaberinto[sigF][cActual].tipo = 'pasillo';
                     eliminarMurosEntre(mapaLaberinto[fActual][cActual], mapaLaberinto[sigF][cActual]);
                     fActual = sigF;
                 }
@@ -716,9 +819,18 @@
 
                     const celda = mapaLaberinto[fila][columna];
                     if (celda.esTransitable) {
-                        // Celdas transitables en Blanco
-                        ctx.fillStyle = '#FFF';
-                        ctx.fillRect((columna - colOffset) * TAMANO_CELDA, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP, TAMANO_CELDA, TAMANO_CELDA);
+                        const x = (columna - colOffset) * TAMANO_CELDA;
+                        const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+
+                        // Intentar dibujar imagen del tile, fallback a color si falla
+                        const imgTile = ASSETS.tiles[celda.tipo] || ASSETS.tiles.vacio;
+                        if (imgTile && imgTile.complete && imgTile.naturalWidth !== 0) {
+                            ctx.drawImage(imgTile, x, y, TAMANO_CELDA, TAMANO_CELDA);
+                        } else {
+                            // Celdas transitables en Blanco (Fallback)
+                            ctx.fillStyle = (celda.tipo === 'sala') ? '#EEE' : '#CCC';
+                            ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
+                        }
                     }
                 }
             }
@@ -960,10 +1072,46 @@
         }
 
         class EntidadRPG {
+            dibujarSprite(nombreAsset) {
+                const { colOffset, filaOffset } = obtenerOffsetCamara();
+                if (this.fila < filaOffset || this.fila >= filaOffset + CELDAS_VISIBLES_Y ||
+                    this.columna < colOffset || this.columna >= colOffset + CELDAS_VISIBLES_X) return false;
+
+                const x = (this.columna - colOffset) * TAMANO_CELDA;
+                const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+
+                const img = (this.estado === 'muerto') ? ASSETS.sprites.Lapida : ASSETS.sprites[nombreAsset];
+
+                if (img && img.complete && img.naturalWidth !== 0) {
+                    const esSpritesheet = img.naturalWidth > SPRITE_CONFIG.ancho || img.naturalHeight > SPRITE_CONFIG.alto;
+
+                    if (esSpritesheet) {
+                        const anim = SPRITE_CONFIG.animaciones[this.estado] || SPRITE_CONFIG.animaciones.idle;
+                        // Aseguramos que el frame sea válido para esta animación
+                        const currentFrame = this.frame % anim.frames;
+                        const sx = currentFrame * SPRITE_CONFIG.ancho;
+                        const sy = (anim.fila * SPRITE_CONFIG.alto) % img.naturalHeight; // Seguridad extra
+
+                        ctx.drawImage(img, sx, sy, SPRITE_CONFIG.ancho, SPRITE_CONFIG.alto, x, y, TAMANO_CELDA, TAMANO_CELDA);
+                    } else {
+                        // Imagen de un solo frame
+                        ctx.drawImage(img, x, y, TAMANO_CELDA, TAMANO_CELDA);
+                    }
+                    return true;
+                }
+                return false;
+            }
+
             constructor(fila, columna, nombre) {
                 this.fila = fila;
                 this.columna = columna;
                 this.nombre = nombre;
+
+                // Animación y Estado
+                this.estado = 'idle';
+                this.frame = 0;
+                this.tiempoUltimoFrame = Date.now();
+                this.duracionEstadoTemporal = 0;
                 
                 // Estadísticas base aleatorias (1-10)
                 this.fuerza = Math.floor(Math.random() * 10) + 1;
@@ -979,6 +1127,38 @@
                 this.estaCaminando = false;
                 this.ultimaVezMovido = 0;
                 this.enCombateCon = null; // Referencia a la entidad contra la que pelea
+            }
+
+            cambiarEstado(nuevoEstado, duracionMs = 0) {
+                if (this.estado === 'muerto') return;
+                this.estado = nuevoEstado;
+                this.frame = 0;
+                this.duracionEstadoTemporal = duracionMs;
+                this.tiempoInicioEstado = Date.now();
+            }
+
+            actualizarAnimacion() {
+                const ahora = Date.now();
+
+                // Manejo de estados temporales
+                if (this.duracionEstadoTemporal > 0) {
+                    if (ahora - this.tiempoInicioEstado > this.duracionEstadoTemporal) {
+                        this.duracionEstadoTemporal = 0;
+                        this.estado = 'idle';
+                    }
+                }
+
+                // Si no está haciendo nada y no es un estado temporal, vuelve a idle
+                if (!this.estaCaminando && this.duracionEstadoTemporal === 0 && this.estaVivo) {
+                    this.estado = 'idle';
+                }
+
+                // Incremento de frames
+                if (ahora - this.tiempoUltimoFrame > 150) { // 150ms por frame
+                    const config = SPRITE_CONFIG.animaciones[this.estado] || SPRITE_CONFIG.animaciones.idle;
+                    this.frame = (this.frame + 1) % config.frames;
+                    this.tiempoUltimoFrame = ahora;
+                }
             }
 
             /**
@@ -1026,6 +1206,7 @@
                 if (this.vidaActual <= 0) {
                     this.estaVivo = false;
                     this.vidaActual = 0;
+                    this.estado = 'muerto';
                 }
                 
                 // Sincronización multijugador para NPCs dañados
@@ -1092,6 +1273,8 @@
             }
 
             dibujar() {
+                if (this.dibujarSprite('Heroe')) return;
+
                 const { colOffset, filaOffset } = obtenerOffsetCamara();
                 if (this.fila < filaOffset || this.fila >= filaOffset + CELDAS_VISIBLES_Y ||
                     this.columna < colOffset || this.columna >= colOffset + CELDAS_VISIBLES_X) return;
@@ -1138,6 +1321,8 @@
              * Dibuja al hombrecillo con animación de caminar, considerando el Viewport.
              */
             dibujar() {
+                if (this.dibujarSprite('Heroe')) return;
+
                 const { colOffset, filaOffset } = obtenerOffsetCamara();
                 const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
                 const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
@@ -1235,6 +1420,7 @@
                     this.fila += deltaFila;
                     this.columna += deltaColumna;
                     this.estaCaminando = true;
+                    this.estado = 'caminando';
                     this.ultimaVezMovido = Date.now();
                     
                     // Lógica de regeneración: cada 10 movimientos sin daño
@@ -1416,6 +1602,8 @@
                 if (!vistaDebugActivada && (celdaActual.ultimoAvistamiento === 0 || tiempoDesdeUltimoVisto > TIEMPO_DESVANECIMIENTO_NIEBLA)) {
                     return; 
                 }
+
+                if (this.dibujarSprite(this.tipo)) return;
 
                 const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
                 const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
@@ -1635,6 +1823,12 @@
                 const valorDefensa = oponente.generarDefensa();
                 const danoNeto = Math.max(0, valorAtaque - valorDefensa);
                 
+                if (danoNeto > 0) {
+                    luchador.cambiarEstado('ataque_exito', 500);
+                } else {
+                    luchador.cambiarEstado('ataque_fallo', 500);
+                }
+
                 oponente.recibirDano(danoNeto);
                 registrarEventoLog(`${luchador.nombre} ataca a ${oponente.nombre}: ${valorAtaque} vs ${valorDefensa} DEF. Daño: ${danoNeto}. Vida restante: ${oponente.vidaActual}`);
                 
@@ -1845,6 +2039,11 @@
                     }
                 }
             }
+
+            // Actualización de animaciones
+            protagonista.actualizarAnimacion();
+            jugadoresRemotos.forEach(j => { if (j.entidad) j.entidad.actualizarAnimacion(); });
+            listaDeEnemigos.forEach(e => e.actualizarAnimacion());
 
             // Actualización de la IA de los enemigos
             listaDeEnemigos.forEach(enemigo => enemigo.actualizarIA());
@@ -2622,8 +2821,13 @@
         const protagonista = new Jugador();
         const listaDeEnemigos = [];
 
-        function iniciarMotorJuego() {
+        async function iniciarMotorJuego() {
             if (motorIniciado) return;
+
+            // Asegurar que los assets estén cargados
+            if (!promesaAssets) cargarAssets();
+            await promesaAssets;
+
             motorIniciado = true;
 
             console.log("Generando laberinto...");

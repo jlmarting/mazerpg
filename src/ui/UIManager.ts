@@ -44,7 +44,7 @@ export class UIManager {
   }
 
   enviarChat(texto: string, game: IGame) {
-    this.manejarMensajeChat(game.protagonista.nombre, texto, true, game);
+    this.manejarMensajeChat(game.protagonista.nombre, texto, true, game, game.network.idLocal);
     if (game.network && game.network.activo) {
       game.network.enviarMensaje({
         tipo: 'chat',
@@ -55,8 +55,8 @@ export class UIManager {
     }
   }
 
-  manejarMensajeChat(nombre: string, texto: string, _esLocal: boolean, game: IGame) {
-    let emisor = game.obtenerEntidadPorNombre(nombre);
+  manejarMensajeChat(nombre: string, texto: string, _esLocal: boolean, game: IGame, id?: string) {
+    let emisor = (game as any).obtenerEntidadPorId ? (game as any).obtenerEntidadPorId(id) : game.obtenerEntidadPorNombre(nombre);
     if (emisor) {
       const celda = game.mapaLaberinto[emisor.fila][emisor.columna];
       const tiempoActual = Date.now();
@@ -70,7 +70,9 @@ export class UIManager {
       if (visible) {
         emisor.bubbleChat = { texto: texto, expira: Date.now() + 4000 };
       }
-      (game as any).verificarTeletransporte(nombre, texto);
+      if (texto.toLowerCase().trim() === "fireball" || texto.toLowerCase().trim() === "bola de fuego") {
+        (game as any).lanzarBolaDeFuego(emisor);
+      }
     }
     game.registrarEventoLog(`CHAT - ${nombre}: ${texto}`);
   }

@@ -80,11 +80,11 @@ export abstract class EntidadRPG {
     const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP - 10;
 
     ctx.save();
-    ctx.font = '10px Arial';
+    ctx.font = '14px Arial';
     const metrics = ctx.measureText(this.bubbleChat.texto);
-    const padding = 4;
+    const padding = 6;
     const w = metrics.width + padding * 2;
-    const h = 14;
+    const h = 20;
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.strokeStyle = '#000';

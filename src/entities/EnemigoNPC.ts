@@ -8,6 +8,7 @@ export class EnemigoNPC extends EntidadRPG {
   tipo: string;
   ultimaVezActuadoIA: number = 0;
   radioDeVisionIA: number = 5;
+  huyendoHasta: number = 0;
 
   constructor(fila: number, columna: number, nombre: string, tipo: string, id: number, dificultad: string = 'dificil') {
     super(fila, columna, nombre);
@@ -19,10 +20,10 @@ export class EnemigoNPC extends EntidadRPG {
 
   aplicarPenalizadores(dificultad: string) {
     if (dificultad === 'facil') {
-        this.fuerza = Math.max(1, Math.floor(this.fuerza * 0.7));
-        this.agilidad = Math.max(1, Math.floor(this.agilidad * 0.7));
-        this.inteligencia = Math.max(1, Math.floor(this.inteligencia * 0.7));
-        this.vidaMaxima = Math.max(1, Math.floor(this.vidaMaxima * 0.7));
+        this.fuerza = Math.max(1, Math.floor(this.fuerza * 0.5));
+        this.agilidad = Math.max(1, Math.floor(this.agilidad * 0.5));
+        this.inteligencia = Math.max(1, Math.floor(this.inteligencia * 0.5));
+        this.vidaMaxima = Math.max(1, Math.floor(this.vidaMaxima * 0.5));
         this.vidaActual = this.vidaMaxima;
     }
 
@@ -88,12 +89,16 @@ export class EnemigoNPC extends EntidadRPG {
     });
 
     if (minD <= this.radioDeVisionIA) {
-      const ruta = algoritmoBusquedaAStar(game.mapaLaberinto, this.fila, this.columna, objetivoInteres.fila, objetivoInteres.columna);
-      if (ruta && ruta.length > 1) {
-        const siguientePaso = ruta[1];
-        this.ejecutarMovimientoIA(siguientePaso.fila - this.fila, siguientePaso.columna - this.columna, game);
+      if (Date.now() < this.huyendoHasta) {
+        this.huirDeJugador(objetivoInteres, game);
       } else {
-        this.moverseHaciaJugadorDirectamente(objetivoInteres, game);
+        const ruta = algoritmoBusquedaAStar(game.mapaLaberinto, this.fila, this.columna, objetivoInteres.fila, objetivoInteres.columna);
+        if (ruta && ruta.length > 1) {
+          const siguientePaso = ruta[1];
+          this.ejecutarMovimientoIA(siguientePaso.fila - this.fila, siguientePaso.columna - this.columna, game);
+        } else {
+          this.moverseHaciaJugadorDirectamente(objetivoInteres, game);
+        }
       }
     } else {
       this.vagarAleatoriamente(game);
@@ -162,6 +167,7 @@ export class EnemigoNPC extends EntidadRPG {
     } else {
       this.fila = sigFila;
       this.columna = sigColumna;
+      (game as any).verificarPortal(this);
     }
 
     if (game.esHost && game.network && game.network.activo) {
@@ -244,5 +250,29 @@ export class EnemigoNPC extends EntidadRPG {
   recibirDano(cantidad: number, _atacante?: EntidadRPG | null): number {
     const result = super.recibirDano(cantidad, _atacante);
     return result;
+  }
+
+  huirDeJugador(objetivo: any, game: IGame) {
+    const direcciones = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    let mejorDireccion = null;
+    let maxDist = -1;
+
+    direcciones.forEach(d => {
+        if (this.puedeAtravesar(d[0], d[1], game)) {
+            const nF = this.fila + d[0];
+            const nC = this.columna + d[1];
+            const dist = Math.sqrt(Math.pow(nF - objetivo.fila, 2) + Math.pow(nC - objetivo.columna, 2));
+            if (dist > maxDist) {
+                maxDist = dist;
+                mejorDireccion = d;
+            }
+        }
+    });
+
+    if (mejorDireccion) {
+        this.ejecutarMovimientoIA(mejorDireccion[0], mejorDireccion[1], game);
+    } else {
+        this.vagarAleatoriamente(game);
+    }
   }
 }

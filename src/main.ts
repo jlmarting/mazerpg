@@ -40,6 +40,7 @@ class Game implements IGame {
   public esHost: boolean = false;
   public motorIniciado: boolean = false;
   public colaDeMensajes: string[] = [];
+  public bolasDeFuego: any[] = [];
 
   constructor() {
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
@@ -366,6 +367,7 @@ class Game implements IGame {
         const pos = this.obtenerPosicionInicioAleatoria();
         this.protagonista.fila = pos.f;
         this.protagonista.columna = pos.c;
+        this.asustarMonstruosCercanos(pos.f, pos.c);
         this.generarEnemigos();
         this.generarObjetos();
     }
@@ -419,6 +421,23 @@ class Game implements IGame {
         const b = burbujas[i];
         const destino = burbujas[(i + 1) % burbujas.length].nombre;
         this.mapaLaberinto[b.f][b.c].burbuja = { nombreSecreto: b.nombre, destino: destino };
+    }
+
+    // Generar portales (0, 2 o 5)
+    const opcionesPortales = [0, 2, 5];
+    const numPortales = opcionesPortales[Math.floor(Math.random() * opcionesPortales.length)];
+    for (let i = 0; i < numPortales; i++) {
+        let f, c;
+        let s = 0;
+        do {
+            f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
+            c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
+            s++;
+        } while ((!this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].burbuja || this.mapaLaberinto[f][c].esPortal) && s < 1000);
+
+        if (this.mapaLaberinto[f][c].esTransitable) {
+            this.mapaLaberinto[f][c].esPortal = true;
+        }
     }
   }
 
@@ -528,6 +547,7 @@ class Game implements IGame {
     const pos = this.obtenerPosicionInicioAleatoria();
     this.protagonista.fila = pos.f;
     this.protagonista.columna = pos.c;
+    this.asustarMonstruosCercanos(pos.f, pos.c);
     this.protagonista.vidaActual = this.protagonista.vidaMaxima;
     this.protagonista.estaVivo = true;
     this.protagonista.enCombateCon = null;
@@ -581,6 +601,24 @@ class Game implements IGame {
 
     this.ui.actualizarTextosFlotantes();
     this.ui.dibujarTextosFlotantes(this.renderer.getCtx());
+
+    // Actualizar y dibujar bolas de fuego
+    for (let i = this.bolasDeFuego.length - 1; i >= 0; i--) {
+        const b = this.bolasDeFuego[i];
+        b.pct += 0.05;
+        if (b.pct >= 1) {
+            if (b.targetRef && b.targetRef.estaVivo) {
+                let dmg = 0;
+                for(let j=0; j<5; j++) dmg += Math.floor(Math.random()*10)+1;
+                b.targetRef.recibirDano(dmg);
+                this.registrarEventoLog(`¡Impacto de bola de fuego! -${dmg} HP`);
+            }
+            this.bolasDeFuego.splice(i, 1);
+        } else {
+            this.renderer.dibujarProyectil(b, offset, this.config);
+        }
+    }
+
     this.renderer.dibujarMarcadoresMovimiento(this.config);
     this.renderer.dibujarUI(this);
 
@@ -689,37 +727,6 @@ class Game implements IGame {
     }
   }
 
-  verificarTeletransporte(nick: string, texto: string) {
-    const entidad = this.obtenerEntidadPorNombre(nick);
-    if (!entidad) return;
-
-    const celda = this.mapaLaberinto[entidad.fila][entidad.columna];
-    if (celda.burbuja && celda.burbuja.destino.toLowerCase() === texto.toLowerCase().trim()) {
-        // Buscar burbuja destino
-        for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
-            for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
-                const target = this.mapaLaberinto[f][c];
-                if (target.burbuja && target.burbuja.nombreSecreto.toLowerCase() === texto.toLowerCase().trim()) {
-                    entidad.fila = f;
-                    entidad.columna = c;
-                    this.registrarEventoLog(`${nick} se ha teletransportado.`);
-                    if (entidad === this.protagonista) {
-                        this.ui.crearTextoFlotanteEnCelda(f, c, "¡TELEPORT!", "#ff00ff", this);
-                        if (this.network && this.network.activo) {
-                            this.network.enviarMensaje({
-                                tipo: 'posicion',
-                                f: f, c: c, cam: false,
-                                id: this.network.idLocal, nick: this.protagonista.nombre,
-                                hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
-                            });
-                        }
-                    }
-                    return;
-                }
-            }
-        }
-    }
-  }
 
   obtenerEntidadPorNombre(nombre: string) {
     if (nombre === this.protagonista.nombre) return this.protagonista;
@@ -728,6 +735,81 @@ class Game implements IGame {
         if (j.entidad && j.entidad.nombre === nombre) found = j.entidad;
     });
     return found;
+  }
+
+  obtenerEntidadPorId(id: string) {
+    if (id === this.network.idLocal) return this.protagonista;
+    const j = this.network.jugadoresRemotos.get(id);
+    return j ? j.entidad : null;
+  }
+
+  asustarMonstruosCercanos(fila: number, columna: number) {
+    const r = this.config.RADIO_VISION;
+    this.listaDeEnemigos.forEach(e => {
+        const dist = Math.sqrt(Math.pow(e.fila - fila, 2) + Math.pow(e.columna - columna, 2));
+        if (dist <= r) {
+            (e as any).huyendoHasta = Date.now() + 10000;
+        }
+    });
+  }
+
+  lanzarBolaDeFuego(emisor: any) {
+    // Buscar enemigo más cercano
+    let target: any = null;
+    let minDist = Infinity;
+    this.listaDeEnemigos.forEach(e => {
+        if (e.estaVivo) {
+            const dist = Math.sqrt(Math.pow(e.fila - emisor.fila, 2) + Math.pow(e.columna - emisor.columna, 2));
+            if (dist < minDist) {
+                minDist = dist;
+                target = e;
+            }
+        }
+    });
+
+    if (target) {
+        this.bolasDeFuego.push({
+            x: emisor.columna,
+            y: emisor.fila,
+            targetX: target.columna,
+            targetY: target.fila,
+            targetRef: target,
+            pct: 0,
+            color: "#ff4500"
+        });
+        this.registrarEventoLog(`¡${emisor.nombre} lanza una bola de fuego!`);
+    }
+  }
+
+  verificarPortal(entidad: any) {
+    const celda = this.mapaLaberinto[entidad.fila][entidad.columna];
+    if (celda.esPortal) {
+        const todosLosPortales: {f: number, c: number}[] = [];
+        for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
+            for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+                if (this.mapaLaberinto[f][c].esPortal && (f !== entidad.fila || c !== entidad.columna)) {
+                    todosLosPortales.push({ f, c });
+                }
+            }
+        }
+        if (todosLosPortales.length > 0) {
+            const dest = todosLosPortales[Math.floor(Math.random() * todosLosPortales.length)];
+            entidad.fila = dest.f;
+            entidad.columna = dest.c;
+            this.registrarEventoLog(`${entidad.nombre} ha atravesado un portal.`);
+            if (entidad === this.protagonista) {
+                this.ui.crearTextoFlotanteEnCelda(dest.f, dest.c, "¡PORTAL!", "#0000ff", this);
+                if (this.network && this.network.activo) {
+                    this.network.enviarMensaje({
+                        tipo: 'posicion',
+                        f: dest.f, c: dest.c, cam: false,
+                        id: this.network.idLocal, nick: this.protagonista.nombre,
+                        hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
+                    });
+                }
+            }
+        }
+    }
   }
 
   obtenerEnemigoAMostrar() {
@@ -863,7 +945,7 @@ class Game implements IGame {
             if (this.esHost) this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
             break;
         case 'chat':
-            this.ui.manejarMensajeChat(msg.nick || "Desconocido", msg.texto, false, this);
+            this.ui.manejarMensajeChat(msg.nick || "Desconocido", msg.texto, false, this, idSujeto);
             if (this.esHost) this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
             break;
         case 'hp_transfer':
@@ -916,6 +998,7 @@ class Game implements IGame {
         case 'spawn':
             this.protagonista.fila = msg.f;
             this.protagonista.columna = msg.c;
+            this.asustarMonstruosCercanos(msg.f, msg.c);
             break;
         case 'npc_sync_all':
             msg.lista.forEach((d: any) => {

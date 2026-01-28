@@ -56,6 +56,20 @@ export class Renderer {
             this.ctx.fill();
           }
 
+          // Dibujar Portal
+          if (celda.esPortal) {
+            this.ctx.fillStyle = 'rgba(0, 0, 255, 0.4)';
+            this.ctx.beginPath();
+            this.ctx.moveTo((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 5);
+            this.ctx.lineTo((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA - 5, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2);
+            this.ctx.lineTo((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA - 5);
+            this.ctx.lineTo((columna - colOffset) * TAMANO_CELDA + 5, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.strokeStyle = '#0000ff';
+            this.ctx.stroke();
+          }
+
           // Dibujar Alimento
           if (celda.alimento) {
             this.ctx.font = '16px serif';
@@ -135,10 +149,11 @@ export class Renderer {
 
     this.ctx.fillStyle = '#fff';
     this.ctx.font = 'bold 12px monospace';
-    this.ctx.fillText("HÉROE", 10, 20);
+    this.ctx.fillText("HÉROE", 20, 20);
     this.ctx.font = '11px monospace';
-    this.ctx.fillText(`HP: ${game.protagonista.vidaActual}/${game.protagonista.vidaMaxima}`, 10, 35);
-    this.ctx.fillText(`FUE:${game.protagonista.fuerza} AGI:${game.protagonista.agilidad} INT:${game.protagonista.inteligencia} XP:${game.protagonista.puntosExperiencia}`, 10, 50);
+    this.ctx.fillText(`HP: ${game.protagonista.vidaActual}/${game.protagonista.vidaMaxima}`, 20, 32);
+    this.ctx.fillText(`FUE:${game.protagonista.fuerza} AGI:${game.protagonista.agilidad}`, 20, 44);
+    this.ctx.fillText(`INT:${game.protagonista.inteligencia} XP:${game.protagonista.puntosExperiencia}`, 20, 56);
 
     let enemigoVisible = game.obtenerEnemigoAMostrar();
     if (enemigoVisible) {
@@ -168,6 +183,28 @@ export class Renderer {
       this.ctx.fillText(msjFin, this.canvas.width / 2, ALTO_UI_TOP + 100);
       this.ctx.textAlign = 'left';
     }
+  }
+
+  dibujarProyectil(p: any, offset: CameraOffset, config: GameConfig) {
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
+
+    const curX = p.x + (p.targetX - p.x) * p.pct;
+    const curY = p.y + (p.targetY - p.y) * p.pct;
+
+    const screenX = (curX - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const screenY = (curY - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+
+    this.ctx.fillStyle = p.color;
+    this.ctx.beginPath();
+    this.ctx.arc(screenX, screenY, 5, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // Estela
+    this.ctx.shadowBlur = 10;
+    this.ctx.shadowColor = p.color;
+    this.ctx.fill();
+    this.ctx.shadowBlur = 0;
   }
 
   dibujarMarcadoresMovimiento(config: GameConfig) {

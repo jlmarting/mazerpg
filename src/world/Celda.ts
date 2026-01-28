@@ -14,6 +14,7 @@ export class Celda {
   visitada: boolean;
   alimento: { tipo: string, pc: number } | null = null;
   burbuja: { nombreSecreto: string, destino: string } | null = null;
+  esPortal: boolean = false;
 
   constructor(fila: number, columna: number) {
     this.fila = fila;

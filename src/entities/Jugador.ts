@@ -213,12 +213,14 @@ export class Jugador extends EntidadRPG {
       // Burbujas
       if (celdaNueva.burbuja) {
         this.inmunidadHasta = Date.now() + 30000;
-        game.registrarEventoLog(`¡Burbuja de inmunidad activada (30s)! Destino: ${celdaNueva.burbuja.destino}`);
-        game.ui.mostrarNotificacionGrande(`¡INMUNE! DESTINO: ${celdaNueva.burbuja.destino}`, "#00ffff", 5000);
+        game.registrarEventoLog(`¡Burbuja de inmunidad activada (30s)!`);
+        game.ui.mostrarNotificacionGrande(`¡INMUNE! (30s)`, "#00ffff", 5000);
       }
 
       this.estaCaminando = true;
       this.ultimaVezMovido = Date.now();
+
+      (game as any).verificarPortal(this);
 
       this.pasosDesdeUltimoDano++;
       const factorDificultad = game.config.dificultad === 'facil' ? 1 : (game.config.dificultad === 'medio' ? 2 : 3);

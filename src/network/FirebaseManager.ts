@@ -1,7 +1,7 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 
-const firebaseConfig = {
+const firebaseConfig = (window as any).FIREBASE_CONFIG || {
   apiKey: "API_KEY_PLACEHOLDER",
   authDomain: "PROJECT_ID.firebaseapp.com",
   projectId: "PROJECT_ID",
@@ -15,7 +15,7 @@ export class FirebaseManager {
   private initialized: boolean = false;
 
   constructor() {
-    if (firebaseConfig.apiKey !== "API_KEY_PLACEHOLDER") {
+    if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "API_KEY_PLACEHOLDER" && !firebaseConfig.apiKey.startsWith("__")) {
       firebase.initializeApp(firebaseConfig);
       this.db = firebase.firestore();
       this.initialized = true;

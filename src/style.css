@@ -1,0 +1,112 @@
+body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    background-color: #222; /* Fondo oscuro más inmersivo */
+    font-family: 'Courier New', monospace;
+    overflow: hidden; /* Evitar scroll en móvil */
+}
+canvas {
+    border: 3px solid #555;
+    background-color: #000;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+    touch-action: none; /* Crucial para evitar gestos del navegador */
+}
+
+/* Menú superior colapsable */
+#topMenu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 100;
+    background: rgba(34, 34, 34, 0.95);
+    border-bottom: 2px solid #007bff;
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateY(-100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#topMenu.visible {
+    transform: translateY(0);
+}
+
+#menuToggle {
+    position: absolute;
+    bottom: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #007bff;
+    color: white;
+    padding: 2px 15px;
+    border-radius: 0 0 10px 10px;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+
+.menu-content {
+    padding: 10px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.menu-btn {
+    background: #333;
+    color: #ccc;
+    border: 1px solid #555;
+    padding: 5px 10px;
+    font-family: monospace;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.menu-btn:hover {
+    background: #444;
+    color: white;
+}
+
+.menu-btn.active {
+    background: #007bff;
+    color: white;
+    border-color: #0056b3;
+}
+
+.menu-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+#logPanel {
+    width: 90%;
+    max-width: 800px;
+    height: 0;
+    overflow: hidden;
+    transition: height 0.3s ease;
+    margin-bottom: 10px;
+}
+
+#logPanel.visible {
+    height: 150px;
+}
+
+#logTextArea {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    color: #0f0;
+    font-size: 10px;
+    font-family: monospace;
+    border: 1px solid #333;
+    padding: 5px;
+    box-sizing: border-box;
+    resize: none;
+}

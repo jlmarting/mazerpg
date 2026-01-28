@@ -14,6 +14,8 @@ export abstract class EntidadRPG {
   estaCaminando: boolean;
   ultimaVezMovido: number;
   enCombateCon: EntidadRPG | null;
+  puntosExperiencia: number = 0;
+  inmunidadHasta: number = 0;
   consecutiveInteractions: Map<string, number> = new Map();
   public bubbleChat: { texto: string, expira: number } | null = null;
   public onDamageReceived?: (amount: number, entity: EntidadRPG) => void;

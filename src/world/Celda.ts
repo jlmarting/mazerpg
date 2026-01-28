@@ -12,6 +12,8 @@ export class Celda {
   esTransitable: boolean;
   muros: Muros;
   visitada: boolean;
+  alimento: { tipo: string, pc: number } | null = null;
+  burbuja: { nombreSecreto: string, destino: string } | null = null;
 
   constructor(fila: number, columna: number) {
     this.fila = fila;

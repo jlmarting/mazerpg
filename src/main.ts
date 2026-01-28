@@ -9,7 +9,7 @@ import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
 import { generarLaberintoBSP } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
-import { generateSessionName } from './utils/session';
+import { generateSessionName, generateBubbleName } from './utils/session';
 import { GameConfig, IGame } from './types';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
@@ -32,7 +32,8 @@ class Game implements IGame {
     TIEMPO_DESVANECIMIENTO_NIEBLA,
     CELDAS_VISIBLES_X: 10,
     CELDAS_VISIBLES_Y: 10,
-    vistaDebugActivada: false
+    vistaDebugActivada: false,
+    dificultad: 'dificil'
   };
   public juegoTerminado: boolean = false;
   public mundoSincronizado: boolean = false;
@@ -118,6 +119,7 @@ class Game implements IGame {
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnSalir')?.addEventListener('click', () => window.location.reload());
+    document.getElementById('btnAbandonar')?.addEventListener('click', () => this.abandonarPartida());
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -165,6 +167,7 @@ class Game implements IGame {
 
   empezarSolo() {
     this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
+    this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
     this.mundoSincronizado = true;
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
@@ -174,6 +177,7 @@ class Game implements IGame {
     this.esHost = true;
     this.network.esHost = true;
     this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Host";
+    this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
     (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
     this.crearPartidaFirestore();
   }
@@ -333,6 +337,18 @@ class Game implements IGame {
     document.getElementById('lobbyInitial')!.style.display = 'block';
     document.getElementById('lobbyFirebase')!.style.display = 'none';
     document.getElementById('lobbyManual')!.style.display = 'none';
+    document.getElementById('lobby')!.style.display = 'flex';
+    document.getElementById('mazeCanvas')!.style.display = 'none';
+    document.getElementById('topMenu')!.classList.remove('visible');
+  }
+
+  abandonarPartida() {
+    if (confirm("¿Seguro que quieres abandonar la partida?")) {
+        if (this.esHost && this.network.multiplayerActivo) {
+            this.network.enviarMensaje({ tipo: 'host_migration_trigger', reason: 'host_abandoned' });
+        }
+        window.location.reload();
+    }
   }
 
   registrarEventoLog(mensaje: string) {
@@ -351,8 +367,59 @@ class Game implements IGame {
         this.protagonista.fila = pos.f;
         this.protagonista.columna = pos.c;
         this.generarEnemigos();
+        this.generarObjetos();
     }
     this.cicloDeJuego();
+  }
+
+  generarObjetos() {
+    // Generar comida
+    const alimentos = [
+        { tipo: "Manzana", pc: 5 },
+        { tipo: "Plátano", pc: 8 },
+        { tipo: "Kiwi", pc: 10 },
+        { tipo: "Brócoli", pc: 25 },
+        { tipo: "Muslo de pollo", pc: 35 },
+        { tipo: "Chuleta", pc: 40 },
+        { tipo: "Pescado", pc: 70 }
+    ];
+
+    for (let i = 0; i < 30; i++) {
+        let f, c;
+        let s = 0;
+        do {
+            f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
+            c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
+            s++;
+        } while (!this.mapaLaberinto[f][c].esTransitable && s < 1000);
+
+        if (this.mapaLaberinto[f][c].esTransitable) {
+            this.mapaLaberinto[f][c].alimento = alimentos[Math.floor(Math.random() * alimentos.length)];
+        }
+    }
+
+    // Generar burbujas (máximo 5)
+    const burbujas: {f: number, c: number, nombre: string}[] = [];
+    for (let i = 0; i < 5; i++) {
+        let f, c;
+        let s = 0;
+        do {
+            f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
+            c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
+            s++;
+        } while ((!this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].burbuja) && s < 1000);
+
+        if (this.mapaLaberinto[f][c].esTransitable) {
+            const nombre = generateBubbleName();
+            burbujas.push({ f, c, nombre });
+        }
+    }
+
+    for (let i = 0; i < burbujas.length; i++) {
+        const b = burbujas[i];
+        const destino = burbujas[(i + 1) % burbujas.length].nombre;
+        this.mapaLaberinto[b.f][b.c].burbuja = { nombreSecreto: b.nombre, destino: destino };
+    }
   }
 
   setupEntity(entity: any) {
@@ -421,7 +488,12 @@ class Game implements IGame {
 
   generarEnemigos() {
     const tipos = ["Esqueleto", "Orco", "Goblin", "Minotauro"];
-    for (let i = 0; i < 40; i++) {
+    let cantidad = 40;
+    if (this.config.dificultad === 'facil' || this.config.dificultad === 'medio') {
+        cantidad = Math.floor(cantidad * 0.75);
+    }
+
+    for (let i = 0; i < cantidad; i++) {
         let f, c;
         let s = 0;
         do {
@@ -430,7 +502,7 @@ class Game implements IGame {
             s++;
         } while (((f < 5 && c < 5) || !this.mapaLaberinto[f][c].esTransitable) && s < 1000);
         const t = tipos[i % tipos.length];
-        const e = new EnemigoNPC(f, c, t, t, i);
+        const e = new EnemigoNPC(f, c, t, t, i, this.config.dificultad);
         this.setupEntity(e);
         this.listaDeEnemigos.push(e);
     }
@@ -459,8 +531,11 @@ class Game implements IGame {
     this.protagonista.vidaActual = this.protagonista.vidaMaxima;
     this.protagonista.estaVivo = true;
     this.protagonista.enCombateCon = null;
+    this.protagonista.puntosExperiencia = 0;
     this.juegoTerminado = false;
-    document.getElementById('respawnUI')!.style.display = 'none';
+    document.getElementById('endGameUI')!.style.display = 'none';
+    const xpVal = document.getElementById('xpVal');
+    if (xpVal) xpVal.textContent = "0";
     this.registrarEventoLog("Has renacido en el inicio.");
 
     if (this.network && this.network.activo) {
@@ -515,15 +590,30 @@ class Game implements IGame {
   actualizar() {
     if (!this.protagonista) return;
 
-    // Verificar UI de muerte incluso si el juego ha terminado (por muerte)
+    // Verificar UI de fin de juego
     const btnEmpezar = document.getElementById('btnEmpezar') as HTMLButtonElement;
-    if (!this.protagonista.estaVivo) {
-        if (document.getElementById('respawnUI')!.style.display !== 'flex') {
-            document.getElementById('respawnUI')!.style.display = 'flex';
-            if (this.esHost && this.network.multiplayerActivo) {
-                this.network.enviarMensaje({ tipo: 'host_migration_trigger', reason: 'death' });
-                this.iniciarEleccionHost();
+    if (!this.protagonista.estaVivo || this.juegoTerminado) {
+        if (document.getElementById('endGameUI')!.style.display !== 'flex') {
+            const ui = document.getElementById('endGameUI')!;
+            const title = document.getElementById('endGameTitle')!;
+            const msg = document.getElementById('endGameMsg')!;
+            const achievements = document.getElementById('achievements')!;
+
+            ui.style.display = 'flex';
+            if (!this.protagonista.estaVivo) {
+                title.textContent = "HAS CAÍDO";
+                title.style.color = "#ff4444";
+                msg.textContent = "¿Quieres volver a intentarlo?";
+                if (this.esHost && this.network.multiplayerActivo) {
+                    this.network.enviarMensaje({ tipo: 'host_migration_trigger', reason: 'death' });
+                    this.iniciarEleccionHost();
+                }
+            } else {
+                title.textContent = "¡VICTORIA!";
+                title.style.color = "#28a745";
+                msg.textContent = "¡Has escapado del laberinto!";
             }
+            achievements.textContent = `Experiencia total: ${this.protagonista.puntosExperiencia} XP`;
         }
         if (btnEmpezar) btnEmpezar.disabled = false;
     } else {
@@ -558,8 +648,19 @@ class Game implements IGame {
         id: e.id, f: e.fila, c: e.columna, n: e.nombre, t: e.tipo, v: e.vidaActual, vm: e.vidaMaxima
     }));
 
-    jInfo.dc.send(JSON.stringify({ tipo: 'mapa', datos: mapaCompacto }));
+    jInfo.dc.send(JSON.stringify({ tipo: 'mapa', datos: mapaCompacto, dificultad: this.config.dificultad }));
     jInfo.dc.send(JSON.stringify({ tipo: 'enemigos', lista: enemigos }));
+
+    const objetos: any[] = [];
+    for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
+        for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+            const celda = this.mapaLaberinto[f][c];
+            if (celda.alimento || celda.burbuja) {
+                objetos.push({ f, c, a: celda.alimento, b: celda.burbuja });
+            }
+        }
+    }
+    jInfo.dc.send(JSON.stringify({ tipo: 'objetos', lista: objetos }));
 
     const posSpawn = this.obtenerPosicionInicioAleatoria();
     jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: posSpawn.f, c: posSpawn.c }));
@@ -585,6 +686,38 @@ class Game implements IGame {
         this.juegoTerminado = true;
         this.registrarEventoLog("¡Has escapado!");
         if (this.network.activo) this.network.enviarMensaje({ tipo: 'victoria', nick: this.protagonista.nombre });
+    }
+  }
+
+  verificarTeletransporte(nick: string, texto: string) {
+    const entidad = this.obtenerEntidadPorNombre(nick);
+    if (!entidad) return;
+
+    const celda = this.mapaLaberinto[entidad.fila][entidad.columna];
+    if (celda.burbuja && celda.burbuja.destino.toLowerCase() === texto.toLowerCase().trim()) {
+        // Buscar burbuja destino
+        for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
+            for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+                const target = this.mapaLaberinto[f][c];
+                if (target.burbuja && target.burbuja.nombreSecreto.toLowerCase() === texto.toLowerCase().trim()) {
+                    entidad.fila = f;
+                    entidad.columna = c;
+                    this.registrarEventoLog(`${nick} se ha teletransportado.`);
+                    if (entidad === this.protagonista) {
+                        this.ui.crearTextoFlotanteEnCelda(f, c, "¡TELEPORT!", "#ff00ff", this);
+                        if (this.network && this.network.activo) {
+                            this.network.enviarMensaje({
+                                tipo: 'posicion',
+                                f: f, c: c, cam: false,
+                                id: this.network.idLocal, nick: this.protagonista.nombre,
+                                hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
+                            });
+                        }
+                    }
+                    return;
+                }
+            }
+        }
     }
   }
 
@@ -631,7 +764,14 @@ class Game implements IGame {
         if (!o.estaVivo) {
             this.registrarEventoLog(`${o.nombre} derrotado.`);
             l.enCombateCon = null;
-            if (o === this.protagonista) this.juegoTerminado = true;
+            if (o === this.protagonista) {
+                this.juegoTerminado = true;
+            } else if (l === this.protagonista) {
+                this.protagonista.puntosExperiencia += o.puntosExperiencia;
+                this.registrarEventoLog(`¡Has ganado ${o.puntosExperiencia} XP!`);
+                const xpVal = document.getElementById('xpVal');
+                if (xpVal) xpVal.textContent = this.protagonista.puntosExperiencia.toString();
+            }
         }
     });
   }
@@ -683,17 +823,30 @@ class Game implements IGame {
             break;
         case 'mapa':
             deserializarMapa(this.mapaLaberinto, msg.datos);
+            if (msg.dificultad) this.config.dificultad = msg.dificultad;
             break;
         case 'enemigos':
             this.listaDeEnemigos = msg.lista.map((d: any) => {
-                const e = new EnemigoNPC(d.f, d.c, d.n, d.t, d.id);
+                const e = new EnemigoNPC(d.f, d.c, d.n, d.t, d.id, this.config.dificultad);
                 e.vidaActual = d.v; e.vidaMaxima = d.vm;
                 this.setupEntity(e);
                 return e;
             });
+            break;
+        case 'objetos':
+            msg.lista.forEach((o: any) => {
+                const celda = this.mapaLaberinto[o.f][o.c];
+                celda.alimento = o.a;
+                celda.burbuja = o.b;
+            });
             this.mundoSincronizado = true;
             this.ui.ocultarLobby();
             this.iniciarMotorJuego();
+            break;
+        case 'food_consumed':
+            const celdaFood = this.mapaLaberinto[msg.f][msg.c];
+            celdaFood.alimento = null;
+            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'posicion':
             const jPos = this.network.jugadoresRemotos.get(idSujeto);

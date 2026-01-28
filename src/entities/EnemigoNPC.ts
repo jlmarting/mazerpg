@@ -9,14 +9,23 @@ export class EnemigoNPC extends EntidadRPG {
   ultimaVezActuadoIA: number = 0;
   radioDeVisionIA: number = 5;
 
-  constructor(fila: number, columna: number, nombre: string, tipo: string, id: number) {
+  constructor(fila: number, columna: number, nombre: string, tipo: string, id: number, dificultad: string = 'dificil') {
     super(fila, columna, nombre);
     this.id = id;
     this.tipo = tipo;
-    this.aplicarPenalizadores();
+    this.aplicarPenalizadores(dificultad);
+    this.asignarExperiencia();
   }
 
-  aplicarPenalizadores() {
+  aplicarPenalizadores(dificultad: string) {
+    if (dificultad === 'facil') {
+        this.fuerza = Math.max(1, Math.floor(this.fuerza * 0.7));
+        this.agilidad = Math.max(1, Math.floor(this.agilidad * 0.7));
+        this.inteligencia = Math.max(1, Math.floor(this.inteligencia * 0.7));
+        this.vidaMaxima = Math.max(1, Math.floor(this.vidaMaxima * 0.7));
+        this.vidaActual = this.vidaMaxima;
+    }
+
     if (this.tipo === "Esqueleto") {
       this.modDano = -1;
       this.inteligencia = Math.max(1, this.inteligencia - 2);
@@ -29,6 +38,16 @@ export class EnemigoNPC extends EntidadRPG {
       this.fuerza = Math.max(1, this.fuerza - 2);
       this.vidaMaxima = Math.max(1, this.vidaMaxima - 3);
       this.vidaActual = this.vidaMaxima;
+    }
+  }
+
+  asignarExperiencia() {
+    switch(this.tipo) {
+        case "Goblin": this.puntosExperiencia = 10; break;
+        case "Esqueleto": this.puntosExperiencia = 15; break;
+        case "Orco": this.puntosExperiencia = 20; break;
+        case "Minotauro": this.puntosExperiencia = 50; break;
+        default: this.puntosExperiencia = 10;
     }
   }
 

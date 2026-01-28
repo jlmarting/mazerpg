@@ -3,6 +3,7 @@ import { IGame } from '../types';
 export class UIManager {
   private logTextArea: HTMLTextAreaElement | null = null;
   private listaTextosFlotantes: any[] = [];
+  private notificacionGrande: { texto: string, expira: number, color: string } | null = null;
   public listaMensajesChat: any[] = [];
 
   constructor() {
@@ -69,6 +70,7 @@ export class UIManager {
       if (visible) {
         emisor.bubbleChat = { texto: texto, expira: Date.now() + 4000 };
       }
+      (game as any).verificarTeletransporte(nombre, texto);
     }
     game.registrarEventoLog(`CHAT - ${nombre}: ${texto}`);
   }
@@ -104,5 +106,22 @@ export class UIManager {
       ctx.fillText(t.texto, t.x, t.y);
       ctx.restore();
     });
+
+    if (this.notificacionGrande && Date.now() < this.notificacionGrande.expira) {
+        ctx.save();
+        ctx.fillStyle = this.notificacionGrande.color;
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#000';
+        ctx.fillText(this.notificacionGrande.texto, ctx.canvas.width / 2, ctx.canvas.height / 2);
+        ctx.restore();
+    } else {
+        this.notificacionGrande = null;
+    }
+  }
+
+  mostrarNotificacionGrande(texto: string, color: string = "#fff", duracion: number = 3000) {
+    this.notificacionGrande = { texto, expira: Date.now() + duracion, color };
   }
 }

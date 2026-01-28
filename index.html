@@ -24,7 +24,9 @@
             <button id="btnChat" class="menu-btn">CHAT (Enter)</button>
             <button id="btnAceptarJugadores" class="menu-btn" disabled>ADMITIR JUGADORES</button>
             <button id="btnEmpezar" class="menu-btn" disabled>EMPEZAR</button>
+            <button id="btnAbandonar" class="menu-btn" style="background: #dc3545;">ABANDONAR</button>
             <button id="btnLogPanel" class="menu-btn">VER CONEXIONES</button>
+            <div id="xpDisplay" style="color: #ffc107; font-weight: bold; margin-left: 15px;">XP: <span id="xpVal">0</span></div>
         </div>
         <div id="logPanel">
             <textarea id="logTextArea" readonly placeholder="Esperando logs de conexión..."></textarea>
@@ -33,8 +35,15 @@
 
     <div id="lobby">
         <h1 style="color: #007bff;">LABERINTO RPG</h1>
-        <div style="margin-bottom: 20px; border: 1px solid #444; padding: 15px; border-radius: 5px;">
+        <div style="margin-bottom: 20px; border: 1px solid #444; padding: 15px; border-radius: 5px; display: flex; flex-direction: column; gap: 10px;">
             <label>TU NICK: <input type="text" id="nickInput" value="Héroe" maxlength="10" style="padding: 5px; font-family: 'Courier New', monospace; background: #111; color: #fff; border: 1px solid #555;"></label>
+            <label>DIFICULTAD:
+                <select id="difficultySelect" style="padding: 5px; font-family: 'Courier New', monospace; background: #111; color: #fff; border: 1px solid #555;">
+                    <option value="facil">FÁCIL</option>
+                    <option value="medio">MEDIO</option>
+                    <option value="dificil" selected>DIFÍCIL</option>
+                </select>
+            </label>
         </div>
 
         <div id="lobbyInitial">
@@ -101,11 +110,12 @@
 
     <canvas id="mazeCanvas" style="display: none;"></canvas>
 
-    <div id="respawnUI" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; color: white;">
-        <h1 style="color: #ff4444;">HAS CAÍDO</h1>
-        <p>¿Quieres volver a intentarlo?</p>
+    <div id="endGameUI" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; color: white;">
+        <h1 id="endGameTitle" style="color: #ff4444;">HAS CAÍDO</h1>
+        <p id="endGameMsg">¿Quieres volver a intentarlo?</p>
+        <div id="achievements" style="margin: 20px; color: #ffc107; font-weight: bold;"></div>
         <div style="display: flex; gap: 20px; margin-top: 20px;">
-            <button id="btnRespawn" style="padding: 10px 20px; cursor: pointer; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold;">REINTENTAR</button>
+            <button id="btnRespawn" style="padding: 10px 20px; cursor: pointer; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold;">REINTENTAR / EMPEZAR DE NUEVO</button>
             <button id="btnSalir" style="padding: 10px 20px; cursor: pointer; background: #6c757d; color: white; border: none; font-family: monospace; font-weight: bold;">SALIR</button>
         </div>
     </div>

@@ -81,12 +81,27 @@ export class Jugador extends EntidadRPG {
         ctx.shadowBlur = 10;
         ctx.shadowColor = '#007bff';
         ctx.stroke();
+
+        // Inmunidad Glow
+        if (Date.now() < this.inmunidadHasta) {
+            ctx.beginPath();
+            ctx.arc(x, y, TAMANO_CELDA / 2, 0, Math.PI * 2);
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00ffff';
+            ctx.stroke();
+        }
     }
 
     ctx.restore();
   }
 
   recibirDano(cantidad: number, atacante?: EntidadRPG | null): number {
+    if (Date.now() < this.inmunidadHasta) {
+        return 0;
+    }
     const result = super.recibirDano(cantidad, atacante);
     if (cantidad > 0) {
       this.pasosDesdeUltimoDano = 0;
@@ -176,19 +191,43 @@ export class Jugador extends EntidadRPG {
     if (esMovimientoValido) {
       this.fila = sigFila;
       this.columna = sigColumna;
+      const celdaNueva = game.mapaLaberinto[this.fila][this.columna];
+
+      // Alimentos
+      if (celdaNueva.alimento) {
+        const PC = celdaNueva.alimento.pc;
+        const CC = ((3 * this.fuerza) + (2 * this.agilidad) + (1 * this.inteligencia)) / 6;
+        const recuperacion = Math.floor(PC / CC);
+        const finalHeal = Math.max(1, recuperacion);
+
+        this.vidaActual = Math.min(this.vidaMaxima, this.vidaActual + finalHeal);
+        game.registrarEventoLog(`Has comido ${celdaNueva.alimento.tipo}. Recuperas ${finalHeal} HP.`);
+        game.ui.crearTextoFlotanteEnCelda(this.fila, this.columna, `+${finalHeal} HP`, "#00ff00", game);
+
+        if (game.network && game.network.activo) {
+            game.network.enviarMensaje({ tipo: 'food_consumed', f: this.fila, c: this.columna });
+        }
+        celdaNueva.alimento = null;
+      }
+
+      // Burbujas
+      if (celdaNueva.burbuja) {
+        this.inmunidadHasta = Date.now() + 30000;
+        game.registrarEventoLog(`¡Burbuja de inmunidad activada (30s)! Destino: ${celdaNueva.burbuja.destino}`);
+        game.ui.mostrarNotificacionGrande(`¡INMUNE! DESTINO: ${celdaNueva.burbuja.destino}`, "#00ffff", 5000);
+      }
+
       this.estaCaminando = true;
       this.ultimaVezMovido = Date.now();
 
       this.pasosDesdeUltimoDano++;
-      if (this.pasosDesdeUltimoDano >= 10) {
+      const factorDificultad = game.config.dificultad === 'facil' ? 1 : (game.config.dificultad === 'medio' ? 2 : 3);
+      if (this.pasosDesdeUltimoDano >= 10 * factorDificultad) {
         this.pasosDesdeUltimoDano = 0;
         if (this.vidaActual < this.vidaMaxima) {
-          const probabilidad = ((this.fuerza * 4) + (this.agilidad * 2)) / 6;
-          if (Math.random() * 100 < probabilidad) {
             this.vidaActual = Math.min(this.vidaMaxima, this.vidaActual + 1);
             game.ui.crearTextoFlotanteEnCelda(this.fila, this.columna, "+1", "#00ff00", game);
             game.registrarEventoLog("Te sientes un poco mejor. +1 HP");
-          }
         }
       }
 

@@ -44,6 +44,32 @@ export class Renderer {
         if (celda.esTransitable) {
           this.ctx.fillStyle = '#FFF';
           this.ctx.fillRect((columna - colOffset) * TAMANO_CELDA, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP, TAMANO_CELDA, TAMANO_CELDA);
+
+          // Dibujar Burbuja
+          if (celda.burbuja) {
+            this.ctx.strokeStyle = '#87CEEB'; // Azul Celeste
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2, TAMANO_CELDA / 2.5, 0, Math.PI * 2);
+            this.ctx.stroke();
+            this.ctx.fillStyle = 'rgba(135, 206, 235, 0.3)';
+            this.ctx.fill();
+          }
+
+          // Dibujar Alimento
+          if (celda.alimento) {
+            this.ctx.font = '16px serif';
+            this.ctx.textAlign = 'center';
+            let icon = '🍎';
+            if (celda.alimento.tipo === 'Plátano') icon = '🍌';
+            if (celda.alimento.tipo === 'Kiwi') icon = '🥝';
+            if (celda.alimento.tipo === 'Brócoli') icon = '🥦';
+            if (celda.alimento.tipo === 'Muslo de pollo') icon = '🍗';
+            if (celda.alimento.tipo === 'Chuleta') icon = '🥩';
+            if (celda.alimento.tipo === 'Pescado') icon = '🐟';
+
+            this.ctx.fillText(icon, (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
+          }
         }
       }
     }
@@ -112,7 +138,7 @@ export class Renderer {
     this.ctx.fillText("HÉROE", 10, 20);
     this.ctx.font = '11px monospace';
     this.ctx.fillText(`HP: ${game.protagonista.vidaActual}/${game.protagonista.vidaMaxima}`, 10, 35);
-    this.ctx.fillText(`FUE:${game.protagonista.fuerza} AGI:${game.protagonista.agilidad} INT:${game.protagonista.inteligencia}`, 10, 50);
+    this.ctx.fillText(`FUE:${game.protagonista.fuerza} AGI:${game.protagonista.agilidad} INT:${game.protagonista.inteligencia} XP:${game.protagonista.puntosExperiencia}`, 10, 50);
 
     let enemigoVisible = game.obtenerEnemigoAMostrar();
     if (enemigoVisible) {

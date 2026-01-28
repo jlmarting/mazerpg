@@ -11,6 +11,7 @@ export interface GameConfig {
     CELDAS_VISIBLES_X: number;
     CELDAS_VISIBLES_Y: number;
     vistaDebugActivada: boolean;
+    dificultad: 'facil' | 'medio' | 'dificil';
 }
 
 export interface CameraOffset {
@@ -27,6 +28,8 @@ export interface IEntidadRPG {
     estaVivo: boolean;
     estaCaminando: boolean;
     enCombateCon: IEntidadRPG | null;
+    puntosExperiencia: number;
+    inmunidadHasta: number;
     bubbleChat: { texto: string, expira: number } | null;
     recibirDano(cantidad: number, atacante?: IEntidadRPG | null): number;
     obtenerIniciativa(): number;

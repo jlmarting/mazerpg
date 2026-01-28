@@ -84,6 +84,13 @@ export class Renderer {
 
             this.ctx.fillText(icon, (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
           }
+
+          // Dibujar Pico
+          if (celda.tienePico) {
+            this.ctx.font = '16px serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('⛏️', (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
+          }
         }
       }
     }

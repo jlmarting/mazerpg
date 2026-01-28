@@ -3,6 +3,8 @@ import { CameraOffset, GameConfig, IGame } from '../types';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
+  tienePico: boolean = false;
+  ultimaCasillaAtacada: {f: number, c: number} | null = null;
 
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
@@ -188,10 +190,47 @@ export class Jugador extends EntidadRPG {
     if (deltaColumna === -1 && !celdaActual.muros.izquierdo && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
     if (deltaColumna === 1 && !celdaActual.muros.derecho && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
 
+    if (!esMovimientoValido && this.tienePico && sigFila >= 0 && sigFila < game.config.NUMERO_FILAS && sigColumna >= 0 && sigColumna < game.config.NUMERO_COLUMNAS) {
+        const celdaObjetivo = game.mapaLaberinto[sigFila][sigColumna];
+        if (!celdaObjetivo.esTransitable) {
+            if (this.ultimaCasillaAtacada && this.ultimaCasillaAtacada.f === sigFila && this.ultimaCasillaAtacada.c === sigColumna) {
+                celdaObjetivo.golpesCavar++;
+            } else {
+                celdaObjetivo.golpesCavar = 1;
+                this.ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
+            }
+            game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, `¡CLANC! ${celdaObjetivo.golpesCavar}/5`, "#aaaaaa", game);
+            game.registrarEventoLog("Picas la roca...");
+
+            if (celdaObjetivo.golpesCavar >= 5) {
+                celdaObjetivo.esTransitable = true;
+                celdaObjetivo.golpesCavar = 0;
+                game.registrarEventoLog("¡Has cavado una galería!");
+                game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, "¡ABIERTO!", "#00ff00", game);
+                if (game.network && game.network.activo) {
+                    game.network.enviarMensaje({ tipo: 'dig_completed', f: sigFila, c: sigColumna });
+                }
+            }
+            return false;
+        }
+    }
+
     if (esMovimientoValido) {
       this.fila = sigFila;
       this.columna = sigColumna;
       const celdaNueva = game.mapaLaberinto[this.fila][this.columna];
+      this.ultimaCasillaAtacada = null;
+
+      // Pico
+      if (celdaNueva.tienePico) {
+        this.tienePico = true;
+        celdaNueva.tienePico = false;
+        game.registrarEventoLog("¡Has encontrado un pico! Ahora puedes cavar galerías.");
+        game.ui.mostrarNotificacionGrande("¡PICO OBTENIDO! Puedes cavar golpeando muros 5 veces.", "#ffff00", 5000);
+        if (game.network && game.network.activo) {
+            game.network.enviarMensaje({ tipo: 'pick_collected', f: this.fila, c: this.columna });
+        }
+      }
 
       // Alimentos
       if (celdaNueva.alimento) {

@@ -15,6 +15,8 @@ export class Celda {
   alimento: { tipo: string, pc: number } | null = null;
   burbuja: { nombreSecreto: string, destino: string } | null = null;
   esPortal: boolean = false;
+  tienePico: boolean = false;
+  golpesCavar: number = 0;
 
   constructor(fila: number, columna: number) {
     this.fila = fila;

@@ -439,6 +439,22 @@ class Game implements IGame {
             this.mapaLaberinto[f][c].esPortal = true;
         }
     }
+
+    // Generar picos (0 a 10)
+    const numPicos = Math.floor(Math.random() * 11);
+    for (let i = 0; i < numPicos; i++) {
+        let f, c;
+        let s = 0;
+        do {
+            f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
+            c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
+            s++;
+        } while ((!this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].burbuja || this.mapaLaberinto[f][c].esPortal || this.mapaLaberinto[f][c].tienePico) && s < 1000);
+
+        if (this.mapaLaberinto[f][c].esTransitable) {
+            this.mapaLaberinto[f][c].tienePico = true;
+        }
+    }
   }
 
   setupEntity(entity: any) {
@@ -605,9 +621,23 @@ class Game implements IGame {
     // Actualizar y dibujar bolas de fuego
     for (let i = this.bolasDeFuego.length - 1; i >= 0; i--) {
         const b = this.bolasDeFuego[i];
-        b.pct += 0.05;
+        b.pct += 0.02; // Más lenta
+
+        const curX = b.x + (b.targetX - b.x) * b.pct;
+        const curY = b.y + (b.targetY - b.y) * b.pct;
+        const f = Math.floor(curY);
+        const c = Math.floor(curX);
+
+        if (f >= 0 && f < this.config.NUMERO_FILAS && c >= 0 && c < this.config.NUMERO_COLUMNAS) {
+            if (!this.mapaLaberinto[f][c].esTransitable) {
+                this.registrarEventoLog("La bola de fuego impacta contra un muro.");
+                this.bolasDeFuego.splice(i, 1);
+                continue;
+            }
+        }
+
         if (b.pct >= 1) {
-            if (b.targetRef && b.targetRef.estaVivo) {
+            if (b.targetRef && b.targetRef.estaVivo && b.aplicarDano) {
                 let dmg = 0;
                 for(let j=0; j<5; j++) dmg += Math.floor(Math.random()*10)+1;
                 b.targetRef.recibirDano(dmg);
@@ -753,13 +783,80 @@ class Game implements IGame {
     });
   }
 
-  lanzarBolaDeFuego(emisor: any) {
-    // Buscar enemigo más cercano
+  teletransportarAliados(lider: any, esLocal: boolean) {
+    if (!this.esHost && this.network.multiplayerActivo && esLocal) {
+        this.network.enviarMensaje({ tipo: 'request_guard_teleport' });
+    }
+
+    if (!this.esHost && !esLocal) {
+        // Ignorar si no somos el host y es un mensaje remoto (el host mandará force_teleport)
+        return;
+    }
+
+    const posicionesLibres: {f: number, c: number}[] = [];
+    for (let df = -1; df <= 1; df++) {
+        for (let dc = -1; dc <= 1; dc++) {
+            if (df === 0 && dc === 0) continue;
+            const nf = lider.fila + df;
+            const nc = lider.columna + dc;
+            if (nf >= 0 && nf < this.config.NUMERO_FILAS && nc >= 0 && nc < this.config.NUMERO_COLUMNAS) {
+                if (this.mapaLaberinto[nf][nc].esTransitable) {
+                    posicionesLibres.push({ f: nf, c: nc });
+                }
+            }
+        }
+    }
+
+    // Si no hay suficientes adyacentes, buscar un poco más allá
+    if (posicionesLibres.length < this.network.jugadoresRemotos.size + 1) {
+         for (let r = 2; r <= 3; r++) {
+            for (let df = -r; df <= r; df++) {
+                for (let dc = -r; dc <= r; dc++) {
+                    const nf = lider.fila + df;
+                    const nc = lider.columna + dc;
+                    if (nf >= 0 && nf < this.config.NUMERO_FILAS && nc >= 0 && nc < this.config.NUMERO_COLUMNAS) {
+                        if (this.mapaLaberinto[nf][nc].esTransitable && !posicionesLibres.some(p => p.f === nf && p.c === nc)) {
+                            posicionesLibres.push({ f: nf, c: nc });
+                        }
+                    }
+                }
+            }
+         }
+    }
+
+    let idx = 0;
+    this.network.jugadoresRemotos.forEach((j, id) => {
+        if (j.entidad && idx < posicionesLibres.length) {
+            const pos = posicionesLibres[idx++];
+            if (this.esHost) {
+                this.network.enviarMensaje({ tipo: 'force_teleport', id: id, f: pos.f, c: pos.c });
+            }
+        }
+    });
+
+    if (this.protagonista !== lider && idx < posicionesLibres.length) {
+         const pos = posicionesLibres[idx++];
+         this.protagonista.fila = pos.f;
+         this.protagonista.columna = pos.c;
+         this.registrarEventoLog("¡Llamada a la guardia! Has sido teletransportado.");
+    }
+  }
+
+  lanzarBolaDeFuego(emisor: any, esLocal: boolean) {
+    // Buscar enemigo más cercano, prioridad a los que están a la vista
     let target: any = null;
     let minDist = Infinity;
+    const ahora = Date.now();
+
     this.listaDeEnemigos.forEach(e => {
         if (e.estaVivo) {
-            const dist = Math.sqrt(Math.pow(e.fila - emisor.fila, 2) + Math.pow(e.columna - emisor.columna, 2));
+            const celda = this.mapaLaberinto[e.fila][e.columna];
+            const visible = celda.ultimoAvistamiento > 0 && (ahora - celda.ultimoAvistamiento < this.config.TIEMPO_DESVANECIMIENTO_NIEBLA);
+
+            let dist = Math.sqrt(Math.pow(e.fila - emisor.fila, 2) + Math.pow(e.columna - emisor.columna, 2));
+            // Penalizar distancia si no está a la vista para dar prioridad a los visibles
+            if (!visible) dist += 100;
+
             if (dist < minDist) {
                 minDist = dist;
                 target = e;
@@ -775,6 +872,7 @@ class Game implements IGame {
             targetY: target.fila,
             targetRef: target,
             pct: 0,
+            aplicarDano: esLocal,
             color: "#ff4500"
         });
         this.registrarEventoLog(`¡${emisor.nombre} lanza una bola de fuego!`);
@@ -929,6 +1027,29 @@ class Game implements IGame {
             const celdaFood = this.mapaLaberinto[msg.f][msg.c];
             celdaFood.alimento = null;
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            break;
+        case 'pick_collected':
+            const celdaPick = this.mapaLaberinto[msg.f][msg.c];
+            celdaPick.tienePico = false;
+            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            break;
+        case 'dig_completed':
+            const celdaDig = this.mapaLaberinto[msg.f][msg.c];
+            celdaDig.esTransitable = true;
+            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            break;
+        case 'force_teleport':
+            if (msg.id === this.network.idLocal) {
+                this.protagonista.fila = msg.f;
+                this.protagonista.columna = msg.c;
+                this.registrarEventoLog("¡Has sido llamado a la guardia!");
+            }
+            break;
+        case 'request_guard_teleport':
+            if (this.esHost) {
+                const emisorEntidad = this.obtenerEntidadPorId(idEmisor);
+                if (emisorEntidad) this.teletransportarAliados(emisorEntidad, false);
+            }
             break;
         case 'posicion':
             const jPos = this.network.jugadoresRemotos.get(idSujeto);

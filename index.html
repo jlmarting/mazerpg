@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Juego del Laberinto RPG</title>
+    <title>MazeRPG</title>
     <script>
         window.FIREBASE_CONFIG = {
             apiKey: "__FIREBASE_API_KEY__",
@@ -34,16 +34,31 @@
     </div>
 
     <div id="lobby">
-        <h1 style="color: #007bff;">LABERINTO RPG</h1>
+        <h1 style="color: #007bff;">MazeRPG</h1>
         <div style="margin-bottom: 20px; border: 1px solid #444; padding: 15px; border-radius: 5px; display: flex; flex-direction: column; gap: 10px;">
             <label>TU NICK: <input type="text" id="nickInput" value="Héroe" maxlength="10" style="padding: 5px; font-family: 'Courier New', monospace; background: #111; color: #fff; border: 1px solid #555;"></label>
             <label>DIFICULTAD:
                 <select id="difficultySelect" style="padding: 5px; font-family: 'Courier New', monospace; background: #111; color: #fff; border: 1px solid #555;">
-                    <option value="facil">FÁCIL</option>
-                    <option value="medio">MEDIO</option>
-                    <option value="dificil" selected>DIFÍCIL</option>
+                    <option value="facil" selected>FÁCIL 😊</option>
+                    <option value="medio">MEDIO ⚔️</option>
+                    <option value="dificil">DIFÍCIL 💀</option>
                 </select>
             </label>
+            <div id="lobbyStats" style="border: 1px dashed #555; padding: 10px; background: #000; font-size: 12px;">
+                <p style="margin: 0; color: #aaa;">ESTADÍSTICAS DEL HÉROE:</p>
+                <div style="display: flex; justify-content: space-around; margin: 10px 0; color: #00ff00;">
+                    <span>FUE: <span id="lobbyFue">?</span></span>
+                    <span>AGI: <span id="lobbyAgi">?</span></span>
+                    <span>INT: <span id="lobbyInt">?</span></span>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button id="btnReroll" style="padding: 5px 10px; cursor: pointer; background: #444; color: #fff; border: 1px solid #666; font-family: monospace; font-size: 10px;">RECALCULAR DADOS</button>
+                    <button id="btnQR" style="padding: 5px 10px; cursor: pointer; background: #007bff; color: #fff; border: 1px solid #0056b3; font-family: monospace; font-size: 10px;">GENERAR QR PARTIDA</button>
+                </div>
+                <div id="qrContainer" style="margin-top: 10px; display: none; background: white; padding: 5px; border-radius: 5px;">
+                    <img id="qrImage" src="" alt="QR Code" style="width: 128px; height: 128px;">
+                </div>
+            </div>
         </div>
 
         <div id="lobbyInitial">

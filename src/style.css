@@ -110,3 +110,39 @@ canvas {
     box-sizing: border-box;
     resize: none;
 }
+
+/* Lobby improvements */
+#lobby {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 90%;
+    max-width: 500px;
+    background: rgba(30, 30, 30, 0.9);
+    padding: 20px;
+    border-radius: 10px;
+    border: 2px solid #444;
+    box-shadow: 0 0 30px rgba(0,0,0,0.7);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#lobby h1 {
+    margin-top: 0;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+}
+
+@media (max-width: 600px) {
+    #lobby {
+        width: 95%;
+        padding: 15px;
+    }
+    #lobby h1 {
+        font-size: 1.5em;
+    }
+    button {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+}

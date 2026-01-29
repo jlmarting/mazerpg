@@ -122,6 +122,10 @@ class Game implements IGame {
     document.getElementById('btnSalir')?.addEventListener('click', () => window.location.reload());
     document.getElementById('btnAbandonar')?.addEventListener('click', () => this.abandonarPartida());
 
+    document.getElementById('btnReroll')?.addEventListener('click', () => this.recalcularStats());
+    document.getElementById('btnQR')?.addEventListener('click', () => this.generarQR());
+    this.actualizarStatsLobby();
+
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         this.ui.toggleChat(this);
@@ -349,6 +353,38 @@ class Game implements IGame {
             this.network.enviarMensaje({ tipo: 'host_migration_trigger', reason: 'host_abandoned' });
         }
         window.location.reload();
+    }
+  }
+
+  actualizarStatsLobby() {
+    const f = document.getElementById('lobbyFue');
+    const a = document.getElementById('lobbyAgi');
+    const i = document.getElementById('lobbyInt');
+    if (f) f.textContent = this.protagonista.fuerza.toString();
+    if (a) a.textContent = this.protagonista.agilidad.toString();
+    if (i) i.textContent = this.protagonista.inteligencia.toString();
+  }
+
+  recalcularStats() {
+    this.protagonista = new Jugador();
+    this.setupEntity(this.protagonista);
+    this.actualizarStatsLobby();
+    this.registrarEventoLog("Estadísticas recalculadas.");
+  }
+
+  generarQR() {
+    const baseUrl = window.location.origin + window.location.pathname;
+    const roomId = this.network.idPartidaActual;
+    const url = roomId ? `${baseUrl}?room=${roomId}` : baseUrl;
+
+    const qrImage = document.getElementById('qrImage') as HTMLImageElement;
+    const qrContainer = document.getElementById('qrContainer');
+
+    if (qrImage && qrContainer) {
+        // Usar API pública de QR
+        qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}`;
+        qrContainer.style.display = 'block';
+        this.registrarEventoLog("QR Generado para la sesión.");
     }
   }
 

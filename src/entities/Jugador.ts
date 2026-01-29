@@ -6,6 +6,7 @@ export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
   tienePico: boolean = false;
   ultimaCasillaAtacada: {f: number, c: number} | null = null;
+  ultimaInteraccion: number = 0;
 
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
@@ -114,6 +115,10 @@ export class Jugador extends EntidadRPG {
 
   intentarMover(deltaFila: number, deltaColumna: number, game: IGame): boolean {
     if (!this.estaVivo) return false;
+
+    const ahora = Date.now();
+    if (ahora - this.ultimaInteraccion < 100) return false;
+    this.ultimaInteraccion = ahora;
 
     const sigFila = this.fila + deltaFila;
     const sigColumna = this.columna + deltaColumna;
@@ -254,10 +259,12 @@ export class Jugador extends EntidadRPG {
 
       // Burbujas
       if (celdaNueva.burbuja) {
-        this.inmunidadHasta = Date.now() + 30000;
-        game.registrarEventoLog(`¡Burbuja de inmunidad activada (30s)!`);
-        game.ui.mostrarNotificacionGrande(`¡INMUNE! (30s)`, "#00ffff", 5000);
-        celdaNueva.burbuja = null; // Eliminar del mapa
+        const ahoraB = Date.now();
+        if (ahoraB > this.inmunidadHasta) {
+          this.inmunidadHasta = ahoraB + 30000;
+          game.registrarEventoLog(`¡Burbuja de inmunidad activada (30s)!`);
+          game.ui.mostrarNotificacionGrande(`DESTINO: ${celdaNueva.burbuja.destino}`, "#00ffff", 5000);
+        }
       }
 
       this.estaCaminando = true;

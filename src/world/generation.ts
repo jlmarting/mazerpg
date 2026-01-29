@@ -153,6 +153,20 @@ export function generarLaberintoBSP(mapaLaberinto: Celda[][]) {
   }
   raiz.crearSalasYPasillos();
 
+  // Post-procesamiento: asegurar que celdas transitables adyacentes no tengan muros entre ellas
+  for (let f = 0; f < NUMERO_FILAS; f++) {
+    for (let c = 0; c < NUMERO_COLUMNAS; c++) {
+      if (mapaLaberinto[f][c].esTransitable) {
+        if (f + 1 < NUMERO_FILAS && mapaLaberinto[f + 1][c].esTransitable) {
+          eliminarMurosEntre(mapaLaberinto[f][c], mapaLaberinto[f + 1][c]);
+        }
+        if (c + 1 < NUMERO_COLUMNAS && mapaLaberinto[f][c + 1].esTransitable) {
+          eliminarMurosEntre(mapaLaberinto[f][c], mapaLaberinto[f][c + 1]);
+        }
+      }
+    }
+  }
+
   if (!mapaLaberinto[0][0].esTransitable) {
     for (let f = 0; f < NUMERO_FILAS; f++) {
       for (let c = 0; c < NUMERO_COLUMNAS; c++) {

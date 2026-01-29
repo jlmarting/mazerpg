@@ -730,7 +730,7 @@ class Game implements IGame {
     // Autozoom combate
     if (this.config.autoZoom) {
         if (this.protagonista.enCombateCon) {
-            this.config.targetZoom = 5;
+            this.config.targetZoom = 3;
         } else {
             this.config.targetZoom = 1;
         }
@@ -927,6 +927,12 @@ class Game implements IGame {
   }
 
   lanzarBolaDeFuego(emisor: any, esLocal: boolean) {
+    if (esLocal && emisor instanceof Jugador) {
+        const ahora = Date.now();
+        if (ahora - emisor.ultimaInteraccion < 100) return;
+        emisor.ultimaInteraccion = ahora;
+    }
+
     // Buscar enemigo más cercano, prioridad a los que están a la vista
     let target: any = null;
     let minDist = Infinity;

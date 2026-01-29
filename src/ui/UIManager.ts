@@ -70,6 +70,47 @@ export class UIManager {
       if (visible) {
         emisor.bubbleChat = { texto: texto, expira: Date.now() + 4000 };
       }
+
+      // Comandos especiales y Teletransporte de burbuja
+      const msgNorm = texto.toLowerCase().trim();
+      if (msgNorm === "a mi la guardia") {
+        (game as any).teletransportarAliados(emisor, _esLocal);
+      }
+
+      // Lógica de burbuja
+      if (celda.burbuja && msgNorm === celda.burbuja.destino.toLowerCase()) {
+        // Buscar burbuja destino
+        let encontrada = false;
+        for (let f = 0; f < game.config.NUMERO_FILAS; f++) {
+          for (let c = 0; c < game.config.NUMERO_COLUMNAS; c++) {
+            const b = game.mapaLaberinto[f][c].burbuja;
+            if (b && b.nombreSecreto.toLowerCase() === msgNorm) {
+              emisor.fila = f;
+              emisor.columna = c;
+              this.mostrarNotificacionGrande("¡TELETRANSPORTE!", "#00ffff", 2000);
+              game.registrarEventoLog(`${nombre} se ha teletransportado.`);
+
+              if (_esLocal && emisor === game.protagonista) {
+                if (game.network && game.network.activo) {
+                  game.network.enviarMensaje({
+                    tipo: 'posicion',
+                    f: emisor.fila,
+                    c: emisor.columna,
+                    cam: false,
+                    id: game.network.idLocal,
+                    nick: emisor.nombre,
+                    hp: emisor.vidaActual,
+                    maxHp: emisor.vidaMaxima
+                  });
+                }
+              }
+              encontrada = true;
+              break;
+            }
+          }
+          if (encontrada) break;
+        }
+      }
     }
     game.registrarEventoLog(`CHAT - ${nombre}: ${texto}`);
   }

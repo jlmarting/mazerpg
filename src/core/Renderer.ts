@@ -66,7 +66,38 @@ export class Renderer {
         const celda = mapaLaberinto[fila][columna];
         if (celda.esTransitable) {
           this.ctx.fillStyle = '#FFF';
-          this.ctx.fillRect((columna - colOffset) * TAMANO_CELDA, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP, TAMANO_CELDA, TAMANO_CELDA);
+          const x = (columna - colOffset) * TAMANO_CELDA;
+          const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+          this.ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
+
+          // Delinear bordes púrpura
+          this.ctx.strokeStyle = '#800080';
+          this.ctx.lineWidth = 2;
+
+          if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, y);
+            this.ctx.lineTo(x + TAMANO_CELDA, y);
+            this.ctx.stroke();
+          }
+          if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, y + TAMANO_CELDA);
+            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
+            this.ctx.stroke();
+          }
+          if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, y);
+            this.ctx.lineTo(x, y + TAMANO_CELDA);
+            this.ctx.stroke();
+          }
+          if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x + TAMANO_CELDA, y);
+            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
+            this.ctx.stroke();
+          }
 
           // Dibujar Burbuja
           if (celda.burbuja) {

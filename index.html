@@ -28,6 +28,10 @@
             <button id="btnLogPanel" class="menu-btn">VER CONEXIONES</button>
             <div id="xpDisplay" style="color: #ffc107; font-weight: bold; margin-left: 15px;">XP: <span id="xpVal">0</span></div>
             <button id="btnFireball" style="width: 30px; height: 30px; border-radius: 50%; background: red; border: 2px solid white; cursor: pointer; margin-left: auto;" title="Bola de fuego (F)"></button>
+            <div id="zoomControls" style="margin-left: 15px; border-left: 1px solid #444; padding-left: 15px; font-size: 10px; display: flex; align-items: center; gap: 5px; color: #fff;">
+                <label>ZOOM: <input type="range" id="zoomSlider" min="1" max="3" step="0.1" value="1" style="vertical-align: middle; width: 60px;"></label>
+                <label style="white-space: nowrap;"><input type="checkbox" id="autoZoomCheck"> AUTOZOOM</label>
+            </div>
         </div>
         <div id="logPanel">
             <textarea id="logTextArea" readonly placeholder="Esperando logs de conexión..."></textarea>
@@ -59,10 +63,6 @@
                 <div id="qrContainer" style="margin-top: 10px; display: none; background: white; padding: 5px; border-radius: 5px;">
                     <img id="qrImage" src="" alt="QR Code" style="width: 128px; height: 128px;">
                 </div>
-            </div>
-            <div id="zoomControls" style="margin-top: 10px; border: 1px solid #555; padding: 10px; font-size: 11px;">
-                <label>ZOOM: <input type="range" id="zoomSlider" min="1" max="5" step="0.1" value="1" style="vertical-align: middle;"></label>
-                <label style="margin-left: 10px;"><input type="checkbox" id="autoZoomCheck"> AUTOZOOM COMBATE</label>
             </div>
         </div>
 

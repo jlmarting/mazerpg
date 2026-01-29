@@ -14,6 +14,29 @@ export class Renderer {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
+  aplicarZoom(config: GameConfig) {
+    const z = config.zoom;
+    const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
+    const mazeWidth = this.canvas.width;
+    const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;
+
+    this.ctx.save();
+
+    // Recorte para que el zoom no afecte a la UI estática
+    this.ctx.beginPath();
+    this.ctx.rect(0, ALTO_UI_TOP, mazeWidth, mazeHeight);
+    this.ctx.clip();
+
+    // Centrar zoom
+    this.ctx.translate(mazeWidth / 2, ALTO_UI_TOP + mazeHeight / 2);
+    this.ctx.scale(z, z);
+    this.ctx.translate(-mazeWidth / 2, -(ALTO_UI_TOP + mazeHeight / 2));
+  }
+
+  finalizarZoom() {
+    this.ctx.restore();
+  }
+
   obtenerOffsetCamara(protagonista: any, config: GameConfig): CameraOffset {
     if (!protagonista) return { colOffset: 0, filaOffset: 0 };
 

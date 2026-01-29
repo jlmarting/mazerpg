@@ -12,6 +12,9 @@ export interface GameConfig {
     CELDAS_VISIBLES_Y: number;
     vistaDebugActivada: boolean;
     dificultad: 'facil' | 'medio' | 'dificil';
+    zoom: number;
+    targetZoom: number;
+    autoZoom: boolean;
 }
 
 export interface CameraOffset {

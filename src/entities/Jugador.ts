@@ -1,5 +1,6 @@
 import { EntidadRPG } from './EntidadRPG';
 import { CameraOffset, GameConfig, IGame } from '../types';
+import { eliminarMurosEntre } from '../world/generation';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
@@ -205,6 +206,8 @@ export class Jugador extends EntidadRPG {
             if (celdaObjetivo.golpesCavar >= 5) {
                 celdaObjetivo.esTransitable = true;
                 celdaObjetivo.golpesCavar = 0;
+                // Eliminar muros entre la celda actual y la excavada
+                eliminarMurosEntre(game.mapaLaberinto[this.fila][this.columna], celdaObjetivo);
                 game.registrarEventoLog("¡Has cavado una galería!");
                 game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, "¡ABIERTO!", "#00ff00", game);
                 if (game.network && game.network.activo) {
@@ -254,6 +257,7 @@ export class Jugador extends EntidadRPG {
         this.inmunidadHasta = Date.now() + 30000;
         game.registrarEventoLog(`¡Burbuja de inmunidad activada (30s)!`);
         game.ui.mostrarNotificacionGrande(`¡INMUNE! (30s)`, "#00ffff", 5000);
+        celdaNueva.burbuja = null; // Eliminar del mapa
       }
 
       this.estaCaminando = true;

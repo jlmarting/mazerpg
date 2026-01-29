@@ -33,7 +33,10 @@ class Game implements IGame {
     CELDAS_VISIBLES_X: 10,
     CELDAS_VISIBLES_Y: 10,
     vistaDebugActivada: false,
-    dificultad: 'dificil'
+    dificultad: 'dificil',
+    zoom: 1,
+    targetZoom: 1,
+    autoZoom: false
   };
   public juegoTerminado: boolean = false;
   public mundoSincronizado: boolean = false;
@@ -79,8 +82,9 @@ class Game implements IGame {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    this.config.CELDAS_VISIBLES_X = Math.floor(canvas.width / this.config.TAMANO_CELDA);
-    this.config.CELDAS_VISIBLES_Y = Math.floor((canvas.height - this.config.ALTO_UI_TOP - this.config.ALTO_UI_BOTTOM) / this.config.TAMANO_CELDA);
+    const cellZoom = this.config.TAMANO_CELDA * this.config.zoom;
+    this.config.CELDAS_VISIBLES_X = Math.floor(canvas.width / cellZoom);
+    this.config.CELDAS_VISIBLES_Y = Math.floor((canvas.height - this.config.ALTO_UI_TOP - this.config.ALTO_UI_BOTTOM) / cellZoom);
   }
 
   setupEventListeners() {
@@ -124,6 +128,17 @@ class Game implements IGame {
 
     document.getElementById('btnReroll')?.addEventListener('click', () => this.recalcularStats());
     document.getElementById('btnQR')?.addEventListener('click', () => this.generarQR());
+
+    document.getElementById('btnFireball')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
+
+    document.getElementById('zoomSlider')?.addEventListener('input', (e) => {
+        this.config.targetZoom = parseFloat((e.target as HTMLInputElement).value);
+    });
+
+    document.getElementById('autoZoomCheck')?.addEventListener('change', (e) => {
+        this.config.autoZoom = (e.target as HTMLInputElement).checked;
+    });
+
     this.actualizarStatsLobby();
 
     window.addEventListener('keydown', (e) => {
@@ -140,6 +155,10 @@ class Game implements IGame {
       if (e.key === 'ArrowDown') haMovido = this.protagonista.intentarMover(1, 0, this);
       if (e.key === 'ArrowLeft') haMovido = this.protagonista.intentarMover(0, -1, this);
       if (e.key === 'ArrowRight') haMovido = this.protagonista.intentarMover(0, 1, this);
+
+      if (e.key.toLowerCase() === 'f') {
+          this.lanzarBolaDeFuego(this.protagonista, true);
+      }
 
       if (e.key.toLowerCase() === 'd') {
           this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
@@ -628,6 +647,8 @@ class Game implements IGame {
     this.actualizar();
     this.renderer.limpiar();
     const offset = this.renderer.obtenerOffsetCamara(this.protagonista, this.config);
+
+    this.renderer.aplicarZoom(this.config);
     this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config);
     this.renderer.dibujarNiebla(this.mapaLaberinto, offset, this.config);
 
@@ -684,6 +705,7 @@ class Game implements IGame {
             this.renderer.dibujarProyectil(b, offset, this.config);
         }
     }
+    this.renderer.finalizarZoom();
 
     this.renderer.dibujarMarcadoresMovimiento(this.config);
     this.renderer.dibujarUI(this);
@@ -693,6 +715,29 @@ class Game implements IGame {
 
   actualizar() {
     if (!this.protagonista) return;
+
+    // Zoom progresivo
+    if (this.config.zoom !== this.config.targetZoom) {
+        const diff = this.config.targetZoom - this.config.zoom;
+        if (Math.abs(diff) < 0.01) {
+            this.config.zoom = this.config.targetZoom;
+        } else {
+            this.config.zoom += diff * 0.05;
+        }
+        this.ajustarDimensiones();
+    }
+
+    // Autozoom combate
+    if (this.config.autoZoom) {
+        if (this.protagonista.enCombateCon) {
+            this.config.targetZoom = 5;
+        } else {
+            this.config.targetZoom = 1;
+        }
+        // Actualizar slider UI
+        const slider = document.getElementById('zoomSlider') as HTMLInputElement;
+        if (slider) slider.value = this.config.targetZoom.toString();
+    }
 
     // Verificar UI de fin de juego
     const btnEmpezar = document.getElementById('btnEmpezar') as HTMLButtonElement;
@@ -862,8 +907,11 @@ class Game implements IGame {
 
     let idx = 0;
     this.network.jugadoresRemotos.forEach((j, id) => {
-        if (j.entidad && idx < posicionesLibres.length) {
+        // No teletransportar al líder si es uno de los jugadores remotos
+        if (j.entidad && j.entidad !== lider && idx < posicionesLibres.length) {
             const pos = posicionesLibres[idx++];
+            j.entidad.fila = pos.f;
+            j.entidad.columna = pos.c;
             if (this.esHost) {
                 this.network.enviarMensaje({ tipo: 'force_teleport', id: id, f: pos.f, c: pos.c });
             }

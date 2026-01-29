@@ -70,12 +70,6 @@ export class UIManager {
       if (visible) {
         emisor.bubbleChat = { texto: texto, expira: Date.now() + 4000 };
       }
-      if (texto.toLowerCase().trim() === "fireball" || texto.toLowerCase().trim() === "bola de fuego") {
-        (game as any).lanzarBolaDeFuego(emisor, _esLocal);
-      }
-      if (texto.toLowerCase().trim() === "a mi la guardia") {
-        (game as any).teletransportarAliados(emisor, _esLocal);
-      }
     }
     game.registrarEventoLog(`CHAT - ${nombre}: ${texto}`);
   }

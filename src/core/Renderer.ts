@@ -40,13 +40,13 @@ export class Renderer {
   obtenerOffsetCamara(protagonista: any, config: GameConfig): CameraOffset {
     if (!protagonista) return { colOffset: 0, filaOffset: 0 };
 
-    const { NUMERO_COLUMNAS, NUMERO_FILAS, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+    const { TAMANO_CELDA, ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
+    const mazeWidth = this.canvas.width;
+    const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;
 
-    let colOffset = protagonista.columna - Math.floor(CELDAS_VISIBLES_X / 2);
-    let filaOffset = protagonista.fila - Math.floor(CELDAS_VISIBLES_Y / 2);
-
-    colOffset = Math.max(0, Math.min(colOffset, NUMERO_COLUMNAS - CELDAS_VISIBLES_X));
-    filaOffset = Math.max(0, Math.min(filaOffset, NUMERO_FILAS - CELDAS_VISIBLES_Y));
+    // Calculamos el offset para que el protagonista esté exactamente en el centro del viewport
+    const colOffset = protagonista.columna - (mazeWidth / TAMANO_CELDA / 2) + 0.5;
+    const filaOffset = protagonista.fila - (mazeHeight / TAMANO_CELDA / 2) + 0.5;
 
     return { colOffset, filaOffset };
   }
@@ -58,9 +58,14 @@ export class Renderer {
     this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
 
-    for (let fila = filaOffset; fila < filaOffset + CELDAS_VISIBLES_Y; fila++) {
+    const fInicio = Math.floor(filaOffset);
+    const fFin = Math.ceil(filaOffset + CELDAS_VISIBLES_Y);
+    const cInicio = Math.floor(colOffset);
+    const cFin = Math.ceil(colOffset + CELDAS_VISIBLES_X);
+
+    for (let fila = fInicio; fila < fFin; fila++) {
       if (fila < 0 || fila >= NUMERO_FILAS) continue;
-      for (let columna = colOffset; columna < colOffset + CELDAS_VISIBLES_X; columna++) {
+      for (let columna = cInicio; columna < cFin; columna++) {
         if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
 
         const celda = mapaLaberinto[fila][columna];
@@ -169,9 +174,14 @@ export class Renderer {
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
 
     const tiempoActual = Date.now();
-    for (let fila = filaOffset; fila < filaOffset + CELDAS_VISIBLES_Y; fila++) {
+    const fInicio = Math.floor(filaOffset);
+    const fFin = Math.ceil(filaOffset + CELDAS_VISIBLES_Y);
+    const cInicio = Math.floor(colOffset);
+    const cFin = Math.ceil(colOffset + CELDAS_VISIBLES_X);
+
+    for (let fila = fInicio; fila < fFin; fila++) {
       if (fila < 0 || fila >= NUMERO_FILAS) continue;
-      for (let columna = colOffset; columna < colOffset + CELDAS_VISIBLES_X; columna++) {
+      for (let columna = cInicio; columna < cFin; columna++) {
         if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
 
         const celda = mapaLaberinto[fila][columna];
@@ -195,11 +205,11 @@ export class Renderer {
   }
 
   dibujarUI(game: any) {
-    const { ALTO_UI_TOP, ALTO_UI_BOTTOM, CELDAS_VISIBLES_Y, TAMANO_CELDA } = game.config;
+    const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = game.config;
 
     this.ctx.fillStyle = '#111';
     this.ctx.fillRect(0, 0, this.canvas.width, ALTO_UI_TOP);
-    this.ctx.fillRect(0, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA), this.canvas.width, ALTO_UI_BOTTOM);
+    this.ctx.fillRect(0, this.canvas.height - ALTO_UI_BOTTOM, this.canvas.width, ALTO_UI_BOTTOM);
 
     this.ctx.strokeStyle = '#555';
     this.ctx.lineWidth = 2;
@@ -236,7 +246,7 @@ export class Renderer {
 
     if (game.juegoTerminado) {
       this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
+      this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM);
       this.ctx.fillStyle = '#fff';
       this.ctx.font = 'bold 16px monospace';
       this.ctx.textAlign = 'center';
@@ -269,11 +279,12 @@ export class Renderer {
   }
 
   dibujarMarcadoresMovimiento(config: GameConfig) {
-    const { ALTO_UI_TOP, CELDAS_VISIBLES_Y, TAMANO_CELDA } = config;
+    const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
+    const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;
     this.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     const tam = 20;
     const centroX = this.canvas.width / 2;
-    const centroY = ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) / 2;
+    const centroY = ALTO_UI_TOP + mazeHeight / 2;
     const gap = 10;
 
     // Arriba
@@ -285,9 +296,9 @@ export class Renderer {
 
     // Abajo
     this.ctx.beginPath();
-    this.ctx.moveTo(centroX, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap);
-    this.ctx.lineTo(centroX - tam, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap - tam);
-    this.ctx.lineTo(centroX + tam, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap - tam);
+    this.ctx.moveTo(centroX, ALTO_UI_TOP + mazeHeight - gap);
+    this.ctx.lineTo(centroX - tam, ALTO_UI_TOP + mazeHeight - gap - tam);
+    this.ctx.lineTo(centroX + tam, ALTO_UI_TOP + mazeHeight - gap - tam);
     this.ctx.fill();
 
     // Izquierda

@@ -40,23 +40,36 @@
 
     <div id="lobby">
         <h1 style="color: #007bff;">MazeRPG</h1>
-        <div style="margin-bottom: 20px; border: 1px solid #444; padding: 15px; border-radius: 5px; display: flex; flex-direction: column; gap: 10px;">
-            <label>TU NICK: <input type="text" id="nickInput" value="Héroe" maxlength="10" style="padding: 5px; font-family: 'Courier New', monospace; background: #111; color: #fff; border: 1px solid #555;"></label>
-            <label>DIFICULTAD:
-                <select id="difficultySelect" style="padding: 5px; font-family: 'Courier New', monospace; background: #111; color: #fff; border: 1px solid #555;">
+        <div class="lobby-config-panel">
+            <div class="input-group">
+                <label class="lobby-label-bright">TU NICK:</label>
+                <input type="text" id="nickInput" value="Héroe" maxlength="10" class="lobby-input">
+            </div>
+            <div class="input-group">
+                <label class="lobby-label-bright">DIFICULTAD:</label>
+                <select id="difficultySelect" class="lobby-select">
                     <option value="facil" selected>FÁCIL 😊</option>
                     <option value="medio">MEDIO ⚔️</option>
                     <option value="dificil">DIFÍCIL 💀</option>
                 </select>
-            </label>
-            <div id="lobbyStats" style="border: 1px dashed #555; padding: 10px; background: #000; font-size: 12px;">
-                <p style="margin: 0; color: #aaa;">ESTADÍSTICAS DEL HÉROE:</p>
-                <div style="display: flex; justify-content: space-around; margin: 10px 0; color: #00ff00;">
-                    <span>FUE: <span id="lobbyFue">?</span></span>
-                    <span>AGI: <span id="lobbyAgi">?</span></span>
-                    <span>INT: <span id="lobbyInt">?</span></span>
+            </div>
+            <div id="lobbyStats" class="stats-panel">
+                <p class="stats-title">ESTADÍSTICAS DEL HÉROE</p>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <label class="stat-label">FUERZA (FUE)</label>
+                        <input type="text" id="lobbyFue" readonly class="stat-field">
+                    </div>
+                    <div class="stat-item">
+                        <label class="stat-label">AGILIDAD (AGI)</label>
+                        <input type="text" id="lobbyAgi" readonly class="stat-field">
+                    </div>
+                    <div class="stat-item">
+                        <label class="stat-label">INTELIGENCIA (INT)</label>
+                        <input type="text" id="lobbyInt" readonly class="stat-field">
+                    </div>
                 </div>
-                <div style="display: flex; gap: 10px; justify-content: center;">
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
                     <button id="btnReroll" style="padding: 5px 10px; cursor: pointer; background: #444; color: #fff; border: 1px solid #666; font-family: monospace; font-size: 10px;">RECALCULAR DADOS</button>
                     <button id="btnQR" style="padding: 5px 10px; cursor: pointer; background: #007bff; color: #fff; border: 1px solid #0056b3; font-family: monospace; font-size: 10px;">GENERAR QR PARTIDA</button>
                 </div>

@@ -10,6 +10,44 @@ export class Jugador extends EntidadRPG {
 
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
+    this.generarStats();
+  }
+
+  generarStats() {
+    this.fuerza = Math.floor(Math.random() * 10) + 1;
+    this.agilidad = Math.floor(Math.random() * 10) + 1;
+    this.inteligencia = Math.floor(Math.random() * 10) + 1;
+    let sum = this.fuerza + this.agilidad + this.inteligencia;
+
+    if (sum > 24) {
+      const exceso = sum - 24;
+      if (this.fuerza >= this.agilidad && this.fuerza >= this.inteligencia) {
+        this.fuerza -= exceso;
+      } else if (this.agilidad >= this.fuerza && this.agilidad >= this.inteligencia) {
+        this.agilidad -= exceso;
+      } else {
+        this.inteligencia -= exceso;
+      }
+    } else if (sum < 6) {
+      if (this.fuerza >= this.agilidad && this.fuerza >= this.inteligencia) {
+        this.fuerza = 15;
+      } else if (this.agilidad >= this.fuerza && this.agilidad >= this.inteligencia) {
+        this.agilidad = 15;
+      } else {
+        this.inteligencia = 15;
+      }
+    } else if (sum < 9) {
+      if (this.fuerza <= this.agilidad && this.fuerza <= this.inteligencia) {
+        this.fuerza = 8;
+      } else if (this.agilidad <= this.fuerza && this.agilidad <= this.inteligencia) {
+        this.agilidad = 8;
+      } else {
+        this.inteligencia = 8;
+      }
+    }
+
+    this.vidaMaxima = Math.floor(10 * ((this.fuerza * 2 + this.agilidad) / 3));
+    this.vidaActual = this.vidaMaxima;
   }
 
   dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {

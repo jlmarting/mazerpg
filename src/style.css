@@ -131,6 +131,93 @@ canvas {
     margin-top: 0;
     letter-spacing: 2px;
     text-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+    margin-bottom: 25px;
+}
+
+.lobby-config-panel {
+    width: 100%;
+    margin-bottom: 25px;
+    border: 1px solid #444;
+    padding: 20px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    background: rgba(20, 20, 20, 0.5);
+    box-sizing: border-box;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.lobby-label-bright {
+    color: #fff;
+    font-weight: bold;
+    font-size: 13px;
+    text-shadow: 1px 1px 2px #000;
+}
+
+.lobby-input, .lobby-select {
+    padding: 8px;
+    font-family: 'Courier New', monospace;
+    background: #000;
+    color: #0f0;
+    border: 1px solid #555;
+    border-radius: 4px;
+}
+
+.stats-panel {
+    border: 1px dashed #007bff;
+    padding: 15px;
+    background: #000;
+    border-radius: 6px;
+    margin-top: 10px;
+}
+
+.stats-title {
+    margin: 0 0 15px 0;
+    color: #007bff;
+    font-size: 12px;
+    font-weight: bold;
+    text-align: center;
+    border-bottom: 1px solid #222;
+    padding-bottom: 5px;
+}
+
+.stats-grid {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.stat-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.stat-label {
+    font-size: 9px;
+    color: #aaa;
+    text-align: center;
+}
+
+.stat-field {
+    width: 100%;
+    background: #111;
+    color: #00ff00;
+    border: 1px solid #333;
+    text-align: center;
+    padding: 5px 0;
+    font-weight: bold;
+    font-size: 16px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
 }
 
 @media (max-width: 600px) {

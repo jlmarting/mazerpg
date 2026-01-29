@@ -82,9 +82,10 @@ class Game implements IGame {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    const cellZoom = this.config.TAMANO_CELDA * this.config.zoom;
-    this.config.CELDAS_VISIBLES_X = Math.floor(canvas.width / cellZoom);
-    this.config.CELDAS_VISIBLES_Y = Math.floor((canvas.height - this.config.ALTO_UI_TOP - this.config.ALTO_UI_BOTTOM) / cellZoom);
+    // CELDAS_VISIBLES se usa para el rango de dibujado.
+    // Lo calculamos para zoom 1 y añadimos margen para asegurar cobertura total al centrar.
+    this.config.CELDAS_VISIBLES_X = Math.ceil(canvas.width / this.config.TAMANO_CELDA) + 4;
+    this.config.CELDAS_VISIBLES_Y = Math.ceil((canvas.height - this.config.ALTO_UI_TOP - this.config.ALTO_UI_BOTTOM) / this.config.TAMANO_CELDA) + 4;
   }
 
   setupEventListeners() {
@@ -376,12 +377,12 @@ class Game implements IGame {
   }
 
   actualizarStatsLobby() {
-    const f = document.getElementById('lobbyFue');
-    const a = document.getElementById('lobbyAgi');
-    const i = document.getElementById('lobbyInt');
-    if (f) f.textContent = this.protagonista.fuerza.toString();
-    if (a) a.textContent = this.protagonista.agilidad.toString();
-    if (i) i.textContent = this.protagonista.inteligencia.toString();
+    const f = document.getElementById('lobbyFue') as HTMLInputElement;
+    const a = document.getElementById('lobbyAgi') as HTMLInputElement;
+    const i = document.getElementById('lobbyInt') as HTMLInputElement;
+    if (f) f.value = this.protagonista.fuerza.toString();
+    if (a) a.value = this.protagonista.agilidad.toString();
+    if (i) i.value = this.protagonista.inteligencia.toString();
   }
 
   recalcularStats() {

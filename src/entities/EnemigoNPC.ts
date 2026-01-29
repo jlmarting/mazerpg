@@ -204,45 +204,102 @@ export class EnemigoNPC extends EntidadRPG {
     ctx.lineWidth = 1;
 
     if (this.tipo === "Esqueleto") {
-      ctx.fillStyle = '#FFF';
+      // Cráneo
+      ctx.fillStyle = '#EEE';
       ctx.beginPath();
       ctx.arc(x, y - escala/2, escala, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      // Ojos
       ctx.fillStyle = '#000';
       ctx.beginPath();
       ctx.arc(x - 3, y - escala/2, 2, 0, Math.PI * 2);
       ctx.arc(x + 3, y - escala/2, 2, 0, Math.PI * 2);
       ctx.fill();
+      // Nariz
+      ctx.beginPath();
+      ctx.moveTo(x, y - escala/2 + 2);
+      ctx.lineTo(x-1, y - escala/2 + 4);
+      ctx.lineTo(x+1, y - escala/2 + 4);
+      ctx.fill();
+      // Costillas
+      ctx.strokeStyle = '#EEE';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 2); ctx.lineTo(x, y + escala); // Espina
+      ctx.moveTo(x - escala/2, y + 4); ctx.lineTo(x + escala/2, y + 4);
+      ctx.moveTo(x - escala/2, y + 8); ctx.lineTo(x + escala/2, y + 8);
+      ctx.stroke();
     } else if (this.tipo === "Orco") {
-      ctx.fillStyle = '#228B22';
+      // Cuerpo
+      ctx.fillStyle = '#2F4F4F';
       ctx.beginPath();
       ctx.rect(x - escala, y - escala, escala * 2, escala * 2);
       ctx.fill();
       ctx.stroke();
+      // Cara
+      ctx.fillStyle = '#228B22';
+      ctx.fillRect(x - escala + 2, y - escala + 2, escala * 2 - 4, escala * 2 - 4);
+      // Ojos rojos
+      ctx.fillStyle = '#F00';
+      ctx.fillRect(x - 5, y - 4, 3, 2);
+      ctx.fillRect(x + 2, y - 4, 3, 2);
+      // Colmillos
       ctx.fillStyle = '#FFF';
       ctx.beginPath();
-      ctx.moveTo(x - 4, y + 2); ctx.lineTo(x - 2, y - 2); ctx.lineTo(x, y + 2);
-      ctx.moveTo(x + 4, y + 2); ctx.lineTo(x + 2, y - 2); ctx.lineTo(x, y + 2);
+      ctx.moveTo(x - 4, y + 4); ctx.lineTo(x - 2, y); ctx.lineTo(x, y + 4);
+      ctx.moveTo(x + 4, y + 4); ctx.lineTo(x + 2, y); ctx.lineTo(x, y + 4);
       ctx.fill();
+      // Hombreras
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x - escala, y - escala, 4, Math.PI, 1.5 * Math.PI);
+      ctx.arc(x + escala, y - escala, 4, 1.5 * Math.PI, 0);
+      ctx.stroke();
     } else if (this.tipo === "Goblin") {
+      // Cabeza/Cuerpo
       ctx.fillStyle = '#32CD32';
       ctx.beginPath();
-      ctx.moveTo(x, y - escala * 1.5);
-      ctx.lineTo(x - escala, y + escala);
-      ctx.lineTo(x + escala, y + escala);
-      ctx.closePath();
+      ctx.ellipse(x, y + 2, escala, escala * 1.2, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-    } else {
-      ctx.fillStyle = '#8B4513';
+      // Orejas puntiagudas
       ctx.beginPath();
-      ctx.rect(x - escala, y - escala, escala * 2, escala * 2);
+      ctx.moveTo(x - escala + 2, y - 2); ctx.lineTo(x - escala - 6, y - 8); ctx.lineTo(x - 4, y);
+      ctx.moveTo(x + escala - 2, y - 2); ctx.lineTo(x + escala + 6, y - 8); ctx.lineTo(x + 4, y);
       ctx.fill();
       ctx.stroke();
+      // Ojos amarillos
+      ctx.fillStyle = '#FF0';
       ctx.beginPath();
-      ctx.moveTo(x - escala, y - escala); ctx.lineTo(x - escala - 4, y - escala - 6);
-      ctx.moveTo(x + escala, y - escala); ctx.lineTo(x + escala + 4, y - escala - 6);
+      ctx.arc(x - 3, y - 2, 2, 0, Math.PI * 2);
+      ctx.arc(x + 3, y - 2, 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else { // Minotauro / Jefe
+      // Cabeza
+      ctx.fillStyle = '#5C4033';
+      ctx.beginPath();
+      ctx.rect(x - escala, y - escala/2, escala * 2, escala * 1.5);
+      ctx.fill();
+      ctx.stroke();
+      // Cuernos grandes
+      ctx.strokeStyle = '#DDD';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x - escala, y - escala/2);
+      ctx.quadraticCurveTo(x - escala - 10, y - escala - 10, x - 5, y - escala - 5);
+      ctx.moveTo(x + escala, y - escala/2);
+      ctx.quadraticCurveTo(x + escala + 10, y - escala - 10, x + 5, y - escala - 5);
+      ctx.stroke();
+      // Hocico
+      ctx.fillStyle = '#3D2B1F';
+      ctx.fillRect(x - escala/2, y + 2, escala, escala/2);
+      // Anillo de oro
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(x, y + escala/2 + 2, 3, 0, Math.PI * 2);
       ctx.stroke();
     }
   }

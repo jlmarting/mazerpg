@@ -236,29 +236,28 @@ export class Jugador extends EntidadRPG {
 
     if (!esMovimientoValido && this.tienePico && sigFila >= 0 && sigFila < game.config.NUMERO_FILAS && sigColumna >= 0 && sigColumna < game.config.NUMERO_COLUMNAS) {
         const celdaObjetivo = game.mapaLaberinto[sigFila][sigColumna];
-        if (!celdaObjetivo.esTransitable) {
-            if (this.ultimaCasillaAtacada && this.ultimaCasillaAtacada.f === sigFila && this.ultimaCasillaAtacada.c === sigColumna) {
-                celdaObjetivo.golpesCavar++;
-            } else {
-                celdaObjetivo.golpesCavar = 1;
-                this.ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
-            }
-            game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, `¡CLANC! ${celdaObjetivo.golpesCavar}/5`, "#aaaaaa", game);
-            game.registrarEventoLog("Picas la roca...");
-
-            if (celdaObjetivo.golpesCavar >= 5) {
-                celdaObjetivo.esTransitable = true;
-                celdaObjetivo.golpesCavar = 0;
-                // Eliminar muros entre la celda actual y la excavada
-                eliminarMurosEntre(game.mapaLaberinto[this.fila][this.columna], celdaObjetivo);
-                game.registrarEventoLog("¡Has cavado una galería!");
-                game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, "¡ABIERTO!", "#00ff00", game);
-                if (game.network && game.network.activo) {
-                    game.network.enviarMensaje({ tipo: 'dig_completed', f: sigFila, c: sigColumna });
-                }
-            }
-            return false;
+        // Permitir excavar si no es movimiento válido (hay muro) incluso si la celda es transitable (bordes residuales)
+        if (this.ultimaCasillaAtacada && this.ultimaCasillaAtacada.f === sigFila && this.ultimaCasillaAtacada.c === sigColumna) {
+            celdaObjetivo.golpesCavar++;
+        } else {
+            celdaObjetivo.golpesCavar = 1;
+            this.ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
         }
+        game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, `¡CLANC! ${celdaObjetivo.golpesCavar}/5`, "#aaaaaa", game);
+        game.registrarEventoLog("Picas la roca...");
+
+        if (celdaObjetivo.golpesCavar >= 5) {
+            celdaObjetivo.esTransitable = true;
+            celdaObjetivo.golpesCavar = 0;
+            // Eliminar muros entre la celda actual y la excavada
+            eliminarMurosEntre(game.mapaLaberinto[this.fila][this.columna], celdaObjetivo);
+            game.registrarEventoLog("¡Has cavado una galería!");
+            game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, "¡ABIERTO!", "#00ff00", game);
+            if (game.network && game.network.activo) {
+                game.network.enviarMensaje({ tipo: 'dig_completed', f: sigFila, c: sigColumna });
+            }
+        }
+        return false;
     }
 
     if (esMovimientoValido) {

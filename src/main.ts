@@ -190,6 +190,18 @@ class Game implements IGame {
     });
   }
 
+  asegurarEntidadRemota(id: string, nick: string, fila: number = 0, columna: number = 0) {
+    if (!this.network.jugadoresRemotos.has(id)) {
+        this.network.jugadoresRemotos.set(id, { pc: null, dc: null, entidad: null, unsubscribes: [] });
+    }
+    const jInfo = this.network.jugadoresRemotos.get(id)!;
+    if (!jInfo.entidad) {
+        jInfo.entidad = new JugadorRemoto(fila, columna, nick, id);
+        this.setupEntity(jInfo.entidad);
+    }
+    return jInfo;
+  }
+
   empezarSolo() {
     this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
     this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
@@ -205,6 +217,13 @@ class Game implements IGame {
     this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
     (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
     this.crearPartidaFirestore();
+
+    // Auto-admisión periódica
+    setInterval(() => {
+        if (this.esHost && this.firebase.isInitialized()) {
+            this.admitirCandidatos();
+        }
+    }, 5000);
   }
 
   async crearPartidaFirestore() {
@@ -338,6 +357,7 @@ class Game implements IGame {
             hostNick: this.protagonista.nombre
         });
         this.registrarEventoLog("Ahora eres el Host de la partida.");
+        this.admitirCandidatos();
 
         setInterval(() => {
             if (this.esHost && this.network.idPartidaActual) {
@@ -831,14 +851,22 @@ class Game implements IGame {
 
     this.network.jugadoresRemotos.forEach((other, otherId) => {
         if (otherId !== guestId && other.entidad) {
-            jInfo.dc.send(JSON.stringify({
+            // Enviamos handshake para asegurar que el nuevo cliente cree la entidad
+    jInfo.dc?.send(JSON.stringify({
+                tipo: 'handshake', id: otherId, nick: other.entidad.nombre
+            }));
+    jInfo.dc?.send(JSON.stringify({
                 tipo: 'posicion', f: other.entidad.fila, c: other.entidad.columna,
                 cam: false, nick: other.entidad.nombre, id: otherId,
                 hp: other.entidad.vidaActual, maxHp: other.entidad.vidaMaxima
             }));
         }
     });
-    jInfo.dc.send(JSON.stringify({
+    // Enviamos el handshake y posición del Host
+    jInfo.dc?.send(JSON.stringify({
+        tipo: 'handshake', id: this.network.idLocal, nick: this.protagonista.nombre
+    }));
+    jInfo.dc?.send(JSON.stringify({
         tipo: 'posicion', f: this.protagonista.fila, c: this.protagonista.columna,
         cam: false, nick: this.protagonista.nombre, id: this.network.idLocal,
         hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
@@ -1078,28 +1106,32 @@ class Game implements IGame {
     }
   }
 
-  procesarMensajeMultiplayer(msg: any, idEmisor: string) {
-    const idSujeto = msg.id || idEmisor;
+  procesarMensajeMultiplayer(msg: any, idEmisor: string): string {
+    let idActualEmisor = idEmisor;
+
+    if (idEmisor === 'host' && msg.id && msg.id !== 'host') {
+        if (this.network.actualizarIdConexion('host', msg.id)) {
+            idActualEmisor = msg.id;
+        }
+    }
+
+    const idSujeto = msg.id || idActualEmisor;
+
+    if (msg.nick) {
+        this.asegurarEntidadRemota(idSujeto, msg.nick, msg.f || 0, msg.c || 0);
+    }
+
     switch (msg.tipo) {
         case 'handshake':
-            if (!this.network.jugadoresRemotos.has(idSujeto)) {
-                const pc: any = null;
-                const dc: any = null;
-                this.network.jugadoresRemotos.set(idSujeto, { pc, dc, entidad: null, unsubscribes: [] });
-            }
-            const jInfo = this.network.jugadoresRemotos.get(idSujeto)!;
-            if (!jInfo.entidad) {
-                jInfo.entidad = new JugadorRemoto(0, 0, msg.nick, idSujeto);
-                this.setupEntity(jInfo.entidad);
-            }
-
+            this.asegurarEntidadRemota(idSujeto, msg.nick);
             if (this.esHost) {
                 this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
-            } else {
+            } else if (idEmisor === idSujeto) {
                 this.network.enviarMensaje({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.network.idLocal });
             }
             break;
         case 'handshake_ack':
+            this.asegurarEntidadRemota(idSujeto, msg.nick);
             if (this.esHost) {
                 const jInfoAck = this.network.jugadoresRemotos.get(idSujeto);
                 if (jInfoAck && jInfoAck.entidad) jInfoAck.entidad.nombre = msg.nick;
@@ -1163,6 +1195,7 @@ class Game implements IGame {
             }
             break;
         case 'posicion':
+            this.asegurarEntidadRemota(idSujeto, msg.nick, msg.f, msg.c);
             const jPos = this.network.jugadoresRemotos.get(idSujeto);
             if (jPos && jPos.entidad) {
                 jPos.entidad.fila = msg.f;
@@ -1245,6 +1278,7 @@ class Game implements IGame {
             });
             break;
     }
+    return idActualEmisor;
   }
 }
 

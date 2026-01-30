@@ -1,8 +1,8 @@
 import { IGame } from '../types';
 
 export interface RemotePlayer {
-    pc: RTCPeerConnection;
-    dc: RTCDataChannel;
+    pc: RTCPeerConnection | null;
+    dc: RTCDataChannel | null;
     entidad: any;
     unsubscribes: (() => void)[];
 }
@@ -28,7 +28,18 @@ export class NetworkManager {
     });
   }
 
+  actualizarIdConexion(idViejo: string, idNuevo: string) {
+    const info = this.jugadoresRemotos.get(idViejo);
+    if (info) {
+        this.jugadoresRemotos.delete(idViejo);
+        this.jugadoresRemotos.set(idNuevo, info);
+        return true;
+    }
+    return false;
+  }
+
   setupDataChannelHandlers(canal: RTCDataChannel, idEmisor: string, game: IGame) {
+    let idActual = idEmisor;
     canal.addEventListener('open', () => {
       this.activo = true;
       this.multiplayerActivo = true;
@@ -36,14 +47,15 @@ export class NetworkManager {
       this.enviarMensaje({ tipo: 'handshake', nick: nick, id: this.idLocal });
 
       if (this.esHost) {
-        game.registrarEventoLog(`Jugador conectado (${idEmisor})`);
+        game.registrarEventoLog(`Jugador conectado (${idActual})`);
       }
     });
 
     canal.onmessage = (evento) => {
       try {
         const mensaje = JSON.parse(evento.data);
-        game.procesarMensajeMultiplayer(mensaje, idEmisor);
+        const idRetorno = (game as any).procesarMensajeMultiplayer(mensaje, idActual);
+        if (idRetorno) idActual = idRetorno;
       } catch(e) {
         console.error("Error al procesar mensaje P2P:", e);
       }

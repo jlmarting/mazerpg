@@ -458,6 +458,7 @@ class Game implements IGame {
 
     // Generar burbujas (máximo 5)
     const burbujas: {f: number, c: number, nombre: string}[] = [];
+    const nombresBurbujas = new Set<string>();
     for (let i = 0; i < 5; i++) {
         let f, c;
         let s = 0;
@@ -468,7 +469,14 @@ class Game implements IGame {
         } while ((!this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].burbuja) && s < 1000);
 
         if (this.mapaLaberinto[f][c].esTransitable) {
-            const nombre = generateBubbleName();
+            let nombre = "";
+            let intentosNombre = 0;
+            do {
+                nombre = generateBubbleName();
+                intentosNombre++;
+            } while (nombresBurbujas.has(nombre) && intentosNombre < 100);
+
+            nombresBurbujas.add(nombre);
             burbujas.push({ f, c, nombre });
         }
     }

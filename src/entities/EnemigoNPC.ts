@@ -20,10 +20,10 @@ export class EnemigoNPC extends EntidadRPG {
 
   aplicarPenalizadores(dificultad: string) {
     if (dificultad === 'facil') {
-        this.fuerza = Math.max(1, Math.floor(this.fuerza * 0.5));
-        this.agilidad = Math.max(1, Math.floor(this.agilidad * 0.5));
-        this.inteligencia = Math.max(1, Math.floor(this.inteligencia * 0.5));
-        this.vidaMaxima = Math.max(1, Math.floor(this.vidaMaxima * 0.5));
+        this.fuerza = Math.max(1, Math.floor(this.fuerza * 0.7));
+        this.agilidad = Math.max(1, Math.floor(this.agilidad * 0.7));
+        this.inteligencia = Math.max(1, Math.floor(this.inteligencia * 0.7));
+        this.vidaMaxima = Math.max(1, Math.floor(this.vidaMaxima * 0.7));
         this.vidaActual = this.vidaMaxima;
     }
 

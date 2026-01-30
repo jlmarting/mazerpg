@@ -7,7 +7,7 @@ import { Renderer } from './core/Renderer';
 import { UIManager } from './ui/UIManager';
 import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
-import { generarLaberintoBSP } from './world/generation';
+import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
 import { GameConfig, IGame } from './types';
@@ -813,8 +813,14 @@ class Game implements IGame {
     for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
         for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
             const celda = this.mapaLaberinto[f][c];
-            if (celda.alimento || celda.burbuja) {
-                objetos.push({ f, c, a: celda.alimento, b: celda.burbuja });
+            if (celda.alimento || celda.burbuja || celda.esPortal || celda.tienePico) {
+                objetos.push({
+                    f, c,
+                    a: celda.alimento,
+                    b: celda.burbuja,
+                    p: celda.esPortal,
+                    k: celda.tienePico
+                });
             }
         }
     }
@@ -1117,6 +1123,8 @@ class Game implements IGame {
                 const celda = this.mapaLaberinto[o.f][o.c];
                 celda.alimento = o.a;
                 celda.burbuja = o.b;
+                celda.esPortal = o.p || false;
+                celda.tienePico = o.k || false;
             });
             this.mundoSincronizado = true;
             this.ui.ocultarLobby();
@@ -1135,6 +1143,10 @@ class Game implements IGame {
         case 'dig_completed':
             const celdaDig = this.mapaLaberinto[msg.f][msg.c];
             celdaDig.esTransitable = true;
+            if (msg.fromF !== undefined && msg.fromC !== undefined) {
+                const celdaOri = this.mapaLaberinto[msg.fromF][msg.fromC];
+                eliminarMurosEntre(celdaOri, celdaDig);
+            }
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'force_teleport':

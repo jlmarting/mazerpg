@@ -254,7 +254,13 @@ export class Jugador extends EntidadRPG {
             game.registrarEventoLog("¡Has cavado una galería!");
             game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, "¡ABIERTO!", "#00ff00", game);
             if (game.network && game.network.activo) {
-                game.network.enviarMensaje({ tipo: 'dig_completed', f: sigFila, c: sigColumna });
+                game.network.enviarMensaje({
+                    tipo: 'dig_completed',
+                    f: sigFila,
+                    c: sigColumna,
+                    fromF: this.fila,
+                    fromC: this.columna
+                });
             }
         }
         return false;

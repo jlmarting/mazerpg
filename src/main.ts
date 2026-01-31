@@ -951,6 +951,18 @@ class Game implements IGame {
         if (slider) slider.value = this.config.targetZoom.toString();
     }
 
+    // Actualizar indicadores de estado
+    const statusContainer = document.getElementById('statusIndicators');
+    if (statusContainer) {
+        let html = '';
+        const ahora = Date.now();
+        if (this.protagonista.inmunidadHasta > ahora) {
+            const segundos = Math.ceil((this.protagonista.inmunidadHasta - ahora) / 1000);
+            html += `<div class="status-item">🛡️ INMUNIDAD: ${segundos}s</div>`;
+        }
+        statusContainer.innerHTML = html;
+    }
+
     // Verificar UI de fin de juego
     const btnEmpezar = document.getElementById('btnEmpezar') as HTMLButtonElement;
     if (!this.protagonista.estaVivo || this.juegoTerminado) {

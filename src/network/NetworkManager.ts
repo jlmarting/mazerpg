@@ -85,20 +85,20 @@ export class NetworkManager {
   }
 
   async setupWebRTCHost(guestId: string, game: IGame) {
-    if (!guestId) return;
-    if (this.jugadoresRemotos.has(guestId)) {
-      const existing = this.jugadoresRemotos.get(guestId)!;
-      if (existing.pc && (existing.pc.connectionState === 'connected' || existing.pc.connectionState === 'connecting')) {
-        return;
-      }
-    }
+    if (!guestId || this.jugadoresRemotos.has(guestId)) return;
+
+    // Bloqueo inmediato para evitar re-entrada por ráfagas de onSnapshot
+    const info: RemotePlayer = { pc: null as any, dc: null as any, entidad: null, unsubscribes: [], idNumerico: 0 };
+    this.jugadoresRemotos.set(guestId, info);
 
     game.ui.registrarLogConexion(`Iniciando PeerConnection para Invitado: ${guestId}`);
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     const dc = pc.createDataChannel("mazeRPG");
     const iceBuffer: any[] = [];
-    const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [], idNumerico: 0 };
-    this.jugadoresRemotos.set(guestId, info);
+
+    info.pc = pc;
+    info.dc = dc;
+
     this.setupDataChannelHandlers(dc, guestId, game);
 
     dc.addEventListener('open', () => {

@@ -321,19 +321,13 @@ class Game implements IGame {
 
     this.admitirUnsubscribe = this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual!)
       .collection('conexiones').onSnapshot((snapshot: any) => {
-        snapshot.forEach((doc: any) => {
+        snapshot.docChanges().forEach((change: any) => {
+            if (change.type !== "added") return;
+            const doc = change.doc;
             const id = doc.id;
             if (id === this.network.idLocal) return;
 
-            let yaConectado = false;
-            if (this.network.jugadoresRemotos.has(id)) {
-                const j = this.network.jugadoresRemotos.get(id);
-                if (j?.pc && (j.pc.connectionState === 'connected' || j.pc.connectionState === 'connecting')) {
-                    yaConectado = true;
-                }
-            }
-
-            if (!yaConectado) {
+            if (!this.network.jugadoresRemotos.has(id)) {
                 this.network.setupWebRTCHost(id, this);
             }
         });
@@ -584,7 +578,8 @@ class Game implements IGame {
         if (entidad === this.protagonista) {
             // Suavizamos el snap-back: solo corregimos si el error es persistente o grande
             const dist = Math.abs(entidad.fila - e.f) + Math.abs(entidad.columna - e.c);
-            if (dist > 1.5) {
+            // Umbral aumentado a 2.5 para dar más margen a la predicción del cliente
+            if (dist > 2.5) {
                 entidad.fila = e.f;
                 entidad.columna = e.c;
             }
@@ -995,9 +990,13 @@ class Game implements IGame {
     }
 
     const r = this.config.RADIO_VISION;
-    for (let f = Math.max(0, this.protagonista.fila - r); f <= Math.min(this.config.NUMERO_FILAS - 1, this.protagonista.fila + r); f++) {
-        for (let c = Math.max(0, this.protagonista.columna - r); c <= Math.min(this.config.NUMERO_COLUMNAS - 1, this.protagonista.columna + r); c++) {
-            if (Math.sqrt(Math.pow(f - this.protagonista.fila, 2) + Math.pow(c - this.protagonista.columna, 2)) <= r) {
+    // Usamos la posición visual para el centro de visión, evitando saltos bruscos en la niebla
+    const vF = this.protagonista.visualFila;
+    const vC = this.protagonista.visualColumna;
+
+    for (let f = Math.max(0, Math.floor(vF - r)); f <= Math.min(this.config.NUMERO_FILAS - 1, Math.ceil(vF + r)); f++) {
+        for (let c = Math.max(0, Math.floor(vC - r)); c <= Math.min(this.config.NUMERO_COLUMNAS - 1, Math.ceil(vC + r)); c++) {
+            if (Math.sqrt(Math.pow(f - vF, 2) + Math.pow(c - vC, 2)) <= r) {
                 this.mapaLaberinto[f][c].ultimoAvistamiento = ahora;
             }
         }

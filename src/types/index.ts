@@ -61,7 +61,7 @@ export interface IActionPacket {
 export interface ISnapshot {
     tick: number;
     tr: number; // tickRate actual
-    entities: { id: string, f: number, c: number, v: number, vm: number, cam: boolean }[];
+    entities: { idN: number, f: number, c: number, v: number, vm: number, cam: boolean }[];
     actions: IActionPacket[];
 }
 

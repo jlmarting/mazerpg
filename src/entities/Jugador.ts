@@ -53,8 +53,8 @@ export class Jugador extends EntidadRPG {
   dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
-    const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
-    const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+    const x = (this.visualColumna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = (this.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
     const escala = TAMANO_CELDA * 0.6;
 
     ctx.save();

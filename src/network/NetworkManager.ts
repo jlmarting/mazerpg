@@ -126,13 +126,14 @@ export class NetworkManager {
 
     const unsubAnswer = game.firebase.getDb().collection('partidas').doc(this.idPartidaActual)
       .collection('conexiones').doc(guestId).onSnapshot((doc: any) => {
+        if (!doc.exists) return;
         const data = doc.data();
         if (data && data.answer && !pc.currentRemoteDescription) {
           pc.setRemoteDescription(new RTCSessionDescription(data.answer)).then(() => {
             while(iceBuffer.length > 0) {
               pc.addIceCandidate(new RTCIceCandidate(iceBuffer.shift()));
             }
-          });
+          }).catch(e => console.error("Error setting remote description:", e));
         }
       });
 
@@ -187,6 +188,7 @@ export class NetworkManager {
 
     const unsubOffer = game.firebase.getDb().collection('partidas').doc(partidaId)
       .collection('conexiones').doc(this.idLocal).onSnapshot(async (doc: any) => {
+        if (!doc.exists) return;
         const data = doc.data();
         if (data && data.offer && !pc.currentRemoteDescription) {
           await pc.setRemoteDescription(new RTCSessionDescription(data.offer));

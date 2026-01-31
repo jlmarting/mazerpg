@@ -3,6 +3,8 @@ import { CameraOffset, GameConfig } from '../types';
 export abstract class EntidadRPG {
   fila: number;
   columna: number;
+  visualFila: number;
+  visualColumna: number;
   nombre: string;
   fuerza: number;
   agilidad: number;
@@ -23,6 +25,8 @@ export abstract class EntidadRPG {
   constructor(fila: number, columna: number, nombre: string) {
     this.fila = fila;
     this.columna = columna;
+    this.visualFila = fila;
+    this.visualColumna = columna;
     this.nombre = nombre;
 
     this.fuerza = Math.floor(Math.random() * 10) + 1;
@@ -76,8 +80,8 @@ export abstract class EntidadRPG {
 
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
-    const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
-    const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP - 10;
+    const x = (this.visualColumna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = (this.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP - 10;
 
     ctx.save();
     ctx.font = '14px Arial';
@@ -103,10 +107,10 @@ export abstract class EntidadRPG {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, vistaDebugActivada, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
 
-    if (this.fila < filaOffset || this.fila >= filaOffset + CELDAS_VISIBLES_Y ||
-        this.columna < colOffset || this.columna >= colOffset + CELDAS_VISIBLES_X) return;
+    if (this.visualFila < filaOffset - 1 || this.visualFila >= filaOffset + CELDAS_VISIBLES_Y + 1 ||
+        this.visualColumna < colOffset - 1 || this.visualColumna >= colOffset + CELDAS_VISIBLES_X + 1) return;
 
-    // Niebla de guerra para barra de vida
+    // Niebla de guerra para barra de vida (usamos coordenadas lógicas para la niebla)
     const celdaActual = mapaLaberinto[this.fila][this.columna];
     if (!vistaDebugActivada && celdaActual) {
         const tiempoDesdeVisto = Date.now() - celdaActual.ultimoAvistamiento;
@@ -115,8 +119,8 @@ export abstract class EntidadRPG {
         }
     }
 
-    const x = (this.columna - colOffset) * TAMANO_CELDA + 2;
-    const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2;
+    const x = (this.visualColumna - colOffset) * TAMANO_CELDA + 2;
+    const y = (this.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2;
     const anchoBarra = TAMANO_CELDA - 4;
     const altoBarra = 4;
 

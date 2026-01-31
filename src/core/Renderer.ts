@@ -45,8 +45,12 @@ export class Renderer {
     const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;
 
     // Calculamos el offset para que el protagonista esté exactamente en el centro del viewport
-    const colOffset = protagonista.columna - (mazeWidth / TAMANO_CELDA / 2) + 0.5;
-    const filaOffset = protagonista.fila - (mazeHeight / TAMANO_CELDA / 2) + 0.5;
+    // Usamos las coordenadas visuales para suavizar el movimiento de la cámara
+    const fV = protagonista.visualFila !== undefined ? protagonista.visualFila : protagonista.fila;
+    const cV = protagonista.visualColumna !== undefined ? protagonista.visualColumna : protagonista.columna;
+
+    const colOffset = cV - (mazeWidth / TAMANO_CELDA / 2) + 0.5;
+    const filaOffset = fV - (mazeHeight / TAMANO_CELDA / 2) + 0.5;
 
     return { colOffset, filaOffset };
   }
@@ -55,8 +59,17 @@ export class Renderer {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
 
+    // Dibujamos el fondo negro para toda el área del laberinto visible
+    // Lo hacemos antes de dibujar las celdas para evitar parpadeos
     this.ctx.fillStyle = '#000';
-    this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
+
+    // Calculamos un área generosa para el fondo que cubra todo el viewport escalado
+    const mazeWidth = this.canvas.width;
+    const mazeHeight = this.canvas.height - ALTO_UI_TOP;
+
+    // En lugar de usar coordenadas escaladas, usamos un rectángulo enorme que cubra todo
+    // ya que estamos dentro del clip() del aplicarZoom.
+    this.ctx.fillRect(-mazeWidth * 2, -mazeHeight * 2, mazeWidth * 5, mazeHeight * 5);
 
     const fInicio = Math.floor(filaOffset);
     const fFin = Math.ceil(filaOffset + CELDAS_VISIBLES_Y);

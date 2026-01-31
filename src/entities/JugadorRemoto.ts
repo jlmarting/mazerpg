@@ -10,13 +10,13 @@ export class JugadorRemoto extends EntidadRPG {
 
   dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
-    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
 
-    if (this.fila < filaOffset || this.fila >= filaOffset + CELDAS_VISIBLES_Y ||
-        this.columna < colOffset || this.columna >= colOffset + CELDAS_VISIBLES_X) return;
+    if (this.visualFila < filaOffset - 1 || this.visualFila >= filaOffset + config.CELDAS_VISIBLES_Y + 1 ||
+        this.visualColumna < colOffset - 1 || this.visualColumna >= colOffset + config.CELDAS_VISIBLES_X + 1) return;
 
-    const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
-    const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+    const x = (this.visualColumna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = (this.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
     const escala = TAMANO_CELDA * 0.6;
 
     ctx.save();

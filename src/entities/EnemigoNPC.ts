@@ -185,19 +185,20 @@ export class EnemigoNPC extends EntidadRPG {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, TIEMPO_DESVANECIMIENTO_NIEBLA, vistaDebugActivada } = config;
 
-    if (this.fila < filaOffset || this.fila >= filaOffset + config.CELDAS_VISIBLES_Y ||
-        this.columna < colOffset || this.columna >= colOffset + config.CELDAS_VISIBLES_X) {
+    if (this.visualFila < filaOffset - 1 || this.visualFila >= filaOffset + config.CELDAS_VISIBLES_Y + 1 ||
+        this.visualColumna < colOffset - 1 || this.visualColumna >= colOffset + config.CELDAS_VISIBLES_X + 1) {
       return;
     }
 
+    // Usamos coordenadas lógicas para la niebla
     const celdaActual = mapaLaberinto[this.fila][this.columna];
     const tiempoDesdeVisto = Date.now() - celdaActual.ultimoAvistamiento;
     if (!vistaDebugActivada && (celdaActual.ultimoAvistamiento === 0 || tiempoDesdeVisto > TIEMPO_DESVANECIMIENTO_NIEBLA)) {
       return;
     }
 
-    const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
-    const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+    const x = (this.visualColumna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = (this.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
     const escala = TAMANO_CELDA * 0.4;
 
     ctx.strokeStyle = '#000';

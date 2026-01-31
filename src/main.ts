@@ -322,8 +322,19 @@ class Game implements IGame {
     this.admitirUnsubscribe = this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual!)
       .collection('conexiones').onSnapshot((snapshot: any) => {
         snapshot.forEach((doc: any) => {
-            if (doc.id !== this.network.idLocal && !this.network.jugadoresRemotos.has(doc.id)) {
-                this.network.setupWebRTCHost(doc.id, this);
+            const id = doc.id;
+            if (id === this.network.idLocal) return;
+
+            let yaConectado = false;
+            if (this.network.jugadoresRemotos.has(id)) {
+                const j = this.network.jugadoresRemotos.get(id);
+                if (j?.pc && (j.pc.connectionState === 'connected' || j.pc.connectionState === 'connecting')) {
+                    yaConectado = true;
+                }
+            }
+
+            if (!yaConectado) {
+                this.network.setupWebRTCHost(id, this);
             }
         });
       });
@@ -524,7 +535,7 @@ class Game implements IGame {
     };
 
     snap.entities.push({
-        id: this.network.idLocal,
+        idN: this.network.idLocalNumerico,
         f: this.protagonista.fila,
         c: this.protagonista.columna,
         v: this.protagonista.vidaActual,
@@ -532,10 +543,10 @@ class Game implements IGame {
         cam: this.protagonista.estaCaminando
     });
 
-    this.network.jugadoresRemotos.forEach((j: any, id: string) => {
+    this.network.jugadoresRemotos.forEach((j: any) => {
         if (j.entidad) {
             snap.entities.push({
-                id: id,
+                idN: j.idNumerico,
                 f: j.entidad.fila,
                 c: j.entidad.columna,
                 v: j.entidad.vidaActual,
@@ -547,7 +558,7 @@ class Game implements IGame {
 
     this.listaDeEnemigos.forEach(e => {
         snap.entities.push({
-            id: "npc_" + (e as any).id,
+            idN: (e as any).id, // Los NPCs ya tienen ID numérico
             f: e.fila,
             c: e.columna,
             v: e.vidaActual,
@@ -563,36 +574,29 @@ class Game implements IGame {
     if (this.esHost) return;
     this.tickRate = s.tr;
     s.entities.forEach(e => {
-        if (e.id === this.network.idLocal) {
-            if (Math.abs(this.protagonista.fila - e.f) + Math.abs(this.protagonista.columna - e.c) > 2) {
-                this.protagonista.fila = e.f;
-                this.protagonista.columna = e.c;
+        const entidad = this.obtenerEntidadPorIdNumerico(e.idN);
+        if (!entidad) {
+            // Si es un jugador nuevo que no conocemos, llegará el handshake pronto.
+            // O podemos intentar buscarlo en los remotos.
+            return;
+        }
+
+        if (entidad === this.protagonista) {
+            // Suavizamos el snap-back: solo corregimos si el error es persistente o grande
+            const dist = Math.abs(entidad.fila - e.f) + Math.abs(entidad.columna - e.c);
+            if (dist > 1.5) {
+                entidad.fila = e.f;
+                entidad.columna = e.c;
             }
-            this.protagonista.vidaActual = e.v;
-            this.protagonista.vidaMaxima = e.vm;
-            // No sobreescribimos estaCaminando local para evitar parpadeos
-        } else if (e.id.startsWith("npc_")) {
-            const idN = parseInt(e.id.split("_")[1]);
-            const npc = this.listaDeEnemigos.find(n => (n as any).id === idN);
-            if (npc) {
-                npc.fila = e.f;
-                npc.columna = e.c;
-                npc.vidaActual = e.v;
-                npc.vidaMaxima = e.vm;
-                npc.estaVivo = npc.vidaActual > 0;
-                npc.estaCaminando = e.cam;
-            }
+            entidad.vidaActual = e.v;
+            entidad.vidaMaxima = e.vm;
         } else {
-            const jInfo = this.asegurarEntidadRemota(e.id, "", e.f, e.c);
-            const ent = jInfo.entidad;
-            if (ent) {
-                ent.fila = e.f;
-                ent.columna = e.c;
-                ent.vidaActual = e.v;
-                ent.vidaMaxima = e.vm;
-                ent.estaCaminando = e.cam;
-                ent.estaVivo = ent.vidaActual > 0;
-            }
+            entidad.fila = e.f;
+            entidad.columna = e.c;
+            entidad.vidaActual = e.v;
+            entidad.vidaMaxima = e.vm;
+            entidad.estaVivo = entidad.vidaActual > 0;
+            entidad.estaCaminando = e.cam;
         }
     });
   }
@@ -911,6 +915,23 @@ class Game implements IGame {
 
   actualizar() {
     if (!this.protagonista) return;
+
+    // Interpolación de posiciones visuales para suavizar el "baile"
+    const suavizado = 0.15;
+    this.protagonista.visualFila += (this.protagonista.fila - this.protagonista.visualFila) * suavizado;
+    this.protagonista.visualColumna += (this.protagonista.columna - this.protagonista.visualColumna) * suavizado;
+
+    this.network.jugadoresRemotos.forEach(j => {
+        if (j.entidad) {
+            j.entidad.visualFila += (j.entidad.fila - j.entidad.visualFila) * suavizado;
+            j.entidad.visualColumna += (j.entidad.columna - j.entidad.visualColumna) * suavizado;
+        }
+    });
+
+    this.listaDeEnemigos.forEach(e => {
+        e.visualFila += (e.fila - e.visualFila) * suavizado;
+        e.visualColumna += (e.columna - e.visualColumna) * suavizado;
+    });
 
     // Zoom progresivo
     if (this.config.zoom !== this.config.targetZoom) {

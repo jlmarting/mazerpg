@@ -5,10 +5,12 @@ export interface RemotePlayer {
     dc: RTCDataChannel | null;
     entidad: any;
     unsubscribes: (() => void)[];
+    idNumerico: number;
 }
 
 export class NetworkManager {
   public idLocal: string = "L" + Math.random().toString(36).substr(2, 9);
+  public idLocalNumerico: number = Math.floor(Math.random() * 65535);
   public multiplayerActivo: boolean = false;
   public esHost: boolean = false;
   public idPartidaActual: string | null = null;
@@ -44,7 +46,12 @@ export class NetworkManager {
       this.activo = true;
       this.multiplayerActivo = true;
       const nick = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
-      this.enviarMensaje({ tipo: 'handshake', nick: nick, id: this.idLocal });
+      this.enviarMensaje({
+        tipo: 'handshake',
+        nick: nick,
+        id: this.idLocal,
+        idN: this.idLocalNumerico
+      });
 
       if (this.esHost) {
         game.registrarEventoLog(`Jugador conectado (${idActual})`);
@@ -90,7 +97,7 @@ export class NetworkManager {
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     const dc = pc.createDataChannel("mazeRPG");
     const iceBuffer: any[] = [];
-    const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [] };
+    const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [], idNumerico: 0 };
     this.jugadoresRemotos.set(guestId, info);
     this.setupDataChannelHandlers(dc, guestId, game);
 
@@ -151,7 +158,7 @@ export class NetworkManager {
     this.idPartidaActual = partidaId;
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     const iceBuffer: any[] = [];
-    const info: RemotePlayer = { pc, dc: null as any, entidad: null, unsubscribes: [] };
+    const info: RemotePlayer = { pc, dc: null as any, entidad: null, unsubscribes: [], idNumerico: 0 };
 
     pc.ondatachannel = (event) => {
       const dc = event.channel;

@@ -1,5 +1,5 @@
 import { EntidadRPG } from './EntidadRPG';
-import { CameraOffset, GameConfig, IGame } from '../types';
+import { CameraOffset, GameConfig, IGame, ActionType, IActionPacket } from '../types';
 import { eliminarMurosEntre } from '../world/generation';
 
 export class Jugador extends EntidadRPG {
@@ -174,6 +174,8 @@ export class Jugador extends EntidadRPG {
         const interactions = (this.consecutiveInteractions.get(jugadorId) || 0) + 1;
         if (interactions >= 2 && this.estaVivo && jugadorRemotoEnCasilla.estaVivo) {
             this.consecutiveInteractions.set(jugadorId, 0);
+            // Transferencia de vida es una acción especial, por ahora la dejamos directa
+            // o podríamos convertirla a ACTION. Para simplificar, la dejamos así.
             if (this.vidaActual > 1) {
                 this.vidaActual -= 1;
                 jugadorRemotoEnCasilla.vidaActual = Math.min(jugadorRemotoEnCasilla.vidaMaxima, jugadorRemotoEnCasilla.vidaActual + 1);
@@ -210,12 +212,15 @@ export class Jugador extends EntidadRPG {
 
     const enemigoEnCasilla = game.listaDeEnemigos.find((e: any) => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
     if (enemigoEnCasilla) {
-      if (this.enCombateCon === enemigoEnCasilla) {
-        game.resolverRondaDeCombate(this, enemigoEnCasilla);
-      } else {
-        game.iniciarCombate(this, enemigoEnCasilla);
-      }
-      return false;
+        const packet: IActionPacket = {
+            t: Date.now(),
+            p: game.network.idLocalNumerico,
+            a: ActionType.HIT,
+            d: (enemigoEnCasilla as any).id
+        };
+        if (game.esHost) game.encolarAccion(packet);
+        else if (game.network.activo) game.network.enviarMensaje({ tipo: 'action', a: packet });
+        return false;
     }
 
     if (this.enCombateCon) {
@@ -269,6 +274,16 @@ export class Jugador extends EntidadRPG {
     if (esMovimientoValido) {
       this.fila = sigFila;
       this.columna = sigColumna;
+
+      const packet: IActionPacket = {
+          t: Date.now(),
+          p: game.network.idLocalNumerico,
+          a: ActionType.MOVE,
+          d: [this.fila, this.columna, true]
+      };
+      if (game.esHost) game.encolarAccion(packet);
+      else if (game.network.activo) game.network.enviarMensaje({ tipo: 'action', a: packet });
+
       const celdaNueva = game.mapaLaberinto[this.fila][this.columna];
       this.ultimaCasillaAtacada = null;
 
@@ -324,19 +339,6 @@ export class Jugador extends EntidadRPG {
             game.ui.crearTextoFlotanteEnCelda(this.fila, this.columna, "+1", "#00ff00", game);
             game.registrarEventoLog("Te sientes un poco mejor. +1 HP");
         }
-      }
-
-      if (game.network && game.network.activo) {
-        game.network.enviarMensaje({
-          tipo: 'posicion',
-          f: this.fila,
-          c: this.columna,
-          cam: true,
-          id: game.network.idLocal,
-          nick: this.nombre,
-          hp: this.vidaActual,
-          maxHp: this.vidaMaxima
-        });
       }
 
       return true;

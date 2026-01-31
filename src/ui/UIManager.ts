@@ -1,4 +1,4 @@
-import { IGame } from '../types';
+import { IGame, ActionType, IActionPacket } from '../types';
 
 export class UIManager {
   private logTextArea: HTMLTextAreaElement | null = null;
@@ -44,14 +44,19 @@ export class UIManager {
   }
 
   enviarChat(texto: string, game: IGame) {
-    this.manejarMensajeChat(game.protagonista.nombre, texto, true, game, game.network.idLocal);
-    if (game.network && game.network.activo) {
-      game.network.enviarMensaje({
-        tipo: 'chat',
-        texto: texto,
-        id: game.network.idLocal,
-        nick: game.protagonista.nombre
-      });
+    this.manejarMensajeChat(game.protagonista.nombre, texto, true, game, (game as any).network.idLocal);
+
+    const packet: IActionPacket = {
+        t: Date.now(),
+        p: (game as any).network.idLocalNumerico,
+        a: ActionType.CHAT,
+        d: texto
+    };
+
+    if (game.esHost) {
+        game.encolarAccion(packet);
+    } else if ((game as any).network.activo) {
+        (game as any).network.enviarMensaje({ tipo: 'action', a: packet });
     }
   }
 

@@ -10,7 +10,7 @@ import { NetworkManager } from './network/NetworkManager';
 import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
-import { GameConfig, IGame } from './types';
+import { GameConfig, IGame, ActionType, IActionPacket, ISnapshot } from './types';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
@@ -44,6 +44,10 @@ class Game implements IGame {
   public motorIniciado: boolean = false;
   public colaDeMensajes: string[] = [];
   public bolasDeFuego: any[] = [];
+  public colaAcciones: IActionPacket[] = [];
+  public tickRate: number = 120;
+  public proximoTick: number = 0;
+  public tickActual: number = 0;
 
   constructor() {
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
@@ -190,11 +194,12 @@ class Game implements IGame {
     });
   }
 
-  asegurarEntidadRemota(id: string, nick: string, fila: number = 0, columna: number = 0) {
+  asegurarEntidadRemota(id: string, nick: string, fila: number = 0, columna: number = 0, idN?: number) {
     if (!this.network.jugadoresRemotos.has(id)) {
-        this.network.jugadoresRemotos.set(id, { pc: null, dc: null, entidad: null, unsubscribes: [] });
+        this.network.jugadoresRemotos.set(id, { pc: null, dc: null, entidad: null, unsubscribes: [], idNumerico: idN || 0 });
     }
     const jInfo = this.network.jugadoresRemotos.get(id)!;
+    if (idN !== undefined) jInfo.idNumerico = idN;
     if (!jInfo.entidad) {
         jInfo.entidad = new JugadorRemoto(fila, columna, nick, id);
         this.setupEntity(jInfo.entidad);
@@ -309,14 +314,19 @@ class Game implements IGame {
     this.network.setupWebRTCGuest(id, this);
   }
 
+  private admitirUnsubscribe: (() => void) | null = null;
   async admitirCandidatos() {
-    this.ui.registrarLogConexion("Buscando candidatos...");
-    const snapshot = await this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual!).collection('conexiones').get();
-    snapshot.forEach((doc: any) => {
-        if (doc.id !== this.network.idLocal && !this.network.jugadoresRemotos.has(doc.id)) {
-            this.network.setupWebRTCHost(doc.id, this);
-        }
-    });
+    if (this.admitirUnsubscribe) return;
+    this.ui.registrarLogConexion("Escuchando nuevos candidatos...");
+
+    this.admitirUnsubscribe = this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual!)
+      .collection('conexiones').onSnapshot((snapshot: any) => {
+        snapshot.forEach((doc: any) => {
+            if (doc.id !== this.network.idLocal && !this.network.jugadoresRemotos.has(doc.id)) {
+                this.network.setupWebRTCHost(doc.id, this);
+            }
+        });
+      });
   }
 
   iniciarEleccionHost() {
@@ -433,6 +443,158 @@ class Game implements IGame {
     this.colaDeMensajes.unshift(texto);
     if (this.colaDeMensajes.length > 5) this.colaDeMensajes.pop();
     console.log(mensaje);
+  }
+
+  encolarAccion(accion: IActionPacket) {
+    this.colaAcciones.push(accion);
+  }
+
+  obtenerEntidadPorIdNumerico(idN: number): any {
+    if (this.network.idLocalNumerico === idN) return this.protagonista;
+    let found = null;
+    this.network.jugadoresRemotos.forEach((j: any) => {
+        if (j.idNumerico === idN) found = j.entidad;
+    });
+    if (found) return found;
+    return this.listaDeEnemigos.find(e => (e as any).id === idN);
+  }
+
+  ejecutarTick() {
+    const inicioProceso = Date.now();
+    this.tickActual++;
+
+    const prioridad = [0, 2, 1, 3, 4];
+    this.colaAcciones.sort((a, b) => prioridad.indexOf(a.a) - prioridad.indexOf(b.a));
+
+    while(this.colaAcciones.length > 0) {
+        const accion = this.colaAcciones.shift()!;
+        this.resolverAccion(accion);
+    }
+
+    this.difundirSnapshot();
+
+    const duracion = Date.now() - inicioProceso;
+    if (duracion > this.tickRate - 10) {
+        this.tickRate = Math.min(500, this.tickRate + 10);
+    } else if (duracion < this.tickRate / 2) {
+        this.tickRate = Math.max(50, this.tickRate - 5);
+    }
+    this.proximoTick = Date.now() + this.tickRate;
+  }
+
+  resolverAccion(accion: IActionPacket) {
+    const entidad = this.obtenerEntidadPorIdNumerico(accion.p);
+    if (!entidad) return;
+
+    switch(accion.a) {
+        case ActionType.MOVE:
+            const [f, c, cam] = accion.d;
+            if (Math.abs(entidad.fila - f) + Math.abs(entidad.columna - c) <= 1.1) {
+                entidad.fila = f;
+                entidad.columna = c;
+                entidad.estaCaminando = !!cam;
+                this.verificarPortal(entidad);
+            }
+            break;
+        case ActionType.HIT:
+            const targetId = accion.d;
+            const target = this.obtenerEntidadPorIdNumerico(targetId);
+            if (target && target.estaVivo) {
+                this.resolverRondaDeCombate(entidad, target);
+            }
+            break;
+        case ActionType.SPELL:
+            this.lanzarBolaDeFuego(entidad, true);
+            break;
+        case ActionType.CHAT:
+            this.ui.manejarMensajeChat(entidad.nombre, accion.d, false, this, entidad.id);
+            break;
+        case ActionType.NPC:
+            // NPCs se procesan en el ciclo de actualizar() del host, pero generan acciones
+            break;
+    }
+  }
+
+  difundirSnapshot() {
+    const snap: ISnapshot = {
+        tick: this.tickActual,
+        tr: this.tickRate,
+        entities: [],
+        actions: []
+    };
+
+    snap.entities.push({
+        id: this.network.idLocal,
+        f: this.protagonista.fila,
+        c: this.protagonista.columna,
+        v: this.protagonista.vidaActual,
+        vm: this.protagonista.vidaMaxima,
+        cam: this.protagonista.estaCaminando
+    });
+
+    this.network.jugadoresRemotos.forEach((j: any, id: string) => {
+        if (j.entidad) {
+            snap.entities.push({
+                id: id,
+                f: j.entidad.fila,
+                c: j.entidad.columna,
+                v: j.entidad.vidaActual,
+                vm: j.entidad.vidaMaxima,
+                cam: j.entidad.estaCaminando
+            });
+        }
+    });
+
+    this.listaDeEnemigos.forEach(e => {
+        snap.entities.push({
+            id: "npc_" + (e as any).id,
+            f: e.fila,
+            c: e.columna,
+            v: e.vidaActual,
+            vm: e.vidaMaxima,
+            cam: e.estaCaminando
+        });
+    });
+
+    this.network.enviarMensaje({ tipo: 'snapshot', s: snap });
+  }
+
+  procesarSnapshot(s: ISnapshot) {
+    if (this.esHost) return;
+    this.tickRate = s.tr;
+    s.entities.forEach(e => {
+        if (e.id === this.network.idLocal) {
+            if (Math.abs(this.protagonista.fila - e.f) + Math.abs(this.protagonista.columna - e.c) > 2) {
+                this.protagonista.fila = e.f;
+                this.protagonista.columna = e.c;
+            }
+            this.protagonista.vidaActual = e.v;
+            this.protagonista.vidaMaxima = e.vm;
+            // No sobreescribimos estaCaminando local para evitar parpadeos
+        } else if (e.id.startsWith("npc_")) {
+            const idN = parseInt(e.id.split("_")[1]);
+            const npc = this.listaDeEnemigos.find(n => (n as any).id === idN);
+            if (npc) {
+                npc.fila = e.f;
+                npc.columna = e.c;
+                npc.vidaActual = e.v;
+                npc.vidaMaxima = e.vm;
+                npc.estaVivo = npc.vidaActual > 0;
+                npc.estaCaminando = e.cam;
+            }
+        } else {
+            const jInfo = this.asegurarEntidadRemota(e.id, "", e.f, e.c);
+            const ent = jInfo.entidad;
+            if (ent) {
+                ent.fila = e.f;
+                ent.columna = e.c;
+                ent.vidaActual = e.v;
+                ent.vidaMaxima = e.vm;
+                ent.estaCaminando = e.cam;
+                ent.estaVivo = ent.vidaActual > 0;
+            }
+        }
+    });
   }
 
   iniciarMotorJuego() {
@@ -673,6 +835,11 @@ class Game implements IGame {
   }
 
   cicloDeJuego() {
+    const ahora = Date.now();
+    if (this.esHost && ahora >= this.proximoTick) {
+        this.ejecutarTick();
+    }
+
     this.actualizar();
     this.renderer.limpiar();
     const offset = this.renderer.obtenerOffsetCamara(this.protagonista, this.config);
@@ -969,11 +1136,23 @@ class Game implements IGame {
     }
   }
 
-  lanzarBolaDeFuego(emisor: any, esLocal: boolean) {
-    if (esLocal && emisor instanceof Jugador) {
+  lanzarBolaDeFuego(emisor: any, esLocal: boolean, desdeAccion: boolean = false) {
+    if (esLocal && emisor instanceof Jugador && !desdeAccion) {
         const ahora = Date.now();
         if (ahora - emisor.ultimaInteraccion < 100) return;
         emisor.ultimaInteraccion = ahora;
+
+        const packet: IActionPacket = {
+            t: ahora,
+            p: this.network.idLocalNumerico,
+            a: ActionType.SPELL,
+            d: null
+        };
+        if (this.esHost) this.encolarAccion(packet);
+        else if (this.network.activo) this.network.enviarMensaje({ tipo: 'action', a: packet });
+
+        if (!this.esHost) return; // Clientes solo envían, no ejecutan localmente los hechizos hasta el snapshot (o sí?)
+        // Para feedback inmediato, mejor dejamos que se vea el proyectil pero el daño lo resuelva el host.
     }
 
     // Buscar enemigo más cercano, prioridad a los que están a la vista
@@ -1123,15 +1302,20 @@ class Game implements IGame {
 
     switch (msg.tipo) {
         case 'handshake':
-            this.asegurarEntidadRemota(idSujeto, msg.nick);
+            this.asegurarEntidadRemota(idSujeto, msg.nick, 0, 0, msg.idN);
             if (this.esHost) {
                 this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
             } else if (idEmisor === idSujeto) {
-                this.network.enviarMensaje({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.network.idLocal });
+                this.network.enviarMensaje({
+                    tipo: 'handshake_ack',
+                    nick: this.protagonista.nombre,
+                    id: this.network.idLocal,
+                    idN: this.network.idLocalNumerico
+                });
             }
             break;
         case 'handshake_ack':
-            this.asegurarEntidadRemota(idSujeto, msg.nick);
+            this.asegurarEntidadRemota(idSujeto, msg.nick, 0, 0, msg.idN);
             if (this.esHost) {
                 const jInfoAck = this.network.jugadoresRemotos.get(idSujeto);
                 if (jInfoAck && jInfoAck.entidad) jInfoAck.entidad.nombre = msg.nick;
@@ -1193,6 +1377,14 @@ class Game implements IGame {
                 const emisorEntidad = this.obtenerEntidadPorId(idEmisor);
                 if (emisorEntidad) this.teletransportarAliados(emisorEntidad, false);
             }
+            break;
+        case 'action':
+            if (this.esHost) {
+                this.encolarAccion(msg.a);
+            }
+            break;
+        case 'snapshot':
+            this.procesarSnapshot(msg.s);
             break;
         case 'posicion':
             this.asegurarEntidadRemota(idSujeto, msg.nick, msg.f, msg.c);

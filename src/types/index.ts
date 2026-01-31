@@ -43,6 +43,28 @@ export interface IEntidadRPG {
     dibujarBubbleChat(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig): void;
 }
 
+export enum ActionType {
+    MOVE = 0,
+    HIT = 1,
+    SPELL = 2,
+    CHAT = 3,
+    NPC = 4
+}
+
+export interface IActionPacket {
+    t: number;   // timestamp (uint32)
+    p: number;   // player_id (uint16)
+    a: ActionType; // action_type (uint8)
+    d: any;      // payload: float32[3] / uint16 / string
+}
+
+export interface ISnapshot {
+    tick: number;
+    tr: number; // tickRate actual
+    entities: { id: string, f: number, c: number, v: number, vm: number, cam: boolean }[];
+    actions: IActionPacket[];
+}
+
 export interface IGame {
     mapaLaberinto: Celda[][];
     config: GameConfig;
@@ -59,8 +81,9 @@ export interface IGame {
     resolverRondaDeCombate(pA: IEntidadRPG, pB: IEntidadRPG): void;
     iniciarCombate(atacante: IEntidadRPG, objetivo: IEntidadRPG): void;
     intentarRehuirCombate(l: IEntidadRPG): boolean;
-    procesarMensajeMultiplayer(msg: any, idEmisor: string): void;
+    procesarMensajeMultiplayer(msg: any, idEmisor: string): string;
     iniciarEleccionHost(): void;
     unirseAPartidaFirestore(id: string): Promise<void>;
     obtenerEntidadPorNombre(nombre: string): IEntidadRPG | null;
+    encolarAccion(accion: IActionPacket): void;
 }

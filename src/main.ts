@@ -1504,7 +1504,7 @@ class Game implements IGame {
                     // Los clientes deben esperar a 'map_expanded' antes de procesar este 'dig_completed'
                     // Pero para ser resilientes, si llega antes, podríamos ignorarlo o encolarlo.
                     // Generalmente el Host enviará map_expanded primero.
-                    return;
+                    return idActualEmisor;
                 }
             }
             const celdaDig = this.mapaLaberinto[msg.f][msg.c];

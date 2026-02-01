@@ -7,7 +7,7 @@ import { Renderer } from './core/Renderer';
 import { UIManager } from './ui/UIManager';
 import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
-import { generarLaberintoBSP } from './world/generation';
+import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
 import { GameConfig, IGame } from './types';
@@ -36,7 +36,8 @@ class Game implements IGame {
     dificultad: 'dificil',
     zoom: 1,
     targetZoom: 1,
-    autoZoom: false
+    autoZoom: false,
+    tickRate: 120
   };
   public juegoTerminado: boolean = false;
   public mundoSincronizado: boolean = false;
@@ -44,6 +45,8 @@ class Game implements IGame {
   public motorIniciado: boolean = false;
   public colaDeMensajes: string[] = [];
   public bolasDeFuego: any[] = [];
+  public ultimoTick: number = 0;
+  public colaAcciones: any[] = [];
 
   constructor() {
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
@@ -140,6 +143,26 @@ class Game implements IGame {
         this.config.autoZoom = (e.target as HTMLInputElement).checked;
     });
 
+    const trSlider = document.getElementById('tickRateSlider') as HTMLInputElement;
+    const trInput = document.getElementById('tickRateInput') as HTMLInputElement;
+
+    trSlider?.addEventListener('input', (e) => {
+        const val = parseInt((e.target as HTMLInputElement).value);
+        this.config.tickRate = val;
+        if (trInput) trInput.value = val.toString();
+        this.registrarEventoLog(`Tick Rate ajustado a ${val}ms`);
+    });
+
+    trInput?.addEventListener('input', (e) => {
+        let val = parseInt((e.target as HTMLInputElement).value);
+        if (isNaN(val)) return;
+        if (val < 16) val = 16;
+        if (val > 500) val = 500;
+        this.config.tickRate = val;
+        if (trSlider) trSlider.value = val.toString();
+        this.registrarEventoLog(`Tick Rate ajustado a ${val}ms`);
+    });
+
     this.actualizarStatsLobby();
 
     window.addEventListener('keydown', (e) => {
@@ -204,6 +227,8 @@ class Game implements IGame {
     this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Host";
     this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
     (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
+    const hc = document.getElementById('hostControls');
+    if (hc) hc.style.display = 'flex';
     this.crearPartidaFirestore();
   }
 
@@ -332,6 +357,8 @@ class Game implements IGame {
   async promocionarAHost() {
     this.esHost = true;
     this.network.esHost = true;
+    const hc = document.getElementById('hostControls');
+    if (hc) hc.style.display = 'flex';
     if (this.network.idPartidaActual) {
         await this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual).update({
             hostId: this.network.idLocal,
@@ -722,8 +749,74 @@ class Game implements IGame {
     requestAnimationFrame(() => this.cicloDeJuego());
   }
 
+  procesarTick() {
+    if (!this.esHost) return;
+
+    while (this.colaAcciones.length > 0) {
+        const item = this.colaAcciones.shift();
+        this.resolverAccion(item.id, item.accion);
+    }
+
+    this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
+
+    this.enviarSnapshot();
+  }
+
+  enviarSnapshot() {
+    const snapshot: any = {
+        tipo: 'snapshot',
+        entities: []
+    };
+
+    snapshot.entities.push({
+        id: this.network.idLocal,
+        f: this.protagonista.fila,
+        c: this.protagonista.columna,
+        v: this.protagonista.vidaActual,
+        vm: this.protagonista.vidaMaxima,
+        cam: this.protagonista.estaCaminando,
+        viva: this.protagonista.estaVivo,
+        nick: this.protagonista.nombre
+    });
+
+    this.network.jugadoresRemotos.forEach((j: any, id: string) => {
+        if (j.entidad && id !== 'host') {
+            snapshot.entities.push({
+                id: id,
+                f: j.entidad.fila,
+                c: j.entidad.columna,
+                v: j.entidad.vidaActual,
+                vm: j.entidad.vidaMaxima,
+                cam: j.entidad.estaCaminando,
+                viva: j.entidad.estaVivo,
+                nick: j.entidad.nombre
+            });
+        }
+    });
+
+    snapshot.entities.push(...this.listaDeEnemigos.map(e => ({
+        id: (e as any).id,
+        f: e.fila,
+        c: e.columna,
+        v: e.vidaActual,
+        vm: e.vidaMaxima,
+        viva: e.estaVivo,
+        isNpc: true
+    })));
+
+    this.network.enviarMensaje(snapshot);
+  }
+
   actualizar() {
     if (!this.protagonista) return;
+
+    if (this.esHost) {
+        const ahoraTick = Date.now();
+        if (ahoraTick - this.ultimoTick >= this.config.tickRate) {
+            this.procesarTick();
+            this.ultimoTick = ahoraTick;
+        }
+    }
 
     // Zoom progresivo
     if (this.config.zoom !== this.config.targetZoom) {
@@ -782,8 +875,8 @@ class Game implements IGame {
 
     const ahora = Date.now();
 
-    if (this.esHost || !this.network.multiplayerActivo) {
-        this.listaDeEnemigos.forEach(e => e.actualizarIA(this));
+    if (!this.network.multiplayerActivo) {
+        this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
     }
 
     const r = this.config.RADIO_VISION;
@@ -863,6 +956,140 @@ class Game implements IGame {
     return j ? j.entidad : null;
   }
 
+  resolverAccion(id: string, accion: any) {
+    const entidad = this.obtenerEntidadPorId(id);
+    if (!entidad || !entidad.estaVivo) return;
+
+    if (accion.tipo === 'mover') {
+        const { df, dc } = accion;
+        const sigFila = entidad.fila + df;
+        const sigColumna = entidad.columna + dc;
+
+        // 1. Verificar colisión con otros jugadores
+        let jugadorChocadoId: string | null = null;
+        let jugadorChocado: any = null;
+
+        if (id !== this.network.idLocal && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
+            jugadorChocadoId = this.network.idLocal;
+            jugadorChocado = this.protagonista;
+        } else {
+            this.network.jugadoresRemotos.forEach((v: any, k: string) => {
+                if (k !== id && v.entidad && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
+                    jugadorChocadoId = k;
+                    jugadorChocado = v.entidad;
+                }
+            });
+        }
+
+        if (jugadorChocado) {
+            const interactions = (entidad.consecutiveInteractions.get(jugadorChocadoId!) || 0) + 1;
+            if (interactions >= 2 && entidad.estaVivo && jugadorChocado.estaVivo) {
+                entidad.consecutiveInteractions.set(jugadorChocadoId!, 0);
+                if (entidad.vidaActual > 1) {
+                    entidad.vidaActual -= 1;
+                    jugadorChocado.vidaActual = Math.min(jugadorChocado.vidaMaxima, jugadorChocado.vidaActual + 1);
+                    this.registrarEventoLog(`${entidad.nombre} transfirió 1 HP a ${jugadorChocado.nombre}`);
+                }
+            } else {
+                entidad.consecutiveInteractions.set(jugadorChocadoId!, interactions);
+            }
+            return;
+        }
+
+        entidad.consecutiveInteractions.forEach((_v: number, k: string) => {
+            if (k !== jugadorChocadoId) entidad.consecutiveInteractions.set(k, 0);
+        });
+
+        // 2. Verificar colisión con enemigos
+        const enemigoEnCasilla = this.listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
+        if (enemigoEnCasilla) {
+            if (entidad.enCombateCon === enemigoEnCasilla) {
+                this.resolverRondaDeCombate(entidad, enemigoEnCasilla);
+            } else {
+                this.iniciarCombate(entidad, enemigoEnCasilla);
+            }
+            return;
+        }
+
+        // 3. Rehuir combate
+        if (entidad.enCombateCon) {
+            if (!this.intentarRehuirCombate(entidad)) return;
+        }
+
+        // 4. Límites del mapa
+        if (sigFila < 0 || sigFila >= this.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= this.config.NUMERO_COLUMNAS) return;
+
+        // 5. Muros y transitable
+        const celdaActual = this.mapaLaberinto[entidad.fila][entidad.columna];
+        let esMovimientoValido = false;
+        if (df === -1 && !celdaActual.muros.superior && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
+        if (df === 1 && !celdaActual.muros.inferior && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
+        if (dc === -1 && !celdaActual.muros.izquierdo && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
+        if (dc === 1 && !celdaActual.muros.derecho && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
+
+        if (!esMovimientoValido && (entidad as any).tienePico) {
+            const celdaObjetivo = this.mapaLaberinto[sigFila][sigColumna];
+            if ((entidad as any).ultimaCasillaAtacada && (entidad as any).ultimaCasillaAtacada.f === sigFila && (entidad as any).ultimaCasillaAtacada.c === sigColumna) {
+                celdaObjetivo.golpesCavar++;
+            } else {
+                celdaObjetivo.golpesCavar = 1;
+                (entidad as any).ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
+            }
+            if (celdaObjetivo.golpesCavar >= 5) {
+                celdaObjetivo.esTransitable = true;
+                celdaObjetivo.golpesCavar = 0;
+                eliminarMurosEntre(this.mapaLaberinto[entidad.fila][entidad.columna], celdaObjetivo);
+                this.network.enviarMensaje({
+                    tipo: 'dig_completed',
+                    f: sigFila,
+                    c: sigColumna,
+                    fromF: entidad.fila,
+                    fromC: entidad.columna
+                });
+            }
+            return;
+        }
+
+        if (esMovimientoValido) {
+            entidad.fila = sigFila;
+            entidad.columna = sigColumna;
+            entidad.estaCaminando = true;
+            const celdaNueva = this.mapaLaberinto[entidad.fila][entidad.columna];
+            (entidad as any).ultimaCasillaAtacada = null;
+
+            if (celdaNueva.tienePico) {
+                (entidad as any).tienePico = true;
+                celdaNueva.tienePico = false;
+                this.network.enviarMensaje({ tipo: 'pick_collected', f: entidad.fila, c: entidad.columna });
+            }
+            if (celdaNueva.alimento) {
+                const PC = celdaNueva.alimento.pc;
+                const CC = ((3 * entidad.fuerza) + (2 * entidad.agilidad) + (1 * entidad.inteligencia)) / 6;
+                const recuperacion = Math.floor(PC / CC);
+                entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + Math.max(1, recuperacion));
+                celdaNueva.alimento = null;
+                this.network.enviarMensaje({ tipo: 'food_consumed', f: entidad.fila, c: entidad.columna });
+            }
+            if (celdaNueva.burbuja) {
+                const ahoraB = Date.now();
+                if (ahoraB > entidad.inmunidadHasta) {
+                    entidad.inmunidadHasta = ahoraB + 30000;
+                }
+            }
+            this.verificarPortal(entidad);
+
+            (entidad as any).pasosDesdeUltimoDano = ((entidad as any).pasosDesdeUltimoDano || 0) + 1;
+            const factorDificultad = this.config.dificultad === 'facil' ? 1 : (this.config.dificultad === 'medio' ? 2 : 3);
+            if ((entidad as any).pasosDesdeUltimoDano >= 10 * factorDificultad) {
+                (entidad as any).pasosDesdeUltimoDano = 0;
+                entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + 1);
+            }
+        }
+    } else if (accion.tipo === 'fireball') {
+        this.lanzarBolaDeFuego(entidad, false);
+    }
+  }
+
   asustarMonstruosCercanos(fila: number, columna: number) {
     const r = this.config.RADIO_VISION;
     this.listaDeEnemigos.forEach(e => {
@@ -940,6 +1167,15 @@ class Game implements IGame {
         const ahora = Date.now();
         if (ahora - emisor.ultimaInteraccion < 100) return;
         emisor.ultimaInteraccion = ahora;
+
+        if (this.network && this.network.multiplayerActivo) {
+            if (this.esHost) {
+                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'fireball' } });
+            } else {
+                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'fireball' } });
+            }
+            return;
+        }
     }
 
     // Buscar enemigo más cercano, prioridad a los que están a la vista
@@ -971,10 +1207,21 @@ class Game implements IGame {
             targetY: target.fila,
             targetRef: target,
             pct: 0,
-            aplicarDano: esLocal,
+            aplicarDano: this.esHost || !this.network.multiplayerActivo,
             color: "#ff4500"
         });
         this.registrarEventoLog(`¡${emisor.nombre} lanza una bola de fuego!`);
+
+        if (this.esHost && this.network.multiplayerActivo) {
+            this.network.enviarMensaje({
+                tipo: 'fireball_spawn',
+                ex: emisor.columna,
+                ey: emisor.fila,
+                tx: target.columna,
+                ty: target.fila,
+                c: "#ff4500"
+            });
+        }
     }
   }
 
@@ -1075,6 +1322,51 @@ class Game implements IGame {
   procesarMensajeMultiplayer(msg: any, idEmisor: string) {
     const idSujeto = msg.id || idEmisor;
     switch (msg.tipo) {
+        case 'action':
+            if (this.esHost) {
+                // Usamos idEmisor directamente para evitar spoofing de identidad
+                this.colaAcciones.push({ id: idEmisor, accion: msg.accion });
+            }
+            break;
+        case 'snapshot':
+            if (!this.esHost) {
+                msg.entities.forEach((entData: any) => {
+                    if (entData.isNpc) {
+                        const npc = this.listaDeEnemigos.find(e => (e as any).id === entData.id);
+                        if (npc) {
+                            npc.fila = entData.f;
+                            npc.columna = entData.c;
+                            npc.vidaActual = entData.v;
+                            npc.vidaMaxima = entData.vm;
+                            npc.estaVivo = entData.viva;
+                        }
+                    } else {
+                        if (entData.id === this.network.idLocal) {
+                            this.protagonista.fila = entData.f;
+                            this.protagonista.columna = entData.c;
+                            this.protagonista.vidaActual = entData.v;
+                            this.protagonista.vidaMaxima = entData.vm;
+                            this.protagonista.estaVivo = entData.viva;
+                            this.protagonista.estaCaminando = entData.cam;
+                        } else {
+                            const rem = this.network.jugadoresRemotos.get(entData.id);
+                            if (rem && rem.entidad) {
+                                rem.entidad.fila = entData.f;
+                                rem.entidad.columna = entData.c;
+                                rem.entidad.vidaActual = entData.v;
+                                rem.entidad.vidaMaxima = entData.vm;
+                                rem.entidad.estaVivo = entData.viva;
+                                rem.entidad.estaCaminando = entData.cam;
+                                rem.entidad.nombre = entData.nick;
+                            } else if (rem && !rem.entidad) {
+                                rem.entidad = new JugadorRemoto(entData.f, entData.c, entData.nick, entData.id);
+                                this.setupEntity(rem.entidad);
+                            }
+                        }
+                    }
+                });
+            }
+            break;
         case 'handshake':
             if (!this.network.jugadoresRemotos.has(idSujeto)) {
                 const pc: any = null;
@@ -1135,6 +1427,9 @@ class Game implements IGame {
         case 'dig_completed':
             const celdaDig = this.mapaLaberinto[msg.f][msg.c];
             celdaDig.esTransitable = true;
+            if (msg.fromF !== undefined && msg.fromC !== undefined) {
+                eliminarMurosEntre(this.mapaLaberinto[msg.fromF][msg.fromC], celdaDig);
+            }
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'force_teleport':
@@ -1219,6 +1514,19 @@ class Game implements IGame {
             this.protagonista.fila = msg.f;
             this.protagonista.columna = msg.c;
             this.asustarMonstruosCercanos(msg.f, msg.c);
+            break;
+        case 'fireball_spawn':
+            if (!this.esHost) {
+                this.bolasDeFuego.push({
+                    x: msg.ex,
+                    y: msg.ey,
+                    targetX: msg.tx,
+                    targetY: msg.ty,
+                    pct: 0,
+                    aplicarDano: false,
+                    color: msg.c
+                });
+            }
             break;
         case 'npc_sync_all':
             msg.lista.forEach((d: any) => {

@@ -77,9 +77,10 @@ export class Renderer {
     const cFin = Math.ceil(colOffset + CELDAS_VISIBLES_X);
 
     // DIBUJAR REJILLA INFINITA
-    this.ctx.strokeStyle = '#1a1a1a';
-    this.ctx.lineWidth = 1;
-    for (let f = fInicio; f <= fFin; f++) {
+    if (config.vistaDebugActivada) {
+        this.ctx.strokeStyle = '#1a1a1a';
+        this.ctx.lineWidth = 1;
+        for (let f = fInicio; f <= fFin; f++) {
         const y = (f - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
         this.ctx.beginPath();
         this.ctx.moveTo((cInicio - colOffset) * TAMANO_CELDA, y);
@@ -94,18 +95,19 @@ export class Renderer {
         this.ctx.stroke();
     }
 
-    // DIBUJAR COORDENADAS FIJAS
-    this.ctx.fillStyle = '#666';
-    this.ctx.font = '7px monospace';
-    this.ctx.textAlign = 'center';
-    for (let f = fInicio; f < fFin; f++) {
-        for (let c = cInicio; c < cFin; c++) {
-            const x = (c - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
-            const y = (f - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 3;
-            this.ctx.fillText(`${f},${c}`, x, y);
+        // DIBUJAR COORDENADAS FIJAS
+        this.ctx.fillStyle = '#666';
+        this.ctx.font = '7px monospace';
+        this.ctx.textAlign = 'center';
+        for (let f = fInicio; f < fFin; f++) {
+            for (let c = cInicio; c < cFin; c++) {
+                const x = (c - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+                const y = (f - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 3;
+                this.ctx.fillText(`${f},${c}`, x, y);
+            }
         }
+        this.ctx.textAlign = 'left';
     }
-    this.ctx.textAlign = 'left';
 
     for (let fila = fInicio; fila < fFin; fila++) {
       if (fila < 0 || fila >= NUMERO_FILAS) continue;

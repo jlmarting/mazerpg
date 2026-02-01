@@ -229,26 +229,46 @@ export class Jugador extends EntidadRPG {
       }
     }
 
-    if (sigFila < 0 || sigFila >= game.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= game.config.NUMERO_COLUMNAS) return false;
+    let sigF = sigFila;
+    let sigC = sigColumna;
+    let fueraDeLimites = sigF < 0 || sigF >= game.config.NUMERO_FILAS || sigC < 0 || sigC >= game.config.NUMERO_COLUMNAS;
 
-    const celdaActual = game.mapaLaberinto[this.fila][this.columna];
+    if (fueraDeLimites && !this.tienePico) return false;
+
     let esMovimientoValido = false;
+    if (!fueraDeLimites) {
+        const celdaActual = game.mapaLaberinto[this.fila][this.columna];
+        if (deltaFila === -1 && !celdaActual.muros.superior && game.mapaLaberinto[sigF][sigC].esTransitable) esMovimientoValido = true;
+        if (deltaFila === 1 && !celdaActual.muros.inferior && game.mapaLaberinto[sigF][sigC].esTransitable) esMovimientoValido = true;
+        if (deltaColumna === -1 && !celdaActual.muros.izquierdo && game.mapaLaberinto[sigF][sigC].esTransitable) esMovimientoValido = true;
+        if (deltaColumna === 1 && !celdaActual.muros.derecho && game.mapaLaberinto[sigF][sigC].esTransitable) esMovimientoValido = true;
+    }
 
-    if (deltaFila === -1 && !celdaActual.muros.superior && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-    if (deltaFila === 1 && !celdaActual.muros.inferior && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-    if (deltaColumna === -1 && !celdaActual.muros.izquierdo && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-    if (deltaColumna === 1 && !celdaActual.muros.derecho && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
+    if (!esMovimientoValido && this.tienePico) {
+        // Si el host es quien está moviendo y es fuera de límites, asegurar dimensiones
+        if (game.esHost && fueraDeLimites) {
+            const nuevasCoords = (game as any).asegurarDimensionesMapa(sigF, sigC);
+            sigF = nuevasCoords.f;
+            sigC = nuevasCoords.c;
+            // Después de expandir, ya no está fuera de límites en el nuevo mapa
+            fueraDeLimites = false;
+        } else if (!game.esHost && fueraDeLimites) {
+            // Un cliente no puede expandir el mapa por sí solo, debe esperar al Host.
+            // Pero puede enviar la intención de cavar si el Host lo permite.
+            // Por ahora, solo el Host expande. Si el cliente pica al borde, el Host lo procesará.
+        }
 
-    if (!esMovimientoValido && this.tienePico && sigFila >= 0 && sigFila < game.config.NUMERO_FILAS && sigColumna >= 0 && sigColumna < game.config.NUMERO_COLUMNAS) {
-        const celdaObjetivo = game.mapaLaberinto[sigFila][sigColumna];
+        if (fueraDeLimites) return false;
+
+        const celdaObjetivo = game.mapaLaberinto[sigF][sigC];
         // Permitir excavar si no es movimiento válido (hay muro) incluso si la celda es transitable (bordes residuales)
-        if (this.ultimaCasillaAtacada && this.ultimaCasillaAtacada.f === sigFila && this.ultimaCasillaAtacada.c === sigColumna) {
+        if (this.ultimaCasillaAtacada && this.ultimaCasillaAtacada.f === sigF && this.ultimaCasillaAtacada.c === sigC) {
             celdaObjetivo.golpesCavar++;
         } else {
             celdaObjetivo.golpesCavar = 1;
-            this.ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
+            this.ultimaCasillaAtacada = { f: sigF, c: sigC };
         }
-        game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, `¡CLANC! ${celdaObjetivo.golpesCavar}/5`, "#aaaaaa", game);
+        game.ui.crearTextoFlotanteEnCelda(sigF, sigC, `¡CLANC! ${celdaObjetivo.golpesCavar}/5`, "#aaaaaa", game);
         game.registrarEventoLog("Picas la roca...");
 
         if (celdaObjetivo.golpesCavar >= 5) {
@@ -257,12 +277,12 @@ export class Jugador extends EntidadRPG {
             // Eliminar muros entre la celda actual y la excavada
             eliminarMurosEntre(game.mapaLaberinto[this.fila][this.columna], celdaObjetivo);
             game.registrarEventoLog("¡Has cavado una galería!");
-            game.ui.crearTextoFlotanteEnCelda(sigFila, sigColumna, "¡ABIERTO!", "#00ff00", game);
+            game.ui.crearTextoFlotanteEnCelda(sigF, sigC, "¡ABIERTO!", "#00ff00", game);
             if (game.network && game.network.activo) {
                 game.network.enviarMensaje({
                     tipo: 'dig_completed',
-                    f: sigFila,
-                    c: sigColumna,
+                    f: sigF,
+                    c: sigC,
                     fromF: this.fila,
                     fromC: this.columna
                 });

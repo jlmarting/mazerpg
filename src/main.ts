@@ -50,6 +50,7 @@ class Game implements IGame {
   public tickActual: number = 0;
 
   constructor() {
+    (window as any).game = this;
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas);
     this.setupEntity(this.protagonista);
@@ -117,6 +118,14 @@ class Game implements IGame {
     document.getElementById('btnSolo')?.addEventListener('click', () => this.empezarSolo());
     document.getElementById('btnCrearPartida')?.addEventListener('click', () => this.iniciarComoHostFirebase());
     document.getElementById('btnUnirseLobby')?.addEventListener('click', () => this.mostrarLobbyFirebase());
+
+    document.getElementById('tickSlider')?.addEventListener('input', (e) => {
+        const val = parseInt((e.target as HTMLInputElement).value);
+        this.tickRate = val;
+        this.manualTickControl = true;
+        const tickVal = document.getElementById('tickVal');
+        if (tickVal) tickVal.textContent = `${val}ms`;
+    });
     document.getElementById('btnVolverLobbyFirebase')?.addEventListener('click', () => this.regresarAlLobby());
     document.getElementById('btnVolverLobbyManual')?.addEventListener('click', () => this.regresarAlLobby());
     document.getElementById('btnLobbyManual')?.addEventListener('click', () => {
@@ -167,6 +176,9 @@ class Game implements IGame {
 
       if (e.key.toLowerCase() === 'd') {
           this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
+          if (this.config.vistaDebugActivada) {
+              (this.protagonista as Jugador).tienePico = true;
+          }
           this.registrarEventoLog(`Modo Desarrollo ${this.config.vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
       }
 
@@ -218,6 +230,8 @@ class Game implements IGame {
   iniciarComoHostFirebase() {
     this.esHost = true;
     this.network.esHost = true;
+    const hostControls = document.getElementById('hostControls');
+    if (hostControls) hostControls.style.display = 'flex';
     this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Host";
     this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
     (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
@@ -427,6 +441,97 @@ class Game implements IGame {
     this.registrarEventoLog("Estadísticas recalculadas.");
   }
 
+  asegurarDimensionesMapa(f: number, c: number) {
+    if (!this.esHost) return { f, c };
+
+    let expanded = false;
+    let offsetF = 0;
+    let offsetC = 0;
+
+    // Expandir hacia arriba
+    while (f < 0) {
+        const numCols = this.config.NUMERO_COLUMNAS;
+        const newRow = Array.from({ length: numCols }, (_, col) => new Celda(0, col));
+        this.mapaLaberinto.unshift(newRow);
+        this.config.NUMERO_FILAS++;
+        f++;
+        offsetF++;
+        expanded = true;
+    }
+
+    // Expandir hacia abajo
+    while (f >= this.config.NUMERO_FILAS) {
+        const numCols = this.config.NUMERO_COLUMNAS;
+        const newRow = Array.from({ length: numCols }, (_, col) => new Celda(this.config.NUMERO_FILAS, col));
+        this.mapaLaberinto.push(newRow);
+        this.config.NUMERO_FILAS++;
+        expanded = true;
+    }
+
+    // Expandir hacia la izquierda
+    while (c < 0) {
+        this.mapaLaberinto.forEach((row, rowIdx) => {
+            row.unshift(new Celda(rowIdx, 0));
+        });
+        this.config.NUMERO_COLUMNAS++;
+        c++;
+        offsetC++;
+        expanded = true;
+    }
+
+    // Expandir hacia la derecha
+    while (c >= this.config.NUMERO_COLUMNAS) {
+        this.mapaLaberinto.forEach((row, rowIdx) => {
+            row.push(new Celda(rowIdx, this.config.NUMERO_COLUMNAS));
+        });
+        this.config.NUMERO_COLUMNAS++;
+        expanded = true;
+    }
+
+    if (expanded) {
+        // Corregir coordenadas de las celdas
+        for (let r = 0; r < this.config.NUMERO_FILAS; r++) {
+            for (let col = 0; col < this.config.NUMERO_COLUMNAS; col++) {
+                this.mapaLaberinto[r][col].fila = r;
+                this.mapaLaberinto[r][col].columna = col;
+            }
+        }
+
+        // Corregir posiciones de todas las entidades
+        this.protagonista.fila += offsetF;
+        this.protagonista.columna += offsetC;
+        this.protagonista.visualFila += offsetF;
+        this.protagonista.visualColumna += offsetC;
+
+        this.listaDeEnemigos.forEach(e => {
+            e.fila += offsetF;
+            e.columna += offsetC;
+            e.visualFila += offsetF;
+            e.visualColumna += offsetC;
+        });
+
+        this.network.jugadoresRemotos.forEach((j: any) => {
+            if (j.entidad) {
+                j.entidad.fila += offsetF;
+                j.entidad.columna += offsetC;
+                j.entidad.visualFila += offsetF;
+                j.entidad.visualColumna += offsetC;
+            }
+        });
+
+        if (this.network.activo) {
+            this.network.enviarMensaje({
+                tipo: 'map_expanded',
+                filas: this.config.NUMERO_FILAS,
+                columnas: this.config.NUMERO_COLUMNAS,
+                offsetF,
+                offsetC
+            });
+        }
+    }
+    return { f, c };
+  }
+
   generarQR() {
     const baseUrl = window.location.origin + window.location.pathname;
     const roomId = this.network.idPartidaActual;
@@ -464,6 +569,8 @@ class Game implements IGame {
     return this.listaDeEnemigos.find(e => (e as any).id === idN);
   }
 
+  public manualTickControl: boolean = false;
+
   ejecutarTick() {
     const inicioProceso = Date.now();
     this.tickActual++;
@@ -479,10 +586,12 @@ class Game implements IGame {
     this.difundirSnapshot();
 
     const duracion = Date.now() - inicioProceso;
-    if (duracion > this.tickRate - 10) {
-        this.tickRate = Math.min(500, this.tickRate + 10);
-    } else if (duracion < this.tickRate / 2) {
-        this.tickRate = Math.max(50, this.tickRate - 5);
+    if (!this.manualTickControl) {
+        if (duracion > this.tickRate - 10) {
+            this.tickRate = Math.min(500, this.tickRate + 10);
+        } else if (duracion < this.tickRate / 2) {
+            this.tickRate = Math.max(50, this.tickRate - 5);
+        }
     }
     this.proximoTick = Date.now() + this.tickRate;
   }
@@ -576,10 +685,9 @@ class Game implements IGame {
         }
 
         if (entidad === this.protagonista) {
-            // Suavizamos el snap-back: solo corregimos si el error es persistente o grande
+            // Reconciliación ESTRICTA con el Host
             const dist = Math.abs(entidad.fila - e.f) + Math.abs(entidad.columna - e.c);
-            // Umbral aumentado a 2.5 para dar más margen a la predicción del cliente
-            if (dist > 2.5) {
+            if (dist > 0.1) {
                 entidad.fila = e.f;
                 entidad.columna = e.c;
             }
@@ -1389,6 +1497,16 @@ class Game implements IGame {
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'dig_completed':
+            if (msg.f < 0 || msg.f >= this.config.NUMERO_FILAS || msg.c < 0 || msg.c >= this.config.NUMERO_COLUMNAS) {
+                if (this.esHost) {
+                    this.asegurarDimensionesMapa(msg.f, msg.c);
+                } else {
+                    // Los clientes deben esperar a 'map_expanded' antes de procesar este 'dig_completed'
+                    // Pero para ser resilientes, si llega antes, podríamos ignorarlo o encolarlo.
+                    // Generalmente el Host enviará map_expanded primero.
+                    return;
+                }
+            }
             const celdaDig = this.mapaLaberinto[msg.f][msg.c];
             celdaDig.esTransitable = true;
             if (msg.fromF !== undefined && msg.fromC !== undefined) {
@@ -1396,6 +1514,51 @@ class Game implements IGame {
                 eliminarMurosEntre(celdaOri, celdaDig);
             }
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            break;
+        case 'map_expanded':
+            this.config.NUMERO_FILAS = msg.filas;
+            this.config.NUMERO_COLUMNAS = msg.columnas;
+
+            const nuevoMapa: Celda[][] = Array.from({ length: msg.filas }, (_, f) =>
+                Array.from({ length: msg.columnas }, (_, c) => new Celda(f, c))
+            );
+
+            const oldFilas = this.mapaLaberinto.length;
+            const oldCols = oldFilas > 0 ? this.mapaLaberinto[0].length : 0;
+
+            for (let f = 0; f < oldFilas; f++) {
+                for (let c = 0; c < oldCols; c++) {
+                    const nf = f + msg.offsetF;
+                    const nc = c + msg.offsetC;
+                    if (nf >= 0 && nf < msg.filas && nc >= 0 && nc < msg.columnas) {
+                        nuevoMapa[nf][nc] = this.mapaLaberinto[f][c];
+                        nuevoMapa[nf][nc].fila = nf;
+                        nuevoMapa[nf][nc].columna = nc;
+                    }
+                }
+            }
+            this.mapaLaberinto = nuevoMapa;
+
+            this.protagonista.fila += msg.offsetF;
+            this.protagonista.columna += msg.offsetC;
+            this.protagonista.visualFila += msg.offsetF;
+            this.protagonista.visualColumna += msg.offsetC;
+
+            this.listaDeEnemigos.forEach(e => {
+                e.fila += msg.offsetF;
+                e.columna += msg.offsetC;
+                e.visualFila += msg.offsetF;
+                e.visualColumna += msg.offsetC;
+            });
+
+            this.network.jugadoresRemotos.forEach((j: any) => {
+                if (j.entidad) {
+                    j.entidad.fila += msg.offsetF;
+                    j.entidad.columna += msg.offsetC;
+                    j.entidad.visualFila += msg.offsetF;
+                    j.entidad.visualColumna += msg.offsetC;
+                }
+            });
             break;
         case 'force_teleport':
             if (msg.id === this.network.idLocal) {

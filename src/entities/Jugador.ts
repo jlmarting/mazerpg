@@ -158,6 +158,16 @@ export class Jugador extends EntidadRPG {
     if (ahora - this.ultimaInteraccion < 100) return false;
     this.ultimaInteraccion = ahora;
 
+    if (game.network && game.network.multiplayerActivo) {
+        if (game.esHost) {
+            (game as any).colaAcciones.push({ id: game.network.idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
+        } else {
+            game.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
+        }
+        this.estaCaminando = true;
+        return true;
+    }
+
     const sigFila = this.fila + deltaFila;
     const sigColumna = this.columna + deltaColumna;
 

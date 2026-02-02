@@ -32,6 +32,12 @@
                 <label>ZOOM: <input type="range" id="zoomSlider" min="1" max="3" step="0.1" value="1" style="vertical-align: middle; width: 60px;"></label>
                 <label style="white-space: nowrap;"><input type="checkbox" id="autoZoomCheck"> AUTOZOOM</label>
             </div>
+            <div id="hostControls" style="display: none; align-items: center; gap: 10px; margin-left: 15px; border-left: 1px solid #444; padding-left: 15px;">
+                <label style="color: #007bff; font-weight: bold; font-size: 10px;">TICK:
+                    <input type="range" id="tickRateSlider" min="16" max="500" value="120" style="vertical-align: middle; width: 80px;">
+                    <input type="number" id="tickRateInput" min="16" max="500" value="120" style="width: 45px; background: #000; color: #fff; border: 1px solid #444; font-family: monospace; font-size: 10px;"> ms
+                </label>
+            </div>
         </div>
         <div id="logPanel">
             <textarea id="logTextArea" readonly placeholder="Esperando logs de conexión..."></textarea>

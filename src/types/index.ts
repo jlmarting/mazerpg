@@ -15,6 +15,7 @@ export interface GameConfig {
     zoom: number;
     targetZoom: number;
     autoZoom: boolean;
+    tickRate: number;
 }
 
 export interface CameraOffset {

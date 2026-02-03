@@ -266,16 +266,35 @@ export class Renderer {
     const screenX = (curX - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
     const screenY = (curY - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
 
-    this.ctx.fillStyle = p.color;
-    this.ctx.beginPath();
-    this.ctx.arc(screenX, screenY, 5, 0, Math.PI * 2);
-    this.ctx.fill();
-
-    // Estela
-    this.ctx.shadowBlur = 10;
-    this.ctx.shadowColor = p.color;
-    this.ctx.fill();
-    this.ctx.shadowBlur = 0;
+    this.ctx.save();
+    if (p.esFlecha) {
+        // Dibujar Flecha
+        const angle = Math.atan2(p.targetY - p.y, p.targetX - p.x);
+        this.ctx.translate(screenX, screenY);
+        this.ctx.rotate(angle);
+        this.ctx.strokeStyle = '#555';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(-10, 0);
+        this.ctx.lineTo(10, 0);
+        this.ctx.stroke();
+        this.ctx.fillStyle = '#aaa';
+        this.ctx.beginPath();
+        this.ctx.moveTo(10, 0);
+        this.ctx.lineTo(5, -3);
+        this.ctx.lineTo(5, 3);
+        this.ctx.fill();
+    } else {
+        // Dibujar Bola de Fuego
+        this.ctx.fillStyle = p.color;
+        this.ctx.beginPath();
+        this.ctx.arc(screenX, screenY, 5, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.shadowBlur = 10;
+        this.ctx.shadowColor = p.color;
+        this.ctx.fill();
+    }
+    this.ctx.restore();
   }
 
   dibujarRadar(r: any, offset: CameraOffset, config: GameConfig) {

@@ -149,11 +149,11 @@ canvas {
     align-items: center;
     width: 90%;
     max-width: 500px;
-    background: rgba(30, 30, 30, 0.9);
-    padding: 20px;
-    border-radius: 10px;
-    border: 2px solid #444;
-    box-shadow: 0 0 30px rgba(0,0,0,0.7);
+    background: rgba(15, 15, 15, 0.95);
+    padding: 30px;
+    border-radius: 15px;
+    border: 2px solid #e67e22;
+    box-shadow: 0 0 50px rgba(0,0,0,0.9);
     max-height: 90vh;
     overflow-y: auto;
 }
@@ -305,6 +305,13 @@ canvas {
 .action-btn:hover {
     background: #555;
     border-color: #ff4444;
+}
+
+.action-btn.disabled {
+    opacity: 0.3;
+    filter: grayscale(1);
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 .class-btn.selected {

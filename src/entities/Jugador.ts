@@ -6,6 +6,7 @@ export class Jugador extends EntidadRPG {
   tienePico: boolean = false;
   ultimaCasillaAtacada: {f: number, c: number} | null = null;
   ultimaInteraccion: number = 0;
+  ultimaVezHabilidad: { fireball: number, bow: number, food: number } = { fireball: 0, bow: 0, food: 0 };
   clase: string = 'guerrero';
   color: string = '#007bff';
 

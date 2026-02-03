@@ -16,7 +16,7 @@
     </script>
 </head>
 <body>
-    <div id="topMenu">
+    <div id="topMenu" style="display: none;">
         <div id="menuToggle">MENU</div>
         <div class="menu-content">
             <div id="roomDisplay" style="color: #007bff; font-weight: bold; margin-right: 15px; display: none;">SALA: <span id="roomIdVal">---</span></div>
@@ -71,58 +71,41 @@
 
     <div id="lobby">
         <h1 style="color: #007bff;">MazeRPG</h1>
-        <div class="lobby-config-panel">
-            <div class="input-group">
-                <label class="lobby-label-bright">TU NICK:</label>
-                <input type="text" id="nickInput" value="Héroe" maxlength="10" class="lobby-input">
-            </div>
-            <div class="input-group">
-                <label class="lobby-label-bright">DIFICULTAD:</label>
-                <select id="difficultySelect" class="lobby-select">
-                    <option value="facil" selected>FÁCIL 😊</option>
-                    <option value="medio">MEDIO ⚔️</option>
-                    <option value="dificil">DIFÍCIL 💀</option>
-                </select>
-            </div>
-            <div id="lobbyStats" class="stats-panel">
-                <p class="stats-title">ESTADÍSTICAS DEL HÉROE</p>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <label class="stat-label">FUERZA (FUE)</label>
-                        <input type="text" id="lobbyFue" readonly class="stat-field">
-                    </div>
-                    <div class="stat-item">
-                        <label class="stat-label">AGILIDAD (AGI)</label>
-                        <input type="text" id="lobbyAgi" readonly class="stat-field">
-                    </div>
-                    <div class="stat-item">
-                        <label class="stat-label">INTELIGENCIA (INT)</label>
-                        <input type="text" id="lobbyInt" readonly class="stat-field">
-                    </div>
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
-                    <button id="btnReroll" style="padding: 5px 10px; cursor: pointer; background: #444; color: #fff; border: 1px solid #666; font-family: monospace; font-size: 10px;">RECALCULAR DADOS</button>
-                    <button id="btnQR" style="padding: 5px 10px; cursor: pointer; background: #007bff; color: #fff; border: 1px solid #0056b3; font-family: monospace; font-size: 10px;">GENERAR QR PARTIDA</button>
-                </div>
-                <div id="qrContainer" style="margin-top: 10px; display: none; background: white; padding: 5px; border-radius: 5px;">
-                    <img id="qrImage" src="" alt="QR Code" style="width: 128px; height: 128px;">
-                </div>
-            </div>
-        </div>
+
+        <!-- Campo oculto por compatibilidad -->
+        <input type="hidden" id="nickInput" value="Héroe">
 
         <div id="lobbyInitial">
-            <div style="margin-bottom: 20px;">
+            <div id="characterPreview" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 10px; border: 1px solid #333; margin-bottom: 25px; width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div id="previewColor" style="width: 50px; height: 50px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 15px currentColor;"></div>
+                    <div style="text-align: left;">
+                        <div id="previewName" style="font-size: 20px; font-weight: bold; color: #fff;">-</div>
+                        <div id="previewClassInfo" style="font-size: 14px; color: #e67e22; display: flex; align-items: center; gap: 5px;">
+                            <span id="previewClassIcon"></span> <span id="previewClassName"></span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; background: #000; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-family: monospace; font-size: 12px;">
+                    <div style="color: #ff4444;">FUE: <span id="previewFue">-</span></div>
+                    <div style="color: #44ff44;">AGI: <span id="previewAgi">-</span></div>
+                    <div style="color: #4444ff;">INT: <span id="previewInt">-</span></div>
+                </div>
+                <button id="btnEditCharacter" style="width: 100%; padding: 8px; background: #444; color: #fff; border: 1px solid #666; cursor: pointer; font-family: monospace; font-size: 12px; border-radius: 4px;">EDITAR PERSONAJE</button>
+            </div>
+
+            <div id="charCreationSection">
                 <button id="btnOpenCharacterModal" style="padding: 15px 30px; cursor: pointer; background: #e67e22; color: white; border: none; font-family: monospace; font-weight: bold; font-size: 16px; border-radius: 5px; box-shadow: 0 4px #d35400;">CREAR PERSONAJE</button>
             </div>
-            <div id="gameOptions" style="display: none; flex-direction: column; align-items: center;">
-                <div style="margin-bottom: 10px;">
-                    <button id="btnCrearPartida" style="padding: 10px 20px; margin: 10px; cursor: pointer; background: #007bff; color: white; border: none; font-family: monospace; font-weight: bold;">CREAR PARTIDA (HOST)</button>
-                    <button id="btnUnirseLobby" style="padding: 10px 20px; margin: 10px; cursor: pointer; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold;">UNIRSE A PARTIDA</button>
+
+            <div id="gameOptions" style="display: none; flex-direction: column; align-items: center; width: 100%; max-width: 450px;">
+                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 15px; gap: 10px;">
+                    <button id="btnCrearPartida" style="flex: 1; padding: 12px; cursor: pointer; background: #007bff; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px;">CREAR PARTIDA</button>
+                    <button id="btnUnirseLobby" style="flex: 1; padding: 12px; cursor: pointer; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px;">UNIRSE A PARTIDA</button>
                 </div>
-                <div style="border-top: 1px solid #333; padding-top: 10px; width: 100%;">
-                    <button id="btnLobbyManual" style="padding: 8px 15px; margin: 5px; cursor: pointer; background: #6c757d; color: white; border: none; font-family: monospace;">CONEXIÓN MANUAL</button>
-                    <br>
-                    <button id="btnSolo" style="padding: 8px 15px; margin: 10px; cursor: pointer; background: #444; color: #ccc; border: none; font-family: monospace;">MODO UN JUGADOR</button>
+                <div style="border-top: 1px solid #333; padding-top: 15px; width: 100%; display: flex; flex-direction: column; gap: 10px;">
+                    <button id="btnSolo" style="padding: 10px; cursor: pointer; background: #444; color: #fff; border: none; font-family: monospace; border-radius: 5px;">MODO UN JUGADOR</button>
+                    <button id="btnLobbyManual" style="padding: 10px; cursor: pointer; background: #6c757d; color: white; border: none; font-family: monospace; border-radius: 5px;">CONEXIÓN MANUAL</button>
                 </div>
             </div>
         </div>
@@ -260,10 +243,12 @@
 
     <canvas id="mazeCanvas" style="display: none;"></canvas>
 
-    <div id="actionsMenu">
+    <div id="actionsMenu" style="display: none;">
         <div id="actionsToggle">ACCIONES</div>
         <div class="actions-content">
             <button id="btnFireballAction" class="action-btn" title="Bola de Fuego (F)">🔥 BOLA FUEGO</button>
+            <button id="btnBowAction" class="action-btn" title="Disparo de Arco" style="display: none;">🏹 DISPARO ARCO</button>
+            <button id="btnCreateFoodAction" class="action-btn" title="Crear Comida" style="display: none;">🪄 CREAR COMIDA</button>
             <button id="btnGuardAction" class="action-btn" title="A mí la guardia">🎺 LA GUARDIA</button>
             <button id="btnRadarAction" class="action-btn" title="Radar">📡 RADAR</button>
         </div>

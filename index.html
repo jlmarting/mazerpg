@@ -20,14 +20,34 @@
         <div id="menuToggle">MENU</div>
         <div class="menu-content">
             <div id="roomDisplay" style="color: #007bff; font-weight: bold; margin-right: 15px; display: none;">SALA: <span id="roomIdVal">---</span></div>
-            <button id="btnDebug" class="menu-btn">DEBUG (D)</button>
-            <button id="btnChat" class="menu-btn">CHAT (Enter)</button>
             <button id="btnAceptarJugadores" class="menu-btn" disabled>ADMITIR JUGADORES</button>
-            <button id="btnEmpezar" class="menu-btn" disabled>EMPEZAR</button>
-            <button id="btnAbandonar" class="menu-btn" style="background: #dc3545;">ABANDONAR</button>
-            <button id="btnLogPanel" class="menu-btn">VER CONEXIONES</button>
-            <div id="xpDisplay" style="color: #ffc107; font-weight: bold; margin-left: 15px;">XP: <span id="xpVal">0</span></div>
-            <button id="btnFireball" style="width: 30px; height: 30px; border-radius: 50%; background: red; border: 2px solid white; cursor: pointer; margin-left: auto;" title="Bola de fuego (F)"></button>
+            <button id="btnChat" class="menu-btn">CHAT (Enter)</button>
+
+            <!-- Dropdown OPCIONES -->
+            <div class="menu-dropdown">
+                <button class="menu-btn">OPCIONES ▾</button>
+                <div class="dropdown-content">
+                    <button id="btnDebug" class="menu-btn">DEBUG (D)</button>
+                    <button id="btnLogPanel" class="menu-btn">VER CONEXIONES</button>
+                    <button id="btnEmpezar" class="menu-btn" disabled>REINTENTAR</button>
+                    <button id="btnAbandonar" class="menu-btn" style="background: #dc3545; color: white;">ABANDONAR</button>
+                </div>
+            </div>
+
+            <!-- Dropdown ESTADÍSTICAS -->
+            <div class="menu-dropdown">
+                <button class="menu-btn">ESTADÍSTICAS ▾</button>
+                <div class="dropdown-content stats-dropdown">
+                    <div style="display: flex; flex-direction: column; gap: 4px; padding: 5px;">
+                        <div>HP: <span id="hpStat" style="color: #0f0;">0/0</span></div>
+                        <div>FUE: <span id="fueStat" style="color: #007bff;">0</span></div>
+                        <div>AGI: <span id="agiStat" style="color: #007bff;">0</span></div>
+                        <div>INT: <span id="intStat" style="color: #007bff;">0</span></div>
+                        <div style="border-top: 1px solid #444; margin-top: 4px; padding-top: 4px;">XP: <span id="xpStat" style="color: #ffc107;">0</span></div>
+                    </div>
+                </div>
+            </div>
+
             <div id="zoomControls" style="margin-left: 15px; border-left: 1px solid #444; padding-left: 15px; font-size: 10px; display: flex; align-items: center; gap: 5px; color: #fff;">
                 <label>ZOOM: <input type="range" id="zoomSlider" min="1" max="3" step="0.1" value="1" style="vertical-align: middle; width: 60px;"></label>
                 <label style="white-space: nowrap;"><input type="checkbox" id="autoZoomCheck"> AUTOZOOM</label>
@@ -153,6 +173,15 @@
     </div>
 
     <canvas id="mazeCanvas" style="display: none;"></canvas>
+
+    <div id="actionsMenu">
+        <div id="actionsToggle">ACCIONES</div>
+        <div class="actions-content">
+            <button id="btnFireballAction" class="action-btn" title="Bola de Fuego (F)">🔥 BOLA FUEGO</button>
+            <button id="btnGuardAction" class="action-btn" title="A mí la guardia">🎺 LA GUARDIA</button>
+            <button id="btnRadarAction" class="action-btn" title="Radar">📡 RADAR</button>
+        </div>
+    </div>
 
     <div id="endGameUI" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; color: white;">
         <h1 id="endGameTitle" style="color: #ff4444;">HAS CAÍDO</h1>

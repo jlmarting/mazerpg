@@ -45,6 +45,7 @@ class Game implements IGame {
   public motorIniciado: boolean = false;
   public colaDeMensajes: string[] = [];
   public bolasDeFuego: any[] = [];
+  public radares: any[] = [];
   public ultimoTick: number = 0;
   public colaAcciones: any[] = [];
 
@@ -96,6 +97,10 @@ class Game implements IGame {
       document.getElementById('topMenu')?.classList.toggle('visible');
     });
 
+    document.getElementById('actionsToggle')?.addEventListener('click', () => {
+        document.getElementById('actionsMenu')?.classList.toggle('visible');
+    });
+
     document.getElementById('btnDebug')?.addEventListener('click', () => {
       this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
       this.registrarEventoLog(`Modo Desarrollo ${this.config.vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
@@ -134,6 +139,9 @@ class Game implements IGame {
     document.getElementById('btnQR')?.addEventListener('click', () => this.generarQR());
 
     document.getElementById('btnFireball')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
+    document.getElementById('btnFireballAction')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
+    document.getElementById('btnGuardAction')?.addEventListener('click', () => this.teletransportarAliados(this.protagonista, true));
+    document.getElementById('btnRadarAction')?.addEventListener('click', () => this.lanzarRadar(this.protagonista, true));
 
     document.getElementById('zoomSlider')?.addEventListener('input', (e) => {
         this.config.targetZoom = parseFloat((e.target as HTMLInputElement).value);
@@ -232,34 +240,7 @@ class Game implements IGame {
     }
 
     await this.firebase.crearPartida(id, this.network.idLocal, this.protagonista.nombre);
-
-    setInterval(() => {
-        if (this.esHost && this.network.idPartidaActual) {
-            this.firebase.updateHeartbeat(this.network.idPartidaActual, this.network.jugadoresRemotos.size + 1);
-        }
-    }, 10000);
-
-    setInterval(() => {
-        if (this.esHost && this.network.multiplayerActivo) {
-            const lista = this.listaDeEnemigos.map(e => ({
-                id: e.id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
-            }));
-            this.network.enviarMensaje({ tipo: 'npc_sync_all', lista });
-
-            // Sincronizar objetos del mundo periódicamente
-            const objetos: any[] = [];
-            for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
-                for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
-                    const celda = this.mapaLaberinto[f][c];
-                    if (celda.alimento || celda.burbuja || celda.tienePico || celda.esPortal) {
-                        objetos.push({ f, c, a: celda.alimento, b: celda.burbuja, p: celda.tienePico, pr: celda.esPortal });
-                    }
-                }
-            }
-            this.network.enviarMensaje({ tipo: 'objetos', lista: objetos, is_update: true });
-        }
-    }, 5000);
-
+    this.configurarIntervalosHost();
     this.ui.registrarLogConexion(`Partida creada: ${id}`);
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
@@ -365,24 +346,39 @@ class Game implements IGame {
             hostNick: this.protagonista.nombre
         });
         this.registrarEventoLog("Ahora eres el Host de la partida.");
-
-        setInterval(() => {
-            if (this.esHost && this.network.idPartidaActual) {
-                this.firebase.updateHeartbeat(this.network.idPartidaActual, this.network.jugadoresRemotos.size + 1);
-            }
-        }, 10000);
-
-        setInterval(() => {
-            if (this.esHost && this.network.multiplayerActivo) {
-                const lista = this.listaDeEnemigos.map(e => ({
-                    id: e.id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
-                }));
-                this.network.enviarMensaje({ tipo: 'npc_sync_all', lista });
-            }
-        }, 5000);
-
+        this.configurarIntervalosHost();
         (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
     }
+  }
+
+  configurarIntervalosHost() {
+    setInterval(() => {
+        if (this.esHost && this.network.idPartidaActual) {
+            this.firebase.updateHeartbeat(this.network.idPartidaActual, this.network.jugadoresRemotos.size + 1);
+        }
+    }, 10000);
+
+    setInterval(() => {
+        if (this.esHost && this.network.multiplayerActivo) {
+            // Sincronizar NPCs
+            const listaNpcs = this.listaDeEnemigos.map(e => ({
+                id: (e as any).id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
+            }));
+            this.network.enviarMensaje({ tipo: 'npc_sync_all', lista: listaNpcs });
+
+            // Sincronizar objetos del mundo (fuente de verdad absoluta)
+            const objetos: any[] = [];
+            for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
+                for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+                    const celda = this.mapaLaberinto[f][c];
+                    if (celda.alimento || celda.burbuja || celda.tienePico || celda.esPortal) {
+                        objetos.push({ f, c, a: celda.alimento, b: celda.burbuja, p: celda.tienePico, pr: celda.esPortal });
+                    }
+                }
+            }
+            this.network.enviarMensaje({ tipo: 'objetos', lista: objetos, is_update: true });
+        }
+    }, 5000);
   }
 
   regresarAlLobby() {
@@ -741,6 +737,18 @@ class Game implements IGame {
             this.renderer.dibujarProyectil(b, offset, this.config);
         }
     }
+
+    // Actualizar y dibujar radares
+    const ahoraR = Date.now();
+    for (let i = this.radares.length - 1; i >= 0; i--) {
+        const r = this.radares[i];
+        if (ahoraR - r.inicio > r.duracion) {
+            this.radares.splice(i, 1);
+        } else {
+            this.renderer.dibujarRadar(r, offset, this.config);
+        }
+    }
+
     this.renderer.finalizarZoom();
 
     this.renderer.dibujarMarcadoresMovimiento(this.config);
@@ -809,6 +817,19 @@ class Game implements IGame {
 
   actualizar() {
     if (!this.protagonista) return;
+
+    // Actualizar UI de estadísticas en el menú superior
+    const hpStat = document.getElementById('hpStat');
+    const fueStat = document.getElementById('fueStat');
+    const agiStat = document.getElementById('agiStat');
+    const intStat = document.getElementById('intStat');
+    const xpStat = document.getElementById('xpStat');
+
+    if (hpStat) hpStat.textContent = `${Math.floor(this.protagonista.vidaActual)}/${this.protagonista.vidaMaxima}`;
+    if (fueStat) fueStat.textContent = this.protagonista.fuerza.toString();
+    if (agiStat) agiStat.textContent = this.protagonista.agilidad.toString();
+    if (intStat) intStat.textContent = this.protagonista.inteligencia.toString();
+    if (xpStat) xpStat.textContent = this.protagonista.puntosExperiencia.toString();
 
     if (this.esHost) {
         const ahoraTick = Date.now();
@@ -1101,6 +1122,8 @@ class Game implements IGame {
         }
     } else if (accion.tipo === 'fireball') {
         this.lanzarBolaDeFuego(entidad, false);
+    } else if (accion.tipo === 'radar') {
+        this.lanzarRadar(entidad, false);
     }
   }
 
@@ -1234,6 +1257,32 @@ class Game implements IGame {
                 c: "#ff4500"
             });
         }
+    }
+  }
+
+  lanzarRadar(emisor: any, esLocal: boolean) {
+    if (esLocal && emisor === this.protagonista && this.network && this.network.multiplayerActivo) {
+        if (this.esHost) {
+            this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'radar' } });
+        } else {
+            this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'radar' } });
+        }
+        return;
+    }
+
+    this.radares.push({
+        x: emisor.columna,
+        y: emisor.fila,
+        inicio: Date.now(),
+        duracion: 5000
+    });
+
+    if (this.esHost && this.network.multiplayerActivo) {
+        this.network.enviarMensaje({
+            tipo: 'radar_spawn',
+            x: emisor.columna,
+            y: emisor.fila
+        });
     }
   }
 
@@ -1376,6 +1425,16 @@ class Game implements IGame {
                             }
                         }
                     }
+                });
+            }
+            break;
+        case 'radar_spawn':
+            if (!this.esHost) {
+                this.radares.push({
+                    x: msg.x,
+                    y: msg.y,
+                    inicio: Date.now(),
+                    duracion: 5000
                 });
             }
             break;

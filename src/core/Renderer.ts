@@ -278,6 +278,41 @@ export class Renderer {
     this.ctx.shadowBlur = 0;
   }
 
+  dibujarRadar(r: any, offset: CameraOffset, config: GameConfig) {
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
+
+    const screenX = (r.x - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const screenY = (r.y - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+
+    const ahora = Date.now();
+    const transcurrido = ahora - r.inicio;
+    const progreso = transcurrido / r.duracion;
+    const alfa = 1 - progreso;
+
+    if (alfa <= 0) return;
+
+    this.ctx.save();
+    // Dibujamos sobre todo, así que no aplicamos el recorte del zoom si queremos que se vea expandido?
+    // No, mejor que siga la cámara pero que no se corte por el viewport si es posible.
+    // Pero como estamos dentro del context de zoom (si se llama antes de finalizarZoom), se verá bien.
+
+    this.ctx.strokeStyle = `rgba(0, 255, 255, ${alfa * 0.4})`;
+    this.ctx.lineWidth = 1.5;
+
+    // Círculos concéntricos con distancia progresiva
+    // r_i = expansion * (i^1.8)
+    const expansion = 5 + progreso * 100;
+    for (let i = 1; i <= 6; i++) {
+        const radio = expansion * Math.pow(i, 1.6);
+        this.ctx.beginPath();
+        this.ctx.arc(screenX, screenY, radio, 0, Math.PI * 2);
+        this.ctx.stroke();
+    }
+
+    this.ctx.restore();
+  }
+
   dibujarMarcadoresMovimiento(config: GameConfig) {
     const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
     const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;

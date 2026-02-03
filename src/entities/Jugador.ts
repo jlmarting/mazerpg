@@ -3,9 +3,50 @@ import { CameraOffset, GameConfig, IGame } from '../types';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
+  tienePico: boolean = false;
+  ultimaCasillaAtacada: {f: number, c: number} | null = null;
+  ultimaInteraccion: number = 0;
 
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
+    this.generarStats();
+  }
+
+  generarStats() {
+    this.fuerza = Math.floor(Math.random() * 10) + 1;
+    this.agilidad = Math.floor(Math.random() * 10) + 1;
+    this.inteligencia = Math.floor(Math.random() * 10) + 1;
+    let sum = this.fuerza + this.agilidad + this.inteligencia;
+
+    if (sum > 24) {
+      const exceso = sum - 24;
+      if (this.fuerza >= this.agilidad && this.fuerza >= this.inteligencia) {
+        this.fuerza -= exceso;
+      } else if (this.agilidad >= this.fuerza && this.agilidad >= this.inteligencia) {
+        this.agilidad -= exceso;
+      } else {
+        this.inteligencia -= exceso;
+      }
+    } else if (sum < 6) {
+      if (this.fuerza >= this.agilidad && this.fuerza >= this.inteligencia) {
+        this.fuerza = 15;
+      } else if (this.agilidad >= this.fuerza && this.agilidad >= this.inteligencia) {
+        this.agilidad = 15;
+      } else {
+        this.inteligencia = 15;
+      }
+    } else if (sum < 9) {
+      if (this.fuerza <= this.agilidad && this.fuerza <= this.inteligencia) {
+        this.fuerza = 8;
+      } else if (this.agilidad <= this.fuerza && this.agilidad <= this.inteligencia) {
+        this.agilidad = 8;
+      } else {
+        this.inteligencia = 8;
+      }
+    }
+
+    this.vidaMaxima = Math.floor(10 * ((this.fuerza * 2 + this.agilidad) / 3));
+    this.vidaActual = this.vidaMaxima;
   }
 
   dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
@@ -81,12 +122,27 @@ export class Jugador extends EntidadRPG {
         ctx.shadowBlur = 10;
         ctx.shadowColor = '#007bff';
         ctx.stroke();
+
+        // Inmunidad Glow
+        if (Date.now() < this.inmunidadHasta) {
+            ctx.beginPath();
+            ctx.arc(x, y, TAMANO_CELDA / 2, 0, Math.PI * 2);
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00ffff';
+            ctx.stroke();
+        }
     }
 
     ctx.restore();
   }
 
   recibirDano(cantidad: number, atacante?: EntidadRPG | null): number {
+    if (Date.now() < this.inmunidadHasta) {
+        return 0;
+    }
     const result = super.recibirDano(cantidad, atacante);
     if (cantidad > 0) {
       this.pasosDesdeUltimoDano = 0;
@@ -97,116 +153,22 @@ export class Jugador extends EntidadRPG {
   intentarMover(deltaFila: number, deltaColumna: number, game: IGame): boolean {
     if (!this.estaVivo) return false;
 
-    const sigFila = this.fila + deltaFila;
-    const sigColumna = this.columna + deltaColumna;
+    const ahora = Date.now();
+    if (ahora - this.ultimaInteraccion < 100) return false;
+    this.ultimaInteraccion = ahora;
 
-    let jugadorRemotoEnCasilla: any = null;
-    let jugadorId: string = "";
-    game.network.jugadoresRemotos.forEach((v: any, k: string) => {
-        if (v.entidad && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
-            jugadorRemotoEnCasilla = v.entidad;
-            jugadorId = k;
-        }
-    });
-
-    if (jugadorRemotoEnCasilla) {
-        const interactions = (this.consecutiveInteractions.get(jugadorId) || 0) + 1;
-        if (interactions >= 2 && this.estaVivo && jugadorRemotoEnCasilla.estaVivo) {
-            this.consecutiveInteractions.set(jugadorId, 0);
-            if (this.vidaActual > 1) {
-                this.vidaActual -= 1;
-                jugadorRemotoEnCasilla.vidaActual = Math.min(jugadorRemotoEnCasilla.vidaMaxima, jugadorRemotoEnCasilla.vidaActual + 1);
-                game.registrarEventoLog(`Has transferido 1 HP a ${jugadorRemotoEnCasilla.nombre}`);
-                game.ui.crearTextoFlotanteEnCelda(this.fila, this.columna, "-1 HP", "#ff0000", game);
-                game.ui.crearTextoFlotanteEnCelda(jugadorRemotoEnCasilla.fila, jugadorRemotoEnCasilla.columna, "+1 HP", "#00ff00", game);
-
-                if (game.network && game.network.activo) {
-                    game.network.enviarMensaje({
-                        tipo: 'hp_transfer',
-                        fromId: game.network.idLocal,
-                        toId: jugadorId,
-                        amount: 1
-                    });
-                    game.network.enviarMensaje({
-                        tipo: 'hp_loss',
-                        id: game.network.idLocal,
-                        amount: 1
-                    });
-                }
-            } else {
-                game.registrarEventoLog("No tienes suficiente vida para transferir.");
-            }
+    if (game.network && game.network.multiplayerActivo) {
+        if (game.esHost) {
+            (game as any).colaAcciones.push({ id: game.network.idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
         } else {
-            this.consecutiveInteractions.set(jugadorId, interactions);
-            game.registrarEventoLog(`Interacción con ${jugadorRemotoEnCasilla.nombre} (${interactions}/2)`);
+            game.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
         }
-        return false;
+        this.estaCaminando = true;
+        return true;
+    } else {
+        // En modo solo, resolvemos inmediatamente usando la lógica de resolución centralizada
+        (game as any).resolverAccion(game.network.idLocal, { tipo: 'mover', df: deltaFila, dc: deltaColumna });
+        return true;
     }
-
-    this.consecutiveInteractions.forEach((_v, k) => {
-        if (k !== jugadorId) this.consecutiveInteractions.set(k, 0);
-    });
-
-    const enemigoEnCasilla = game.listaDeEnemigos.find((e: any) => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
-    if (enemigoEnCasilla) {
-      if (this.enCombateCon === enemigoEnCasilla) {
-        game.resolverRondaDeCombate(this, enemigoEnCasilla);
-      } else {
-        game.iniciarCombate(this, enemigoEnCasilla);
-      }
-      return false;
-    }
-
-    if (this.enCombateCon) {
-      if (!game.intentarRehuirCombate(this)) {
-        return false;
-      }
-    }
-
-    if (sigFila < 0 || sigFila >= game.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= game.config.NUMERO_COLUMNAS) return false;
-
-    const celdaActual = game.mapaLaberinto[this.fila][this.columna];
-    let esMovimientoValido = false;
-
-    if (deltaFila === -1 && !celdaActual.muros.superior && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-    if (deltaFila === 1 && !celdaActual.muros.inferior && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-    if (deltaColumna === -1 && !celdaActual.muros.izquierdo && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-    if (deltaColumna === 1 && !celdaActual.muros.derecho && game.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-
-    if (esMovimientoValido) {
-      this.fila = sigFila;
-      this.columna = sigColumna;
-      this.estaCaminando = true;
-      this.ultimaVezMovido = Date.now();
-
-      this.pasosDesdeUltimoDano++;
-      if (this.pasosDesdeUltimoDano >= 10) {
-        this.pasosDesdeUltimoDano = 0;
-        if (this.vidaActual < this.vidaMaxima) {
-          const probabilidad = ((this.fuerza * 4) + (this.agilidad * 2)) / 6;
-          if (Math.random() * 100 < probabilidad) {
-            this.vidaActual = Math.min(this.vidaMaxima, this.vidaActual + 1);
-            game.ui.crearTextoFlotanteEnCelda(this.fila, this.columna, "+1", "#00ff00", game);
-            game.registrarEventoLog("Te sientes un poco mejor. +1 HP");
-          }
-        }
-      }
-
-      if (game.network && game.network.activo) {
-        game.network.enviarMensaje({
-          tipo: 'posicion',
-          f: this.fila,
-          c: this.columna,
-          cam: true,
-          id: game.network.idLocal,
-          nick: this.nombre,
-          hp: this.vidaActual,
-          maxHp: this.vidaMaxima
-        });
-      }
-
-      return true;
-    }
-    return false;
   }
 }

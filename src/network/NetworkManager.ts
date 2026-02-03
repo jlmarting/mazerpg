@@ -14,6 +14,7 @@ export class NetworkManager {
   public idPartidaActual: string | null = null;
   public jugadoresRemotos: Map<string, RemotePlayer> = new Map();
   public activo: boolean = false;
+  public idRealDelHost: string | null = null;
 
   constructor() {}
 

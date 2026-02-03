@@ -85,6 +85,37 @@ canvas {
     cursor: not-allowed;
 }
 
+/* Dropdowns */
+.menu-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-content {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: #222;
+    min-width: 140px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
+    z-index: 110;
+    border: 1px solid #007bff;
+    padding: 5px;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.menu-dropdown:hover .dropdown-content {
+    display: flex;
+}
+
+.stats-dropdown {
+    min-width: 120px;
+    font-size: 10px;
+    color: #fff;
+}
+
 #logPanel {
     width: 90%;
     max-width: 800px;
@@ -109,4 +140,183 @@ canvas {
     padding: 5px;
     box-sizing: border-box;
     resize: none;
+}
+
+/* Lobby improvements */
+#lobby {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 90%;
+    max-width: 500px;
+    background: rgba(30, 30, 30, 0.9);
+    padding: 20px;
+    border-radius: 10px;
+    border: 2px solid #444;
+    box-shadow: 0 0 30px rgba(0,0,0,0.7);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#lobby h1 {
+    margin-top: 0;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+    margin-bottom: 25px;
+}
+
+.lobby-config-panel {
+    width: 100%;
+    margin-bottom: 25px;
+    border: 1px solid #444;
+    padding: 20px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    background: rgba(20, 20, 20, 0.5);
+    box-sizing: border-box;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.lobby-label-bright {
+    color: #fff;
+    font-weight: bold;
+    font-size: 13px;
+    text-shadow: 1px 1px 2px #000;
+}
+
+.lobby-input, .lobby-select {
+    padding: 8px;
+    font-family: 'Courier New', monospace;
+    background: #000;
+    color: #0f0;
+    border: 1px solid #555;
+    border-radius: 4px;
+}
+
+.stats-panel {
+    border: 1px dashed #007bff;
+    padding: 15px;
+    background: #000;
+    border-radius: 6px;
+    margin-top: 10px;
+}
+
+.stats-title {
+    margin: 0 0 15px 0;
+    color: #007bff;
+    font-size: 12px;
+    font-weight: bold;
+    text-align: center;
+    border-bottom: 1px solid #222;
+    padding-bottom: 5px;
+}
+
+.stats-grid {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.stat-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.stat-label {
+    font-size: 9px;
+    color: #aaa;
+    text-align: center;
+}
+
+.stat-field {
+    width: 100%;
+    background: #111;
+    color: #00ff00;
+    border: 1px solid #333;
+    text-align: center;
+    padding: 5px 0;
+    font-weight: bold;
+    font-size: 16px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+}
+
+/* Menu Acciones (Derecha) */
+#actionsMenu {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%) translateX(100%);
+    z-index: 90;
+    background: rgba(34, 34, 34, 0.9);
+    border-left: 2px solid #ff4444;
+    transition: transform 0.4s ease;
+    display: flex;
+    align-items: center;
+}
+
+#actionsMenu.visible {
+    transform: translateY(-50%) translateX(0);
+}
+
+#actionsToggle {
+    position: absolute;
+    left: -30px;
+    background: #ff4444;
+    color: white;
+    padding: 10px 5px;
+    border-radius: 5px 0 0 5px;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: bold;
+    writing-mode: vertical-lr;
+    transform: rotate(180deg);
+}
+
+.actions-content {
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.action-btn {
+    background: #444;
+    color: white;
+    border: 1px solid #666;
+    padding: 10px;
+    font-family: monospace;
+    cursor: pointer;
+    font-size: 11px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.action-btn:hover {
+    background: #555;
+    border-color: #ff4444;
+}
+
+@media (max-width: 600px) {
+    #lobby {
+        width: 95%;
+        padding: 15px;
+    }
+    #lobby h1 {
+        font-size: 1.5em;
+    }
+    button {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
 }

@@ -14,16 +14,39 @@ export class Renderer {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
+  aplicarZoom(config: GameConfig) {
+    const z = config.zoom;
+    const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
+    const mazeWidth = this.canvas.width;
+    const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;
+
+    this.ctx.save();
+
+    // Recorte para que el zoom no afecte a la UI estática
+    this.ctx.beginPath();
+    this.ctx.rect(0, ALTO_UI_TOP, mazeWidth, mazeHeight);
+    this.ctx.clip();
+
+    // Centrar zoom
+    this.ctx.translate(mazeWidth / 2, ALTO_UI_TOP + mazeHeight / 2);
+    this.ctx.scale(z, z);
+    this.ctx.translate(-mazeWidth / 2, -(ALTO_UI_TOP + mazeHeight / 2));
+  }
+
+  finalizarZoom() {
+    this.ctx.restore();
+  }
+
   obtenerOffsetCamara(protagonista: any, config: GameConfig): CameraOffset {
     if (!protagonista) return { colOffset: 0, filaOffset: 0 };
 
-    const { NUMERO_COLUMNAS, NUMERO_FILAS, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+    const { TAMANO_CELDA, ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
+    const mazeWidth = this.canvas.width;
+    const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;
 
-    let colOffset = protagonista.columna - Math.floor(CELDAS_VISIBLES_X / 2);
-    let filaOffset = protagonista.fila - Math.floor(CELDAS_VISIBLES_Y / 2);
-
-    colOffset = Math.max(0, Math.min(colOffset, NUMERO_COLUMNAS - CELDAS_VISIBLES_X));
-    filaOffset = Math.max(0, Math.min(filaOffset, NUMERO_FILAS - CELDAS_VISIBLES_Y));
+    // Calculamos el offset para que el protagonista esté exactamente en el centro del viewport
+    const colOffset = protagonista.columna - (mazeWidth / TAMANO_CELDA / 2) + 0.5;
+    const filaOffset = protagonista.fila - (mazeHeight / TAMANO_CELDA / 2) + 0.5;
 
     return { colOffset, filaOffset };
   }
@@ -35,15 +58,98 @@ export class Renderer {
     this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
 
-    for (let fila = filaOffset; fila < filaOffset + CELDAS_VISIBLES_Y; fila++) {
+    const fInicio = Math.floor(filaOffset);
+    const fFin = Math.ceil(filaOffset + CELDAS_VISIBLES_Y);
+    const cInicio = Math.floor(colOffset);
+    const cFin = Math.ceil(colOffset + CELDAS_VISIBLES_X);
+
+    for (let fila = fInicio; fila < fFin; fila++) {
       if (fila < 0 || fila >= NUMERO_FILAS) continue;
-      for (let columna = colOffset; columna < colOffset + CELDAS_VISIBLES_X; columna++) {
+      for (let columna = cInicio; columna < cFin; columna++) {
         if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
 
         const celda = mapaLaberinto[fila][columna];
         if (celda.esTransitable) {
           this.ctx.fillStyle = '#FFF';
-          this.ctx.fillRect((columna - colOffset) * TAMANO_CELDA, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP, TAMANO_CELDA, TAMANO_CELDA);
+          const x = (columna - colOffset) * TAMANO_CELDA;
+          const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+          this.ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
+
+          // Delinear bordes púrpura
+          this.ctx.strokeStyle = '#800080';
+          this.ctx.lineWidth = 2;
+
+          if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, y);
+            this.ctx.lineTo(x + TAMANO_CELDA, y);
+            this.ctx.stroke();
+          }
+          if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, y + TAMANO_CELDA);
+            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
+            this.ctx.stroke();
+          }
+          if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, y);
+            this.ctx.lineTo(x, y + TAMANO_CELDA);
+            this.ctx.stroke();
+          }
+          if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x + TAMANO_CELDA, y);
+            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
+            this.ctx.stroke();
+          }
+
+          // Dibujar Burbuja
+          if (celda.burbuja) {
+            this.ctx.strokeStyle = '#87CEEB'; // Azul Celeste
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2, TAMANO_CELDA / 2.5, 0, Math.PI * 2);
+            this.ctx.stroke();
+            this.ctx.fillStyle = 'rgba(135, 206, 235, 0.3)';
+            this.ctx.fill();
+          }
+
+          // Dibujar Portal
+          if (celda.esPortal) {
+            this.ctx.fillStyle = 'rgba(0, 0, 255, 0.4)';
+            this.ctx.beginPath();
+            this.ctx.moveTo((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 5);
+            this.ctx.lineTo((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA - 5, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2);
+            this.ctx.lineTo((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA - 5);
+            this.ctx.lineTo((columna - colOffset) * TAMANO_CELDA + 5, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.strokeStyle = '#0000ff';
+            this.ctx.stroke();
+          }
+
+          // Dibujar Alimento
+          if (celda.alimento) {
+            this.ctx.font = '16px serif';
+            this.ctx.textAlign = 'center';
+            let icon = '🍎';
+            if (celda.alimento.tipo === 'Plátano') icon = '🍌';
+            if (celda.alimento.tipo === 'Kiwi') icon = '🥝';
+            if (celda.alimento.tipo === 'Brócoli') icon = '🥦';
+            if (celda.alimento.tipo === 'Muslo de pollo') icon = '🍗';
+            if (celda.alimento.tipo === 'Chuleta') icon = '🥩';
+            if (celda.alimento.tipo === 'Pescado') icon = '🐟';
+
+            this.ctx.fillText(icon, (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
+          }
+
+          // Dibujar Pico
+          if (celda.tienePico) {
+            this.ctx.font = '16px serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('⛏️', (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
+          }
         }
       }
     }
@@ -68,9 +174,14 @@ export class Renderer {
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
 
     const tiempoActual = Date.now();
-    for (let fila = filaOffset; fila < filaOffset + CELDAS_VISIBLES_Y; fila++) {
+    const fInicio = Math.floor(filaOffset);
+    const fFin = Math.ceil(filaOffset + CELDAS_VISIBLES_Y);
+    const cInicio = Math.floor(colOffset);
+    const cFin = Math.ceil(colOffset + CELDAS_VISIBLES_X);
+
+    for (let fila = fInicio; fila < fFin; fila++) {
       if (fila < 0 || fila >= NUMERO_FILAS) continue;
-      for (let columna = colOffset; columna < colOffset + CELDAS_VISIBLES_X; columna++) {
+      for (let columna = cInicio; columna < cFin; columna++) {
         if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
 
         const celda = mapaLaberinto[fila][columna];
@@ -94,11 +205,11 @@ export class Renderer {
   }
 
   dibujarUI(game: any) {
-    const { ALTO_UI_TOP, ALTO_UI_BOTTOM, CELDAS_VISIBLES_Y, TAMANO_CELDA } = game.config;
+    const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = game.config;
 
     this.ctx.fillStyle = '#111';
     this.ctx.fillRect(0, 0, this.canvas.width, ALTO_UI_TOP);
-    this.ctx.fillRect(0, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA), this.canvas.width, ALTO_UI_BOTTOM);
+    this.ctx.fillRect(0, this.canvas.height - ALTO_UI_BOTTOM, this.canvas.width, ALTO_UI_BOTTOM);
 
     this.ctx.strokeStyle = '#555';
     this.ctx.lineWidth = 2;
@@ -109,10 +220,11 @@ export class Renderer {
 
     this.ctx.fillStyle = '#fff';
     this.ctx.font = 'bold 12px monospace';
-    this.ctx.fillText("HÉROE", 10, 20);
+    this.ctx.fillText("HÉROE", 20, 20);
     this.ctx.font = '11px monospace';
-    this.ctx.fillText(`HP: ${game.protagonista.vidaActual}/${game.protagonista.vidaMaxima}`, 10, 35);
-    this.ctx.fillText(`FUE:${game.protagonista.fuerza} AGI:${game.protagonista.agilidad} INT:${game.protagonista.inteligencia}`, 10, 50);
+    this.ctx.fillText(`HP: ${game.protagonista.vidaActual}/${game.protagonista.vidaMaxima}`, 20, 32);
+    this.ctx.fillText(`FUE:${game.protagonista.fuerza} AGI:${game.protagonista.agilidad}`, 20, 44);
+    this.ctx.fillText(`INT:${game.protagonista.inteligencia} XP:${game.protagonista.puntosExperiencia}`, 20, 56);
 
     let enemigoVisible = game.obtenerEnemigoAMostrar();
     if (enemigoVisible) {
@@ -134,7 +246,7 @@ export class Renderer {
 
     if (game.juegoTerminado) {
       this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
+      this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM);
       this.ctx.fillStyle = '#fff';
       this.ctx.font = 'bold 16px monospace';
       this.ctx.textAlign = 'center';
@@ -144,12 +256,70 @@ export class Renderer {
     }
   }
 
+  dibujarProyectil(p: any, offset: CameraOffset, config: GameConfig) {
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
+
+    const curX = p.x + (p.targetX - p.x) * p.pct;
+    const curY = p.y + (p.targetY - p.y) * p.pct;
+
+    const screenX = (curX - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const screenY = (curY - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+
+    this.ctx.fillStyle = p.color;
+    this.ctx.beginPath();
+    this.ctx.arc(screenX, screenY, 5, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // Estela
+    this.ctx.shadowBlur = 10;
+    this.ctx.shadowColor = p.color;
+    this.ctx.fill();
+    this.ctx.shadowBlur = 0;
+  }
+
+  dibujarRadar(r: any, offset: CameraOffset, config: GameConfig) {
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
+
+    const screenX = (r.x - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const screenY = (r.y - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+
+    const ahora = Date.now();
+    const transcurrido = ahora - r.inicio;
+    const progreso = transcurrido / r.duracion;
+    const alfa = 1 - progreso;
+
+    if (alfa <= 0) return;
+
+    this.ctx.save();
+    // Dibujamos sobre todo, así que no aplicamos el recorte del zoom si queremos que se vea expandido?
+    // No, mejor que siga la cámara pero que no se corte por el viewport si es posible.
+    // Pero como estamos dentro del context de zoom (si se llama antes de finalizarZoom), se verá bien.
+
+    this.ctx.strokeStyle = `rgba(0, 255, 255, ${alfa * 0.4})`;
+    this.ctx.lineWidth = 1.5;
+
+    // Círculos concéntricos con distancia progresiva
+    // r_i = expansion * (i^1.8)
+    const expansion = 5 + progreso * 100;
+    for (let i = 1; i <= 6; i++) {
+        const radio = expansion * Math.pow(i, 1.6);
+        this.ctx.beginPath();
+        this.ctx.arc(screenX, screenY, radio, 0, Math.PI * 2);
+        this.ctx.stroke();
+    }
+
+    this.ctx.restore();
+  }
+
   dibujarMarcadoresMovimiento(config: GameConfig) {
-    const { ALTO_UI_TOP, CELDAS_VISIBLES_Y, TAMANO_CELDA } = config;
+    const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
+    const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;
     this.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     const tam = 20;
     const centroX = this.canvas.width / 2;
-    const centroY = ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) / 2;
+    const centroY = ALTO_UI_TOP + mazeHeight / 2;
     const gap = 10;
 
     // Arriba
@@ -161,9 +331,9 @@ export class Renderer {
 
     // Abajo
     this.ctx.beginPath();
-    this.ctx.moveTo(centroX, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap);
-    this.ctx.lineTo(centroX - tam, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap - tam);
-    this.ctx.lineTo(centroX + tam, ALTO_UI_TOP + (CELDAS_VISIBLES_Y * TAMANO_CELDA) - gap - tam);
+    this.ctx.moveTo(centroX, ALTO_UI_TOP + mazeHeight - gap);
+    this.ctx.lineTo(centroX - tam, ALTO_UI_TOP + mazeHeight - gap - tam);
+    this.ctx.lineTo(centroX + tam, ALTO_UI_TOP + mazeHeight - gap - tam);
     this.ctx.fill();
 
     // Izquierda

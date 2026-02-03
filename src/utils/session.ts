@@ -8,8 +8,19 @@ const adjectives = [
   "grande", "pequeno", "largo", "corto", "viejo", "joven", "nuevo", "antiguo", "brillante", "oscuro"
 ];
 
+const colors = [
+    "rojo", "azul", "verde", "amarillo", "purpura", "naranja", "blanco", "negro", "gris", "rosa"
+];
+
 export function generateSessionName(): string {
   const animal = animals[Math.floor(Math.random() * animals.length)];
   const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
   return `${animal}-${adjective}`;
+}
+
+export function generateBubbleName(): string {
+    const animal = animals[Math.floor(Math.random() * animals.length)];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    return `${animal}-${color}-${adjective}`;
 }

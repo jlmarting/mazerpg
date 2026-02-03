@@ -307,6 +307,21 @@ canvas {
     border-color: #ff4444;
 }
 
+.class-btn.selected {
+    background: #e67e22 !important;
+    border-color: #fff !important;
+    font-weight: bold;
+}
+
+.class-btn:hover {
+    background: #555;
+}
+
+.diff-btn:hover {
+    filter: brightness(1.2);
+    transform: scale(1.02);
+}
+
 @media (max-width: 600px) {
     #lobby {
         width: 95%;

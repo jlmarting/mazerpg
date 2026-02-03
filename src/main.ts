@@ -37,7 +37,7 @@ class Game implements IGame {
     zoom: 1,
     targetZoom: 1,
     autoZoom: false,
-    tickRate: 120
+    tickRate: 16
   };
   public juegoTerminado: boolean = false;
   public mundoSincronizado: boolean = false;
@@ -48,6 +48,7 @@ class Game implements IGame {
   public radares: any[] = [];
   public ultimoTick: number = 0;
   public colaAcciones: any[] = [];
+  private _flowTarget: 'solo' | 'host' | 'manual' | null = null;
 
   constructor() {
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
@@ -118,8 +119,8 @@ class Game implements IGame {
       document.getElementById('logPanel')?.classList.toggle('visible');
     });
 
-    document.getElementById('btnSolo')?.addEventListener('click', () => this.empezarSolo());
-    document.getElementById('btnCrearPartida')?.addEventListener('click', () => this.iniciarComoHostFirebase());
+    document.getElementById('btnSolo')?.addEventListener('click', () => this.mostrarSeleccionDificultad('solo'));
+    document.getElementById('btnCrearPartida')?.addEventListener('click', () => this.mostrarSeleccionDificultad('host'));
     document.getElementById('btnUnirseLobby')?.addEventListener('click', () => this.mostrarLobbyFirebase());
     document.getElementById('btnVolverLobbyFirebase')?.addEventListener('click', () => this.regresarAlLobby());
     document.getElementById('btnVolverLobbyManual')?.addEventListener('click', () => this.regresarAlLobby());
@@ -134,6 +135,67 @@ class Game implements IGame {
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnSalir')?.addEventListener('click', () => window.location.reload());
     document.getElementById('btnAbandonar')?.addEventListener('click', () => this.abandonarPartida());
+
+    document.getElementById('btnOpenCharacterModal')?.addEventListener('click', () => this.abrirModalPersonaje());
+    document.getElementById('btnRandomName')?.addEventListener('click', () => this.generarNombreAleatorio());
+    document.getElementById('btnCharReroll')?.addEventListener('click', () => this.recalcularStatsPersonaje());
+    document.getElementById('btnSaveCharacter')?.addEventListener('click', () => this.guardarPersonaje());
+
+    document.querySelectorAll('.class-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.class-btn').forEach(b => b.classList.remove('selected'));
+            (e.currentTarget as HTMLElement).classList.add('selected');
+            this.recalcularStatsPersonaje();
+        });
+    });
+
+    document.querySelectorAll('.diff-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const diff = (e.currentTarget as HTMLElement).getAttribute('data-diff') as any;
+            this.config.dificultad = diff;
+            document.getElementById('difficultyModal')!.style.display = 'none';
+            if (this._flowTarget === 'solo') {
+                this.empezarSolo();
+            } else if (this._flowTarget === 'host') {
+                this.iniciarComoHostFirebase();
+            } else if (this._flowTarget === 'manual') {
+                this.iniciarComoHostManual();
+            }
+        });
+    });
+
+    document.getElementById('btnBackFromDiff')?.addEventListener('click', () => {
+        document.getElementById('difficultyModal')!.style.display = 'none';
+    });
+
+    // Eventos de QR Manual
+    document.getElementById('btnShowOfferQR')?.addEventListener('click', () => this.mostrarQRManual('OFERTA', (document.getElementById('manualOfferOut') as HTMLTextAreaElement).value));
+    document.getElementById('btnShowAnswerQR')?.addEventListener('click', () => this.mostrarQRManual('RESPUESTA', (document.getElementById('manualAnswerOut') as HTMLTextAreaElement).value));
+    document.getElementById('btnCloseQRModal')?.addEventListener('click', () => {
+        document.getElementById('qrModal')!.style.display = 'none';
+    });
+    document.getElementById('btnScanQROffer')?.addEventListener('click', () => this.escanearQRManual('manualOfferIn'));
+    document.getElementById('btnScanQRAnswer')?.addEventListener('click', () => this.escanearQRManual('manualAnswerIn'));
+
+    document.getElementById('btnGenOferta')?.addEventListener('click', () => {
+        this.mostrarSeleccionDificultad('manual');
+    });
+
+    document.getElementById('btnProcesarResp')?.addEventListener('click', () => {
+        const sdp = (document.getElementById('manualAnswerIn') as HTMLTextAreaElement).value;
+        if (sdp) this.network.procesarRespuestaManual(sdp);
+    });
+
+    document.getElementById('btnProcesarOferta')?.addEventListener('click', async () => {
+        const offer = (document.getElementById('manualOfferIn') as HTMLTextAreaElement).value;
+        if (offer) {
+            const answer = await this.network.aceptarOfertaManual(offer, this);
+            (document.getElementById('manualAnswerOut') as HTMLTextAreaElement).value = answer;
+            this.registrarEventoLog("Respuesta manual generada.");
+            this.esHost = false;
+            this.network.esHost = false;
+        }
+    });
 
     document.getElementById('btnReroll')?.addEventListener('click', () => this.recalcularStats());
     document.getElementById('btnQR')?.addEventListener('click', () => this.generarQR());
@@ -209,9 +271,12 @@ class Game implements IGame {
     });
   }
 
+  mostrarSeleccionDificultad(target: 'solo' | 'host' | 'manual') {
+    this._flowTarget = target;
+    document.getElementById('difficultyModal')!.style.display = 'flex';
+  }
+
   empezarSolo() {
-    this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
-    this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
     this.mundoSincronizado = true;
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
@@ -220,8 +285,6 @@ class Game implements IGame {
   iniciarComoHostFirebase() {
     this.esHost = true;
     this.network.esHost = true;
-    this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Host";
-    this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
     (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
     const hc = document.getElementById('hostControls');
     if (hc) hc.style.display = 'flex';
@@ -281,6 +344,15 @@ class Game implements IGame {
     });
   }
 
+  async iniciarComoHostManual() {
+      const sdp = await this.network.crearOfertaManual(this);
+      (document.getElementById('manualOfferOut') as HTMLTextAreaElement).value = sdp;
+      this.registrarEventoLog(`Oferta manual generada (Dificultad: ${this.config.dificultad}).`);
+      this.esHost = true;
+      this.network.esHost = true;
+      this.iniciarMotorJuego();
+  }
+
   async unirseAPartidaFirestore(id: string) {
     this.network.idPartidaActual = id;
     const roomDisp = document.getElementById('roomDisplay');
@@ -289,7 +361,6 @@ class Game implements IGame {
         roomDisp.style.display = 'block';
         roomIdVal.textContent = id;
     }
-    this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Invitado";
     this.esHost = false;
     this.network.esHost = false;
     this.registrarEventoLog(`Uniéndote a la partida ${id}...`);
@@ -408,8 +479,80 @@ class Game implements IGame {
     if (i) i.value = this.protagonista.inteligencia.toString();
   }
 
+  abrirModalPersonaje() {
+      document.getElementById('characterModal')!.style.display = 'flex';
+      this.generarNombreAleatorio();
+      this.recalcularStatsPersonaje();
+  }
+
+  generarNombreAleatorio() {
+      const nombres = [
+          "Tharos", "Elowen", "Grombrindal", "Luthien", "Drizzt", "Ciri", "Geralt", "Yennefer",
+          "Boromir", "Galadriel", "Aragorn", "Legolas", "Gimli", "Saruman", "Gandalf", "Radagast",
+          "Elrond", "Glorfindel", "Eowyn", "Faramir", "Theoden", "Denethor", "Beren", "Tinuviel"
+      ];
+      const randomName = nombres[Math.floor(Math.random() * nombres.length)];
+      (document.getElementById('charNameInput') as HTMLInputElement).value = randomName;
+  }
+
+  recalcularStatsPersonaje() {
+      const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
+      this.protagonista.generarStats(selectedClass);
+
+      const f = document.getElementById('charFue')!;
+      const a = document.getElementById('charAgi')!;
+      const i = document.getElementById('charInt')!;
+
+      f.textContent = this.protagonista.fuerza.toString();
+      a.textContent = this.protagonista.agilidad.toString();
+      i.textContent = this.protagonista.inteligencia.toString();
+  }
+
+  guardarPersonaje() {
+      this.protagonista.nombre = (document.getElementById('charNameInput') as HTMLInputElement).value || "Héroe";
+      this.protagonista.color = (document.getElementById('charColorInput') as HTMLInputElement).value;
+      const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
+      this.protagonista.clase = selectedClass;
+
+      document.getElementById('characterModal')!.style.display = 'none';
+      document.getElementById('btnOpenCharacterModal')!.style.display = 'none';
+      document.getElementById('gameOptions')!.style.display = 'flex';
+
+      // Sincronizar con el nickInput original por compatibilidad con el resto del código
+      (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
+      this.actualizarStatsLobby();
+      this.registrarEventoLog(`Personaje guardado: ${this.protagonista.nombre} (${selectedClass})`);
+  }
+
+  mostrarQRManual(titulo: string, data: string) {
+      if (!data) {
+          alert("No hay datos para generar QR");
+          return;
+      }
+      const qrImage = document.getElementById('modalQRImage') as HTMLImageElement;
+      qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data)}`;
+      document.getElementById('modalQRTitle')!.textContent = titulo;
+      document.getElementById('qrModal')!.style.display = 'flex';
+  }
+
+  escanearQRManual(targetId: string) {
+      const data = prompt("Pega aquí el contenido del código QR (o usa tu cámara si el dispositivo lo permite):");
+      if (data) {
+          (document.getElementById(targetId) as HTMLTextAreaElement).value = data;
+          this.registrarEventoLog("QR escaneado y pegado en " + targetId);
+      }
+  }
+
   recalcularStats() {
-    this.protagonista = new Jugador();
+    const prevClass = this.protagonista.clase;
+    const prevColor = this.protagonista.color;
+    const prevName = this.protagonista.nombre;
+
+    this.protagonista = new Jugador(prevName);
+    this.protagonista.clase = prevClass;
+    this.protagonista.color = prevColor;
+    this.protagonista.generarStats();
+
     this.setupEntity(this.protagonista);
     this.actualizarStatsLobby();
     this.registrarEventoLog("Estadísticas recalculadas.");
@@ -613,6 +756,8 @@ class Game implements IGame {
     let cantidad = 40;
     if (this.config.dificultad === 'facil' || this.config.dificultad === 'medio') {
         cantidad = Math.floor(cantidad * 0.75);
+    } else if (this.config.dificultad === 'locura') {
+        cantidad = Math.floor(cantidad * 1.75);
     }
 
     for (let i = 0; i < cantidad; i++) {

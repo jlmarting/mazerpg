@@ -201,4 +201,74 @@ export class NetworkManager {
 
     info.unsubscribes.push(unsubOffer, unsubIce);
   }
+
+  // MÉTODOS PARA CONEXIÓN MANUAL (SIN FIREBASE)
+  async crearOfertaManual(game: IGame): Promise<string> {
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    const dc = pc.createDataChannel("mazeRPG");
+    const guestId = "GUEST_" + Math.random().toString(36).substr(2, 5);
+
+    const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [] };
+    this.jugadoresRemotos.set(guestId, info);
+    this.setupDataChannelHandlers(dc, guestId, game);
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // En modo manual, tenemos que esperar a que los ICE candidates se recolecten
+    // para incluirlos en el SDP y que sea un string único copiable.
+    return new Promise((resolve) => {
+        pc.onicecandidate = (e) => {
+            if (!e.candidate) {
+                // Candidatos recolectados
+                resolve(btoa(JSON.stringify(pc.localDescription)));
+            }
+        };
+        // Timeout de seguridad por si tarda mucho
+        setTimeout(() => {
+            if (pc.localDescription) resolve(btoa(JSON.stringify(pc.localDescription)));
+        }, 2000);
+    });
+  }
+
+  async procesarRespuestaManual(sdpB64: string) {
+    try {
+        const answer = JSON.parse(atob(sdpB64));
+        const [, info] = Array.from(this.jugadoresRemotos.entries())[0]; // El primer invitado en manual
+        if (info && info.pc) {
+            await info.pc.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+    } catch (e) {
+        console.error("Error al procesar respuesta manual:", e);
+        alert("Error al procesar la respuesta. Código inválido.");
+    }
+  }
+
+  async aceptarOfertaManual(sdpB64: string, game: IGame): Promise<string> {
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    const info: RemotePlayer = { pc, dc: null as any, entidad: null, unsubscribes: [] };
+
+    pc.ondatachannel = (event) => {
+        const dc = event.channel;
+        info.dc = dc;
+        this.jugadoresRemotos.set('host', info);
+        this.setupDataChannelHandlers(dc, 'host', game);
+    };
+
+    const offer = JSON.parse(atob(sdpB64));
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    return new Promise((resolve) => {
+        pc.onicecandidate = (e) => {
+            if (!e.candidate) {
+                resolve(btoa(JSON.stringify(pc.localDescription)));
+            }
+        };
+        setTimeout(() => {
+            if (pc.localDescription) resolve(btoa(JSON.stringify(pc.localDescription)));
+        }, 2000);
+    });
+  }
 }

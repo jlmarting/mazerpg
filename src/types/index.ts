@@ -11,7 +11,7 @@ export interface GameConfig {
     CELDAS_VISIBLES_X: number;
     CELDAS_VISIBLES_Y: number;
     vistaDebugActivada: boolean;
-    dificultad: 'facil' | 'medio' | 'dificil';
+    dificultad: 'facil' | 'medio' | 'dificil' | 'locura';
     zoom: number;
     targetZoom: number;
     autoZoom: boolean;

@@ -143,24 +143,12 @@ class Game implements IGame {
         this.config.autoZoom = (e.target as HTMLInputElement).checked;
     });
 
-    const trSlider = document.getElementById('tickRateSlider') as HTMLInputElement;
-    const trInput = document.getElementById('tickRateInput') as HTMLInputElement;
+    const trSelect = document.getElementById('tickRateSelect') as HTMLSelectElement;
 
-    trSlider?.addEventListener('input', (e) => {
-        const val = parseInt((e.target as HTMLInputElement).value);
+    trSelect?.addEventListener('change', (e) => {
+        const val = parseInt((e.target as HTMLSelectElement).value);
         this.config.tickRate = val;
-        if (trInput) trInput.value = val.toString();
-        this.registrarEventoLog(`Tick Rate ajustado a ${val}ms`);
-    });
-
-    trInput?.addEventListener('input', (e) => {
-        let val = parseInt((e.target as HTMLInputElement).value);
-        if (isNaN(val)) return;
-        if (val < 16) val = 16;
-        if (val > 500) val = 500;
-        this.config.tickRate = val;
-        if (trSlider) trSlider.value = val.toString();
-        this.registrarEventoLog(`Tick Rate ajustado a ${val}ms`);
+        this.registrarEventoLog(`Velocidad de turno ajustada a ${val}ms`);
     });
 
     this.actualizarStatsLobby();
@@ -257,6 +245,18 @@ class Game implements IGame {
                 id: e.id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
             }));
             this.network.enviarMensaje({ tipo: 'npc_sync_all', lista });
+
+            // Sincronizar objetos del mundo periódicamente
+            const objetos: any[] = [];
+            for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
+                for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+                    const celda = this.mapaLaberinto[f][c];
+                    if (celda.alimento || celda.burbuja || celda.tienePico || celda.esPortal) {
+                        objetos.push({ f, c, a: celda.alimento, b: celda.burbuja, p: celda.tienePico, pr: celda.esPortal });
+                    }
+                }
+            }
+            this.network.enviarMensaje({ tipo: 'objetos', lista: objetos, is_update: true });
         }
     }, 5000);
 
@@ -906,8 +906,8 @@ class Game implements IGame {
     for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
         for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
             const celda = this.mapaLaberinto[f][c];
-            if (celda.alimento || celda.burbuja) {
-                objetos.push({ f, c, a: celda.alimento, b: celda.burbuja });
+            if (celda.alimento || celda.burbuja || celda.tienePico || celda.esPortal) {
+                objetos.push({ f, c, a: celda.alimento, b: celda.burbuja, p: celda.tienePico, pr: celda.esPortal });
             }
         }
     }
@@ -989,9 +989,23 @@ class Game implements IGame {
                     entidad.vidaActual -= 1;
                     jugadorChocado.vidaActual = Math.min(jugadorChocado.vidaMaxima, jugadorChocado.vidaActual + 1);
                     this.registrarEventoLog(`${entidad.nombre} transfirió 1 HP a ${jugadorChocado.nombre}`);
+
+                    // Notificar a todos para efectos visuales (texto flotante)
+                    this.network.enviarMensaje({
+                        tipo: 'hp_transfer',
+                        fromId: id,
+                        toId: jugadorChocadoId,
+                        amount: 1
+                    });
+                    this.network.enviarMensaje({
+                        tipo: 'hp_loss',
+                        id: id,
+                        amount: 1
+                    });
                 }
             } else {
                 entidad.consecutiveInteractions.set(jugadorChocadoId!, interactions);
+                this.registrarEventoLog(`Interacción: ${entidad.nombre} -> ${jugadorChocado.nombre} (${interactions}/2)`);
             }
             return;
         }
@@ -1163,19 +1177,17 @@ class Game implements IGame {
   }
 
   lanzarBolaDeFuego(emisor: any, esLocal: boolean) {
-    if (esLocal && emisor instanceof Jugador) {
+    if (esLocal && emisor === this.protagonista && this.network && this.network.multiplayerActivo) {
         const ahora = Date.now();
         if (ahora - emisor.ultimaInteraccion < 100) return;
         emisor.ultimaInteraccion = ahora;
 
-        if (this.network && this.network.multiplayerActivo) {
-            if (this.esHost) {
-                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'fireball' } });
-            } else {
-                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'fireball' } });
-            }
-            return;
+        if (this.esHost) {
+            this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'fireball' } });
+        } else {
+            this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'fireball' } });
         }
+        return;
     }
 
     // Buscar enemigo más cercano, prioridad a los que están a la vista
@@ -1320,7 +1332,7 @@ class Game implements IGame {
   }
 
   procesarMensajeMultiplayer(msg: any, idEmisor: string) {
-    const idSujeto = msg.id || idEmisor;
+    const idSujeto = msg.id || (idEmisor === 'host' ? this.network.idRealDelHost : idEmisor) || idEmisor;
     switch (msg.tipo) {
         case 'action':
             if (this.esHost) {
@@ -1368,12 +1380,22 @@ class Game implements IGame {
             }
             break;
         case 'handshake':
-            if (!this.network.jugadoresRemotos.has(idSujeto)) {
+            let realId = idSujeto;
+            if (idEmisor === 'host' && !this.esHost) {
+                const hostInfo = this.network.jugadoresRemotos.get('host');
+                if (hostInfo) {
+                    this.network.jugadoresRemotos.delete('host');
+                    this.network.jugadoresRemotos.set(realId, hostInfo);
+                    this.network.idRealDelHost = realId;
+                }
+            }
+
+            if (!this.network.jugadoresRemotos.has(realId)) {
                 const pc: any = null;
                 const dc: any = null;
-                this.network.jugadoresRemotos.set(idSujeto, { pc, dc, entidad: null, unsubscribes: [] });
+                this.network.jugadoresRemotos.set(realId, { pc, dc, entidad: null, unsubscribes: [] });
             }
-            const jInfo = this.network.jugadoresRemotos.get(idSujeto)!;
+            const jInfo = this.network.jugadoresRemotos.get(realId)!;
             if (!jInfo.entidad) {
                 jInfo.entidad = new JugadorRemoto(0, 0, msg.nick, idSujeto);
                 this.setupEntity(jInfo.entidad);
@@ -1405,14 +1427,31 @@ class Game implements IGame {
             });
             break;
         case 'objetos':
+            // Si es una actualización, primero limpiamos objetos existentes para que el Host sea la verdad absoluta
+            if (msg.is_update) {
+                for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
+                    for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+                        const celda = this.mapaLaberinto[f][c];
+                        celda.alimento = null;
+                        celda.tienePico = false;
+                        // Burbujas y portales suelen ser estáticos, pero por consistencia:
+                        celda.burbuja = null;
+                        celda.esPortal = false;
+                    }
+                }
+            }
             msg.lista.forEach((o: any) => {
                 const celda = this.mapaLaberinto[o.f][o.c];
                 celda.alimento = o.a;
                 celda.burbuja = o.b;
+                celda.tienePico = o.p || false;
+                celda.esPortal = o.pr || false;
             });
-            this.mundoSincronizado = true;
-            this.ui.ocultarLobby();
-            this.iniciarMotorJuego();
+            if (!this.motorIniciado) {
+                this.mundoSincronizado = true;
+                this.ui.ocultarLobby();
+                this.iniciarMotorJuego();
+            }
             break;
         case 'food_consumed':
             const celdaFood = this.mapaLaberinto[msg.f][msg.c];

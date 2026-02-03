@@ -25,6 +25,12 @@ export class EnemigoNPC extends EntidadRPG {
         this.inteligencia = Math.max(1, Math.floor(this.inteligencia * 0.7));
         this.vidaMaxima = Math.max(1, Math.floor(this.vidaMaxima * 0.7));
         this.vidaActual = this.vidaMaxima;
+    } else if (dificultad === 'locura') {
+        this.fuerza = Math.floor(this.fuerza * 1.75);
+        this.agilidad = Math.floor(this.agilidad * 1.75);
+        this.inteligencia = Math.floor(this.inteligencia * 1.75);
+        this.vidaMaxima = Math.floor(this.vidaMaxima * 1.75);
+        this.vidaActual = this.vidaMaxima;
     }
 
     if (this.tipo === "Esqueleto") {

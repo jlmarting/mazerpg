@@ -37,7 +37,7 @@ class Game implements IGame {
     zoom: 1,
     targetZoom: 1,
     autoZoom: false,
-    tickRate: 120
+    tickRate: 16
   };
   public juegoTerminado: boolean = false;
   public mundoSincronizado: boolean = false;
@@ -48,6 +48,7 @@ class Game implements IGame {
   public radares: any[] = [];
   public ultimoTick: number = 0;
   public colaAcciones: any[] = [];
+  private _flowTarget: 'solo' | 'host' | 'manual' | null = null;
 
   constructor() {
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
@@ -118,8 +119,8 @@ class Game implements IGame {
       document.getElementById('logPanel')?.classList.toggle('visible');
     });
 
-    document.getElementById('btnSolo')?.addEventListener('click', () => this.empezarSolo());
-    document.getElementById('btnCrearPartida')?.addEventListener('click', () => this.iniciarComoHostFirebase());
+    document.getElementById('btnSolo')?.addEventListener('click', () => this.mostrarSeleccionDificultad('solo'));
+    document.getElementById('btnCrearPartida')?.addEventListener('click', () => this.mostrarSeleccionDificultad('host'));
     document.getElementById('btnUnirseLobby')?.addEventListener('click', () => this.mostrarLobbyFirebase());
     document.getElementById('btnVolverLobbyFirebase')?.addEventListener('click', () => this.regresarAlLobby());
     document.getElementById('btnVolverLobbyManual')?.addEventListener('click', () => this.regresarAlLobby());
@@ -135,11 +136,75 @@ class Game implements IGame {
     document.getElementById('btnSalir')?.addEventListener('click', () => window.location.reload());
     document.getElementById('btnAbandonar')?.addEventListener('click', () => this.abandonarPartida());
 
+    document.getElementById('btnOpenCharacterModal')?.addEventListener('click', () => this.abrirModalPersonaje());
+    document.getElementById('btnEditCharacter')?.addEventListener('click', () => this.abrirModalPersonaje());
+    document.getElementById('btnRandomName')?.addEventListener('click', () => this.generarNombreAleatorio());
+    document.getElementById('btnCharReroll')?.addEventListener('click', () => this.recalcularStatsPersonaje());
+    document.getElementById('btnSaveCharacter')?.addEventListener('click', () => this.guardarPersonaje());
+
+    document.querySelectorAll('.class-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.class-btn').forEach(b => b.classList.remove('selected'));
+            (e.currentTarget as HTMLElement).classList.add('selected');
+            this.recalcularStatsPersonaje();
+        });
+    });
+
+    document.querySelectorAll('.diff-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const diff = (e.currentTarget as HTMLElement).getAttribute('data-diff') as any;
+            this.config.dificultad = diff;
+            document.getElementById('difficultyModal')!.style.display = 'none';
+            if (this._flowTarget === 'solo') {
+                this.empezarSolo();
+            } else if (this._flowTarget === 'host') {
+                this.iniciarComoHostFirebase();
+            } else if (this._flowTarget === 'manual') {
+                this.iniciarComoHostManual();
+            }
+        });
+    });
+
+    document.getElementById('btnBackFromDiff')?.addEventListener('click', () => {
+        document.getElementById('difficultyModal')!.style.display = 'none';
+    });
+
+    // Eventos de QR Manual
+    document.getElementById('btnShowOfferQR')?.addEventListener('click', () => this.mostrarQRManual('OFERTA', (document.getElementById('manualOfferOut') as HTMLTextAreaElement).value));
+    document.getElementById('btnShowAnswerQR')?.addEventListener('click', () => this.mostrarQRManual('RESPUESTA', (document.getElementById('manualAnswerOut') as HTMLTextAreaElement).value));
+    document.getElementById('btnCloseQRModal')?.addEventListener('click', () => {
+        document.getElementById('qrModal')!.style.display = 'none';
+    });
+    document.getElementById('btnScanQROffer')?.addEventListener('click', () => this.escanearQRManual('manualOfferIn'));
+    document.getElementById('btnScanQRAnswer')?.addEventListener('click', () => this.escanearQRManual('manualAnswerIn'));
+
+    document.getElementById('btnGenOferta')?.addEventListener('click', () => {
+        this.mostrarSeleccionDificultad('manual');
+    });
+
+    document.getElementById('btnProcesarResp')?.addEventListener('click', () => {
+        const sdp = (document.getElementById('manualAnswerIn') as HTMLTextAreaElement).value;
+        if (sdp) this.network.procesarRespuestaManual(sdp);
+    });
+
+    document.getElementById('btnProcesarOferta')?.addEventListener('click', async () => {
+        const offer = (document.getElementById('manualOfferIn') as HTMLTextAreaElement).value;
+        if (offer) {
+            const answer = await this.network.aceptarOfertaManual(offer, this);
+            (document.getElementById('manualAnswerOut') as HTMLTextAreaElement).value = answer;
+            this.registrarEventoLog("Respuesta manual generada.");
+            this.esHost = false;
+            this.network.esHost = false;
+        }
+    });
+
     document.getElementById('btnReroll')?.addEventListener('click', () => this.recalcularStats());
     document.getElementById('btnQR')?.addEventListener('click', () => this.generarQR());
 
     document.getElementById('btnFireball')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
     document.getElementById('btnFireballAction')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
+    document.getElementById('btnBowAction')?.addEventListener('click', () => this.lanzarArco(this.protagonista, true));
+    document.getElementById('btnCreateFoodAction')?.addEventListener('click', () => this.crearComidaHabilidad(this.protagonista, true));
     document.getElementById('btnGuardAction')?.addEventListener('click', () => this.teletransportarAliados(this.protagonista, true));
     document.getElementById('btnRadarAction')?.addEventListener('click', () => this.lanzarRadar(this.protagonista, true));
 
@@ -209,9 +274,12 @@ class Game implements IGame {
     });
   }
 
+  mostrarSeleccionDificultad(target: 'solo' | 'host' | 'manual') {
+    this._flowTarget = target;
+    document.getElementById('difficultyModal')!.style.display = 'flex';
+  }
+
   empezarSolo() {
-    this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
-    this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
     this.mundoSincronizado = true;
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
@@ -220,8 +288,6 @@ class Game implements IGame {
   iniciarComoHostFirebase() {
     this.esHost = true;
     this.network.esHost = true;
-    this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Host";
-    this.config.dificultad = (document.getElementById('difficultySelect') as HTMLSelectElement).value as any || 'dificil';
     (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
     const hc = document.getElementById('hostControls');
     if (hc) hc.style.display = 'flex';
@@ -281,6 +347,15 @@ class Game implements IGame {
     });
   }
 
+  async iniciarComoHostManual() {
+      const sdp = await this.network.crearOfertaManual(this);
+      (document.getElementById('manualOfferOut') as HTMLTextAreaElement).value = sdp;
+      this.registrarEventoLog(`Oferta manual generada (Dificultad: ${this.config.dificultad}).`);
+      this.esHost = true;
+      this.network.esHost = true;
+      this.iniciarMotorJuego();
+  }
+
   async unirseAPartidaFirestore(id: string) {
     this.network.idPartidaActual = id;
     const roomDisp = document.getElementById('roomDisplay');
@@ -289,7 +364,6 @@ class Game implements IGame {
         roomDisp.style.display = 'block';
         roomIdVal.textContent = id;
     }
-    this.protagonista.nombre = (document.getElementById('nickInput') as HTMLInputElement).value || "Invitado";
     this.esHost = false;
     this.network.esHost = false;
     this.registrarEventoLog(`Uniéndote a la partida ${id}...`);
@@ -387,7 +461,9 @@ class Game implements IGame {
     document.getElementById('lobbyManual')!.style.display = 'none';
     document.getElementById('lobby')!.style.display = 'flex';
     document.getElementById('mazeCanvas')!.style.display = 'none';
-    document.getElementById('topMenu')!.classList.remove('visible');
+    document.getElementById('topMenu')!.style.display = 'none';
+    document.getElementById('actionsMenu')!.style.display = 'none';
+    this.actualizarStatsLobby();
   }
 
   abandonarPartida() {
@@ -400,16 +476,133 @@ class Game implements IGame {
   }
 
   actualizarStatsLobby() {
-    const f = document.getElementById('lobbyFue') as HTMLInputElement;
-    const a = document.getElementById('lobbyAgi') as HTMLInputElement;
-    const i = document.getElementById('lobbyInt') as HTMLInputElement;
-    if (f) f.value = this.protagonista.fuerza.toString();
-    if (a) a.value = this.protagonista.agilidad.toString();
-    if (i) i.value = this.protagonista.inteligencia.toString();
+    // Actualizar previsualización "cool"
+    const preview = document.getElementById('characterPreview');
+    const creationSection = document.getElementById('charCreationSection');
+    const options = document.getElementById('gameOptions');
+
+    if (this.protagonista.nombre !== "Jugador" || (this.protagonista as any).personajeCreado) {
+        if (preview) preview.style.display = 'block';
+        if (creationSection) creationSection.style.display = 'none';
+        if (options) options.style.display = 'flex';
+
+        document.getElementById('previewName')!.textContent = this.protagonista.nombre;
+        const colorDiv = document.getElementById('previewColor')!;
+        colorDiv.style.backgroundColor = this.protagonista.color;
+        colorDiv.style.color = this.protagonista.color; // Para boxShadow currentColor
+
+        const icons: any = { guerrero: '🪖', explorador: '🏹', mago: '🪄' };
+        const names: any = { guerrero: 'GUERRERO', explorador: 'EXPLORADOR', mago: 'MAGO' };
+
+        document.getElementById('previewClassIcon')!.textContent = icons[this.protagonista.clase] || '👤';
+        document.getElementById('previewClassName')!.textContent = names[this.protagonista.clase] || 'AVENTURERO';
+
+        document.getElementById('previewFue')!.textContent = this.protagonista.fuerza.toString();
+        document.getElementById('previewAgi')!.textContent = this.protagonista.agilidad.toString();
+        document.getElementById('previewInt')!.textContent = this.protagonista.inteligencia.toString();
+
+        // Actualizar habilidades en el panel de acciones
+        this.actualizarPanelAcciones();
+    } else {
+        if (preview) preview.style.display = 'none';
+        if (creationSection) creationSection.style.display = 'block';
+        if (options) options.style.display = 'none';
+    }
+  }
+
+  actualizarPanelAcciones() {
+      const btnBow = document.getElementById('btnBowAction');
+      const btnFood = document.getElementById('btnCreateFoodAction');
+
+      if (btnBow) btnBow.style.display = this.protagonista.clase === 'explorador' ? 'block' : 'none';
+      if (btnFood) btnFood.style.display = this.protagonista.clase === 'mago' ? 'block' : 'none';
+  }
+
+  abrirModalPersonaje() {
+      document.getElementById('characterModal')!.style.display = 'flex';
+      if (this.protagonista.nombre === "Jugador") {
+          this.generarNombreAleatorio();
+      } else {
+          (document.getElementById('charNameInput') as HTMLInputElement).value = this.protagonista.nombre;
+          (document.getElementById('charColorInput') as HTMLInputElement).value = this.protagonista.color;
+          document.querySelectorAll('.class-btn').forEach(btn => {
+              if (btn.getAttribute('data-class') === this.protagonista.clase) {
+                  btn.classList.add('selected');
+              } else {
+                  btn.classList.remove('selected');
+              }
+          });
+      }
+      this.recalcularStatsPersonaje();
+  }
+
+  generarNombreAleatorio() {
+      const nombres = [
+          "Tharos", "Elowen", "Grombrindal", "Luthien", "Drizzt", "Ciri", "Geralt", "Yennefer",
+          "Boromir", "Galadriel", "Aragorn", "Legolas", "Gimli", "Saruman", "Gandalf", "Radagast",
+          "Elrond", "Glorfindel", "Eowyn", "Faramir", "Theoden", "Denethor", "Beren", "Tinuviel"
+      ];
+      const randomName = nombres[Math.floor(Math.random() * nombres.length)];
+      (document.getElementById('charNameInput') as HTMLInputElement).value = randomName;
+  }
+
+  recalcularStatsPersonaje() {
+      const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
+      this.protagonista.generarStats(selectedClass);
+
+      const f = document.getElementById('charFue')!;
+      const a = document.getElementById('charAgi')!;
+      const i = document.getElementById('charInt')!;
+
+      f.textContent = this.protagonista.fuerza.toString();
+      a.textContent = this.protagonista.agilidad.toString();
+      i.textContent = this.protagonista.inteligencia.toString();
+  }
+
+  guardarPersonaje() {
+      this.protagonista.nombre = (document.getElementById('charNameInput') as HTMLInputElement).value || "Héroe";
+      this.protagonista.color = (document.getElementById('charColorInput') as HTMLInputElement).value;
+      const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
+      this.protagonista.clase = selectedClass;
+      (this.protagonista as any).personajeCreado = true;
+
+      document.getElementById('characterModal')!.style.display = 'none';
+
+      // Sincronizar con el nickInput original por compatibilidad con el resto del código
+      (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
+      this.actualizarStatsLobby();
+      this.registrarEventoLog(`Personaje guardado: ${this.protagonista.nombre} (${selectedClass})`);
+  }
+
+  mostrarQRManual(titulo: string, data: string) {
+      if (!data) {
+          alert("No hay datos para generar QR");
+          return;
+      }
+      const qrImage = document.getElementById('modalQRImage') as HTMLImageElement;
+      qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data)}`;
+      document.getElementById('modalQRTitle')!.textContent = titulo;
+      document.getElementById('qrModal')!.style.display = 'flex';
+  }
+
+  escanearQRManual(targetId: string) {
+      const data = prompt("Pega aquí el contenido del código QR (o usa tu cámara si el dispositivo lo permite):");
+      if (data) {
+          (document.getElementById(targetId) as HTMLTextAreaElement).value = data;
+          this.registrarEventoLog("QR escaneado y pegado en " + targetId);
+      }
   }
 
   recalcularStats() {
-    this.protagonista = new Jugador();
+    const prevClass = this.protagonista.clase;
+    const prevColor = this.protagonista.color;
+    const prevName = this.protagonista.nombre;
+
+    this.protagonista = new Jugador(prevName);
+    this.protagonista.clase = prevClass;
+    this.protagonista.color = prevColor;
+    this.protagonista.generarStats();
+
     this.setupEntity(this.protagonista);
     this.actualizarStatsLobby();
     this.registrarEventoLog("Estadísticas recalculadas.");
@@ -441,6 +634,11 @@ class Game implements IGame {
   iniciarMotorJuego() {
     if (this.motorIniciado) return;
     this.motorIniciado = true;
+
+    // Mostrar menús
+    document.getElementById('topMenu')!.style.display = 'block';
+    document.getElementById('actionsMenu')!.style.display = 'block';
+
     if (this.esHost || !this.network.multiplayerActivo) {
         generarLaberintoBSP(this.mapaLaberinto);
         const pos = this.obtenerPosicionInicioAleatoria();
@@ -613,6 +811,8 @@ class Game implements IGame {
     let cantidad = 40;
     if (this.config.dificultad === 'facil' || this.config.dificultad === 'medio') {
         cantidad = Math.floor(cantidad * 0.75);
+    } else if (this.config.dificultad === 'locura') {
+        cantidad = Math.floor(cantidad * 1.75);
     }
 
     for (let i = 0; i < cantidad; i++) {
@@ -707,10 +907,10 @@ class Game implements IGame {
     this.ui.actualizarTextosFlotantes();
     this.ui.dibujarTextosFlotantes(this.renderer.getCtx());
 
-    // Actualizar y dibujar bolas de fuego
+    // Actualizar y dibujar bolas de fuego / proyectiles
     for (let i = this.bolasDeFuego.length - 1; i >= 0; i--) {
         const b = this.bolasDeFuego[i];
-        b.pct += 0.02; // Más lenta
+        b.pct += b.speed || 0.02;
 
         const curX = b.x + (b.targetX - b.x) * b.pct;
         const curY = b.y + (b.targetY - b.y) * b.pct;
@@ -838,6 +1038,8 @@ class Game implements IGame {
             this.ultimoTick = ahoraTick;
         }
     }
+
+    this.actualizarCooldownsUI();
 
     // Zoom progresivo
     if (this.config.zoom !== this.config.targetZoom) {
@@ -1122,6 +1324,10 @@ class Game implements IGame {
         }
     } else if (accion.tipo === 'fireball') {
         this.lanzarBolaDeFuego(entidad, false);
+    } else if (accion.tipo === 'bow') {
+        this.lanzarArco(entidad, false);
+    } else if (accion.tipo === 'create_food') {
+        this.crearComidaHabilidad(entidad, false);
     } else if (accion.tipo === 'radar') {
         this.lanzarRadar(entidad, false);
     }
@@ -1200,23 +1406,26 @@ class Game implements IGame {
   }
 
   lanzarBolaDeFuego(emisor: any, esLocal: boolean) {
-    if (esLocal && emisor === this.protagonista && this.network && this.network.multiplayerActivo) {
-        const ahora = Date.now();
-        if (ahora - emisor.ultimaInteraccion < 100) return;
-        emisor.ultimaInteraccion = ahora;
+    const ahora = Date.now();
+    const cooldown = (30 / emisor.inteligencia) * 1000;
 
-        if (this.esHost) {
-            this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'fireball' } });
-        } else {
-            this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'fireball' } });
+    if (esLocal && emisor === this.protagonista) {
+        if (ahora - emisor.ultimaVezHabilidad.fireball < cooldown) return;
+        emisor.ultimaVezHabilidad.fireball = ahora;
+
+        if (this.network && this.network.multiplayerActivo) {
+            if (this.esHost) {
+                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'fireball' } });
+            } else {
+                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'fireball' } });
+            }
+            return;
         }
-        return;
     }
 
     // Buscar enemigo más cercano, prioridad a los que están a la vista
     let target: any = null;
     let minDist = Infinity;
-    const ahora = Date.now();
 
     this.listaDeEnemigos.forEach(e => {
         if (e.estaVivo) {
@@ -1258,6 +1467,123 @@ class Game implements IGame {
             });
         }
     }
+  }
+
+  lanzarArco(emisor: any, esLocal: boolean) {
+      const ahora = Date.now();
+      const cooldown = (10 / emisor.agilidad) * 1000;
+
+      if (esLocal && emisor === this.protagonista) {
+          if (ahora - emisor.ultimaVezHabilidad.bow < cooldown) return;
+          emisor.ultimaVezHabilidad.bow = ahora;
+
+          if (this.network && this.network.multiplayerActivo) {
+              if (this.esHost) {
+                  this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'bow' } });
+              } else {
+                  this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'bow' } });
+              }
+              return;
+          }
+      }
+
+      // Lógica de disparo
+      let target: any = null;
+      let minDist = Infinity;
+
+      this.listaDeEnemigos.forEach(e => {
+          if (e.estaVivo) {
+              const celda = this.mapaLaberinto[e.fila][e.columna];
+              const visible = celda.ultimoAvistamiento > 0 && (ahora - celda.ultimoAvistamiento < this.config.TIEMPO_DESVANECIMIENTO_NIEBLA);
+
+              if (visible) {
+                  let dist = Math.sqrt(Math.pow(e.fila - emisor.fila, 2) + Math.pow(e.columna - emisor.columna, 2));
+                  if (dist < minDist) {
+                      minDist = dist;
+                      target = e;
+                  }
+              }
+          }
+      });
+
+      if (target) {
+          this.bolasDeFuego.push({
+              x: emisor.columna,
+              y: emisor.fila,
+              targetX: target.columna,
+              targetY: target.fila,
+              targetRef: target,
+              pct: 0,
+              speed: 0.05,
+              aplicarDano: this.esHost || !this.network.multiplayerActivo,
+              color: "#aaa",
+              esFlecha: true
+          });
+          this.registrarEventoLog(`¡${emisor.nombre} dispara una flecha!`);
+
+          if (this.esHost && this.network.multiplayerActivo) {
+              this.network.enviarMensaje({
+                  tipo: 'arrow_spawn',
+                  ex: emisor.columna,
+                  ey: emisor.fila,
+                  tx: target.columna,
+                  ty: target.fila
+              });
+          }
+      }
+  }
+
+  crearComidaHabilidad(emisor: any, esLocal: boolean) {
+      const ahora = Date.now();
+      const cooldown = (10 / emisor.inteligencia) * 1000;
+
+      if (esLocal && emisor === this.protagonista) {
+          if (ahora - emisor.ultimaVezHabilidad.food < cooldown) return;
+          emisor.ultimaVezHabilidad.food = ahora;
+
+          if (this.network && this.network.multiplayerActivo) {
+              if (this.esHost) {
+                  this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'create_food' } });
+              } else {
+                  this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'create_food' } });
+              }
+              return;
+          }
+      }
+
+      if (!this.esHost && this.network.multiplayerActivo) return;
+
+      let f: number, c: number;
+      let intentos = 0;
+      do {
+          const dist = Math.floor(Math.random() * 3) + 1;
+          const angle = Math.random() * Math.PI * 2;
+          f = Math.round(emisor.fila + Math.sin(angle) * dist);
+          c = Math.round(emisor.columna + Math.cos(angle) * dist);
+          intentos++;
+      } while (
+          (f < 0 || f >= this.config.NUMERO_FILAS || c < 0 || c >= this.config.NUMERO_COLUMNAS ||
+          !this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].alimento) && intentos < 20
+      );
+
+      if (f >= 0 && f < this.config.NUMERO_FILAS && c >= 0 && c < this.config.NUMERO_COLUMNAS && this.mapaLaberinto[f][c].esTransitable) {
+          const alimentos = [
+              { tipo: "Manzana", pc: 5 }, { tipo: "Plátano", pc: 8 }, { tipo: "Kiwi", pc: 10 },
+              { tipo: "Brócoli", pc: 25 }, { tipo: "Muslo de pollo", pc: 35 }, { tipo: "Chuleta", pc: 40 },
+              { tipo: "Pescado", pc: 70 }
+          ];
+          const alimento = alimentos[Math.floor(Math.random() * alimentos.length)];
+          this.mapaLaberinto[f][c].alimento = alimento;
+          this.registrarEventoLog(`${emisor.nombre} ha creado ${alimento.tipo}.`);
+          this.ui.crearTextoFlotanteEnCelda(f, c, "¡COMIDA!", "#ffcc00", this);
+
+          if (this.esHost && this.network.multiplayerActivo) {
+              this.network.enviarMensaje({
+                  tipo: 'object_spawned',
+                  f, c, a: alimento
+              });
+          }
+      }
   }
 
   lanzarRadar(emisor: any, esLocal: boolean) {
@@ -1329,6 +1655,48 @@ class Game implements IGame {
     this.resolverRondaDeCombate(atacante, objetivo);
   }
 
+  actualizarCooldownsUI() {
+    if (!this.protagonista || !this.protagonista.estaVivo) return;
+
+    const ahora = Date.now();
+
+    // Fireball: 30 / INT segundos
+    const cooldownFireball = (30 / this.protagonista.inteligencia) * 1000;
+    const btnFireball = document.getElementById('btnFireballAction');
+    if (btnFireball) {
+        const transcurrido = ahora - this.protagonista.ultimaVezHabilidad.fireball;
+        if (transcurrido < cooldownFireball) {
+            btnFireball.classList.add('disabled');
+        } else {
+            btnFireball.classList.remove('disabled');
+        }
+    }
+
+    // Bow: 10 / AGI segundos
+    const cooldownBow = (10 / this.protagonista.agilidad) * 1000;
+    const btnBow = document.getElementById('btnBowAction');
+    if (btnBow) {
+        const transcurrido = ahora - this.protagonista.ultimaVezHabilidad.bow;
+        if (transcurrido < cooldownBow) {
+            btnBow.classList.add('disabled');
+        } else {
+            btnBow.classList.remove('disabled');
+        }
+    }
+
+    // Food (Mago): 10 / INT segundos
+    const cooldownFood = (10 / this.protagonista.inteligencia) * 1000;
+    const btnFood = document.getElementById('btnCreateFoodAction');
+    if (btnFood) {
+        const transcurrido = ahora - this.protagonista.ultimaVezHabilidad.food;
+        if (transcurrido < cooldownFood) {
+            btnFood.classList.add('disabled');
+        } else {
+            btnFood.classList.remove('disabled');
+        }
+    }
+  }
+
   resolverRondaDeCombate(pA: any, pB: any) {
     const iA = pA.obtenerIniciativa();
     const iB = pB.obtenerIniciativa();
@@ -1387,6 +1755,28 @@ class Game implements IGame {
             if (this.esHost) {
                 // Usamos idEmisor directamente para evitar spoofing de identidad
                 this.colaAcciones.push({ id: idEmisor, accion: msg.accion });
+            }
+            break;
+        case 'arrow_spawn':
+            if (!this.esHost) {
+                this.bolasDeFuego.push({
+                    x: msg.ex,
+                    y: msg.ey,
+                    targetX: msg.tx,
+                    targetY: msg.ty,
+                    pct: 0,
+                    speed: 0.05,
+                    aplicarDano: false,
+                    color: "#aaa",
+                    esFlecha: true
+                });
+            }
+            break;
+        case 'object_spawned':
+            if (!this.esHost) {
+                const celda = this.mapaLaberinto[msg.f][msg.c];
+                if (msg.a) celda.alimento = msg.a;
+                this.ui.crearTextoFlotanteEnCelda(msg.f, msg.c, "¡COMIDA!", "#ffcc00", this);
             }
             break;
         case 'snapshot':

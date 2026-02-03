@@ -6,16 +6,32 @@ export class Jugador extends EntidadRPG {
   tienePico: boolean = false;
   ultimaCasillaAtacada: {f: number, c: number} | null = null;
   ultimaInteraccion: number = 0;
+  ultimaVezHabilidad: { fireball: number, bow: number, food: number } = { fireball: 0, bow: 0, food: 0 };
+  clase: string = 'guerrero';
+  color: string = '#007bff';
 
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
     this.generarStats();
   }
 
-  generarStats() {
+  generarStats(nuevaClase?: string) {
+    if (nuevaClase) this.clase = nuevaClase;
+
     this.fuerza = Math.floor(Math.random() * 10) + 1;
     this.agilidad = Math.floor(Math.random() * 10) + 1;
     this.inteligencia = Math.floor(Math.random() * 10) + 1;
+
+    // Aplicar bonus por clase ANTES del balanceo para que influyan en el resultado final
+    if (this.clase === 'guerrero') {
+        this.fuerza += 3;
+        this.agilidad += 1;
+    } else if (this.clase === 'explorador') {
+        this.agilidad += 4;
+    } else if (this.clase === 'mago') {
+        this.inteligencia += 6;
+    }
+
     let sum = this.fuerza + this.agilidad + this.inteligencia;
 
     if (sum > 24) {
@@ -82,7 +98,7 @@ export class Jugador extends EntidadRPG {
         ctx.textAlign = 'center';
         ctx.fillText('RIP', x, y + 2);
     } else {
-        ctx.strokeStyle = '#007bff';
+        ctx.strokeStyle = this.color;
         ctx.lineWidth = 3;
         ctx.lineCap = 'round';
 
@@ -120,7 +136,7 @@ export class Jugador extends EntidadRPG {
 
         // Glow
         ctx.shadowBlur = 10;
-        ctx.shadowColor = '#007bff';
+        ctx.shadowColor = this.color;
         ctx.stroke();
 
         // Inmunidad Glow

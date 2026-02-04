@@ -61,6 +61,7 @@ class Game implements IGame {
     window.addEventListener('resize', () => this.ajustarDimensiones());
     this.setupEventListeners();
     (window as any).game = this;
+    this.revisarSesionGuardada();
 
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -139,6 +140,7 @@ class Game implements IGame {
     });
 
     document.getElementById('btnRefrescar')?.addEventListener('click', () => this.listarPartidasFirestore());
+    document.getElementById('btnReanudar')?.addEventListener('click', () => this.reanudarPartida());
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
@@ -218,6 +220,7 @@ class Game implements IGame {
     document.getElementById('btnCreateFoodAction')?.addEventListener('click', () => this.crearComidaHabilidad(this.protagonista, true));
     document.getElementById('btnGuardAction')?.addEventListener('click', () => this.teletransportarAliados(this.protagonista, true));
     document.getElementById('btnRadarAction')?.addEventListener('click', () => this.lanzarRadar(this.protagonista, true));
+    document.getElementById('btnRestartAction')?.addEventListener('click', () => window.location.reload());
 
     document.getElementById('zoomSlider')?.addEventListener('input', (e) => {
         this.config.targetZoom = parseFloat((e.target as HTMLInputElement).value);
@@ -270,17 +273,12 @@ class Game implements IGame {
     window.addEventListener('keyup', (e) => {
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
             this.protagonista.estaCaminando = false;
-            if (this.network && this.network.activo) {
-                this.network.enviarMensaje({
-                    tipo: 'posicion',
-                    f: this.protagonista.fila,
-                    c: this.protagonista.columna,
-                    cam: false,
-                    id: this.network.idLocal,
-                    nick: this.protagonista.nombre,
-                    hp: this.protagonista.vidaActual,
-                    maxHp: this.protagonista.vidaMaxima
-                });
+            if (this.network && this.network.multiplayerActivo) {
+                if (this.esHost) {
+                    // El host ya actualiza a su protagonista localmente
+                } else {
+                    this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'stop_walking' } });
+                }
             }
         }
     });
@@ -293,6 +291,7 @@ class Game implements IGame {
 
   empezarSolo() {
     this.mundoSincronizado = true;
+    this.guardarSesion('solo');
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
   }
@@ -309,6 +308,7 @@ class Game implements IGame {
   async crearPartidaFirestore() {
     const id = generateSessionName();
     this.network.idPartidaActual = id;
+    this.guardarSesion('host', id);
 
     const roomDisp = document.getElementById('roomDisplay');
     const roomIdVal = document.getElementById('roomIdVal');
@@ -370,6 +370,7 @@ class Game implements IGame {
 
   async unirseAPartidaFirestore(id: string) {
     this.network.idPartidaActual = id;
+    this.guardarSesion('guest', id);
     const roomDisp = document.getElementById('roomDisplay');
     const roomIdVal = document.getElementById('roomIdVal');
     if (roomDisp && roomIdVal) {
@@ -497,6 +498,7 @@ class Game implements IGame {
         if (preview) preview.style.display = 'block';
         if (creationSection) creationSection.style.display = 'none';
         if (options) options.style.display = 'flex';
+        this.revisarSesionGuardada();
 
         document.getElementById('previewName')!.textContent = this.protagonista.nombre;
         const colorDiv = document.getElementById('previewColor')!;
@@ -530,6 +532,7 @@ class Game implements IGame {
       const btnFreeze = document.getElementById('btnFreezeAction');
       const btnFireball = document.getElementById('btnFireballAction');
       const btnGuard = document.getElementById('btnGuardAction');
+      const btnRestart = document.getElementById('btnRestartAction');
 
       if (btnWhirlwind) btnWhirlwind.style.display = this.protagonista.clase === 'guerrero' ? 'block' : 'none';
       if (btnFireball) btnFireball.style.display = (this.protagonista.clase === 'mago' || this.protagonista.clase === 'guerrero') ? 'block' : 'none';
@@ -538,6 +541,7 @@ class Game implements IGame {
       if (btnFood) btnFood.style.display = this.protagonista.clase === 'mago' ? 'block' : 'none';
       if (btnRadar) btnRadar.style.display = this.protagonista.clase === 'explorador' ? 'block' : 'none';
       if (btnGuard) btnGuard.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
+      if (btnRestart) btnRestart.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
   }
 
   abrirModalPersonaje() {
@@ -651,6 +655,69 @@ class Game implements IGame {
     this.colaDeMensajes.unshift(texto);
     if (this.colaDeMensajes.length > 5) this.colaDeMensajes.pop();
     console.log(mensaje);
+  }
+
+  guardarSesion(rol: string, roomId: string | null = null) {
+    localStorage.setItem('mazeRPG_lastSession', JSON.stringify({
+        roomId,
+        rol,
+        name: this.protagonista.nombre,
+        class: this.protagonista.clase,
+        color: this.protagonista.color,
+        diff: this.config.dificultad
+    }));
+  }
+
+  revisarSesionGuardada() {
+    const data = localStorage.getItem('mazeRPG_lastSession');
+    const btn = document.getElementById('btnReanudar');
+    if (data && btn) {
+        btn.style.display = 'block';
+        // Asegurar que el contenedor de opciones sea visible si hay algo que reanudar
+        const options = document.getElementById('gameOptions');
+        if (options) options.style.display = 'flex';
+        const creation = document.getElementById('charCreationSection');
+        if (creation) creation.style.display = 'none';
+    } else if (btn) {
+        btn.style.display = 'none';
+    }
+  }
+
+  async reanudarPartida() {
+    const dataStr = localStorage.getItem('mazeRPG_lastSession');
+    if (!dataStr) return;
+    const data = JSON.parse(dataStr);
+
+    this.protagonista.nombre = data.name;
+    this.protagonista.clase = data.class;
+    this.protagonista.color = data.color;
+    this.config.dificultad = data.diff || 'medio';
+    (this.protagonista as any).personajeCreado = true;
+    (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
+
+    if (data.rol === 'solo') {
+        this.empezarSolo();
+    } else if (data.rol === 'host') {
+        this.esHost = true;
+        this.network.esHost = true;
+        this.network.idPartidaActual = data.roomId;
+        const hc = document.getElementById('hostControls');
+        if (hc) hc.style.display = 'flex';
+        (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
+
+        const roomDisp = document.getElementById('roomDisplay');
+        const roomIdVal = document.getElementById('roomIdVal');
+        if (roomDisp && roomIdVal) {
+            roomDisp.style.display = 'block';
+            roomIdVal.textContent = data.roomId;
+        }
+
+        this.configurarIntervalosHost();
+        this.ui.ocultarLobby();
+        this.iniciarMotorJuego();
+    } else if (data.rol === 'guest') {
+        this.unirseAPartidaFirestore(data.roomId);
+    }
   }
 
   iniciarMotorJuego() {
@@ -1385,6 +1452,8 @@ class Game implements IGame {
         this.lanzarWhirlwind(entidad, false);
     } else if (accion.tipo === 'freeze') {
         this.lanzarCongelar(entidad, false);
+    } else if (accion.tipo === 'stop_walking') {
+        entidad.estaCaminando = false;
     }
   }
 

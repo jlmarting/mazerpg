@@ -168,10 +168,11 @@ export class Renderer {
     }
   }
 
-  dibujarNiebla(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
+  dibujarNiebla(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig, persistenceOverride?: number) {
     if (config.vistaDebugActivada) return;
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
+    const fadeTime = persistenceOverride || TIEMPO_DESVANECIMIENTO_NIEBLA;
 
     const tiempoActual = Date.now();
     const fInicio = Math.floor(filaOffset);
@@ -192,7 +193,7 @@ export class Renderer {
           if (tiempoDesdeVisto < 50) {
             opacidad = 0;
           } else {
-            opacidad = Math.min(1, tiempoDesdeVisto / TIEMPO_DESVANECIMIENTO_NIEBLA);
+            opacidad = Math.min(1, tiempoDesdeVisto / fadeTime);
           }
         }
 
@@ -297,7 +298,66 @@ export class Renderer {
     this.ctx.restore();
   }
 
-  dibujarRadar(r: any, offset: CameraOffset, config: GameConfig) {
+  dibujarFreeze(f: any, offset: CameraOffset, config: GameConfig) {
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
+
+    const ahora = Date.now();
+    const transcurrido = ahora - f.inicio;
+    const alfa = Math.min(0.3, 1 - (transcurrido / f.duracion));
+
+    if (alfa <= 0) return;
+
+    this.ctx.save();
+    this.ctx.fillStyle = `rgba(135, 206, 250, ${alfa})`; // LightSkyBlue
+
+    const r = f.radio;
+    for (let fila = Math.max(0, Math.floor(f.y - r)); fila <= Math.min(NUMERO_FILAS - 1, Math.ceil(f.y + r)); fila++) {
+        for (let col = Math.max(0, Math.floor(f.x - r)); col <= Math.min(NUMERO_COLUMNAS - 1, Math.ceil(f.x + r)); col++) {
+            const dist = Math.sqrt(Math.pow(fila - f.y, 2) + Math.pow(col - f.x, 2));
+            if (dist <= r) {
+                const sx = (col - colOffset) * TAMANO_CELDA;
+                const sy = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+                this.ctx.fillRect(sx, sy, TAMANO_CELDA, TAMANO_CELDA);
+            }
+        }
+    }
+    this.ctx.restore();
+  }
+
+  dibujarWhirlwind(w: any, offset: CameraOffset, config: GameConfig) {
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
+
+    const screenX = (w.x - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const screenY = (w.y - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+
+    const ahora = Date.now();
+    const transcurrido = ahora - w.inicio;
+    const progreso = transcurrido / w.duracion;
+    const alfa = 1 - progreso;
+
+    if (alfa <= 0) return;
+
+    this.ctx.save();
+    this.ctx.strokeStyle = `rgba(255, 255, 255, ${alfa})`;
+    this.ctx.lineWidth = 3;
+    this.ctx.beginPath();
+    // Dibujamos un arco que progresa
+    const startAngle = 0;
+    const endAngle = progreso * Math.PI * 4; // Dos vueltas rápidas
+    this.ctx.arc(screenX, screenY, TAMANO_CELDA * 0.8, startAngle, endAngle);
+    this.ctx.stroke();
+
+    // Añadir rastro de partículas o destello
+    this.ctx.shadowBlur = 15;
+    this.ctx.shadowColor = '#fff';
+    this.ctx.stroke();
+
+    this.ctx.restore();
+  }
+
+  dibujarRadar(r: any, offset: CameraOffset, config: GameConfig, localId?: string) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
 
@@ -327,6 +387,26 @@ export class Renderer {
         this.ctx.beginPath();
         this.ctx.arc(screenX, screenY, radio, 0, Math.PI * 2);
         this.ctx.stroke();
+    }
+
+    // Dibujar respuestas (solo si es el radar del protagonista)
+    if (r.respuestas && r.idEmisor === localId) {
+        r.respuestas.forEach((resp: any) => {
+            const rx = (resp.c - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+            const ry = (resp.f - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+
+            this.ctx.fillStyle = resp.npc ? `rgba(255, 0, 0, ${alfa})` : `rgba(0, 255, 0, ${alfa})`;
+            this.ctx.beginPath();
+            this.ctx.arc(rx, ry, 5 + progreso * 10, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Círculo de señal
+            this.ctx.strokeStyle = resp.npc ? `rgba(255, 0, 0, ${alfa})` : `rgba(0, 255, 0, ${alfa})`;
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc(rx, ry, 10 + progreso * 20, 0, Math.PI * 2);
+            this.ctx.stroke();
+        });
     }
 
     this.ctx.restore();

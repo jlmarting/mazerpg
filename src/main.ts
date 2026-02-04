@@ -2102,11 +2102,11 @@ class Game implements IGame {
                             let rem = this.network.jugadoresRemotos.get(entData.id);
                             if (!rem) {
                                 // Crear entrada si no existe (para otros invitados o host recién identificado)
-                                rem = { pc: null, dc: null, entidad: null, unsubscribes: [] };
+                                rem = { pc: null as any, dc: null as any, entidad: null, unsubscribes: [] };
                                 this.network.jugadoresRemotos.set(entData.id, rem);
                             }
 
-                            if (rem.entidad) {
+                            if (rem && rem.entidad) {
                                 rem.entidad.fila = entData.f;
                                 rem.entidad.columna = entData.c;
                                 rem.entidad.vidaActual = entData.v;
@@ -2114,7 +2114,7 @@ class Game implements IGame {
                                 rem.entidad.estaVivo = entData.viva;
                                 rem.entidad.estaCaminando = entData.cam;
                                 rem.entidad.nombre = entData.nick;
-                            } else {
+                            } else if (rem) {
                                 rem.entidad = new JugadorRemoto(entData.f, entData.c, entData.nick, entData.id);
                                 this.setupEntity(rem.entidad);
                             }

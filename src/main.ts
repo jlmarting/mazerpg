@@ -46,6 +46,8 @@ class Game implements IGame {
   public colaDeMensajes: string[] = [];
   public bolasDeFuego: any[] = [];
   public radares: any[] = [];
+  public whirlwinds: any[] = [];
+  public freezes: any[] = [];
   public ultimoTick: number = 0;
   public colaAcciones: any[] = [];
   private _flowTarget: 'solo' | 'host' | 'manual' | null = null;
@@ -58,6 +60,8 @@ class Game implements IGame {
     this.ajustarDimensiones();
     window.addEventListener('resize', () => this.ajustarDimensiones());
     this.setupEventListeners();
+    (window as any).game = this;
+    this.revisarSesionGuardada();
 
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -99,12 +103,18 @@ class Game implements IGame {
     });
 
     document.getElementById('actionsToggle')?.addEventListener('click', () => {
-        document.getElementById('actionsMenu')?.classList.toggle('visible');
+        const menu = document.getElementById('actionsMenu');
+        const toggle = document.getElementById('actionsToggle');
+        if (menu && toggle) {
+            menu.classList.toggle('visible');
+            toggle.textContent = menu.classList.contains('visible') ? 'ACCIONES ▼' : 'ACCIONES ▲';
+        }
     });
 
     document.getElementById('btnDebug')?.addEventListener('click', () => {
       this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
       this.registrarEventoLog(`Modo Desarrollo ${this.config.vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
+      this.actualizarPanelAcciones();
     });
 
     document.getElementById('btnChat')?.addEventListener('click', () => this.ui.toggleChat(this));
@@ -130,6 +140,7 @@ class Game implements IGame {
     });
 
     document.getElementById('btnRefrescar')?.addEventListener('click', () => this.listarPartidasFirestore());
+    document.getElementById('btnReanudar')?.addEventListener('click', () => this.reanudarPartida());
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
@@ -203,10 +214,13 @@ class Game implements IGame {
 
     document.getElementById('btnFireball')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
     document.getElementById('btnFireballAction')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
+    document.getElementById('btnWhirlwindAction')?.addEventListener('click', () => this.lanzarWhirlwind(this.protagonista, true));
+    document.getElementById('btnFreezeAction')?.addEventListener('click', () => this.lanzarCongelar(this.protagonista, true));
     document.getElementById('btnBowAction')?.addEventListener('click', () => this.lanzarArco(this.protagonista, true));
     document.getElementById('btnCreateFoodAction')?.addEventListener('click', () => this.crearComidaHabilidad(this.protagonista, true));
     document.getElementById('btnGuardAction')?.addEventListener('click', () => this.teletransportarAliados(this.protagonista, true));
     document.getElementById('btnRadarAction')?.addEventListener('click', () => this.lanzarRadar(this.protagonista, true));
+    document.getElementById('btnRestartAction')?.addEventListener('click', () => window.location.reload());
 
     document.getElementById('zoomSlider')?.addEventListener('input', (e) => {
         this.config.targetZoom = parseFloat((e.target as HTMLInputElement).value);
@@ -248,6 +262,7 @@ class Game implements IGame {
       if (e.key.toLowerCase() === 'd') {
           this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
           this.registrarEventoLog(`Modo Desarrollo ${this.config.vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
+          this.actualizarPanelAcciones();
       }
 
       if (haMovido) {
@@ -258,17 +273,12 @@ class Game implements IGame {
     window.addEventListener('keyup', (e) => {
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
             this.protagonista.estaCaminando = false;
-            if (this.network && this.network.activo) {
-                this.network.enviarMensaje({
-                    tipo: 'posicion',
-                    f: this.protagonista.fila,
-                    c: this.protagonista.columna,
-                    cam: false,
-                    id: this.network.idLocal,
-                    nick: this.protagonista.nombre,
-                    hp: this.protagonista.vidaActual,
-                    maxHp: this.protagonista.vidaMaxima
-                });
+            if (this.network && this.network.multiplayerActivo) {
+                if (this.esHost) {
+                    // El host ya actualiza a su protagonista localmente
+                } else {
+                    this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'stop_walking' } });
+                }
             }
         }
     });
@@ -281,6 +291,7 @@ class Game implements IGame {
 
   empezarSolo() {
     this.mundoSincronizado = true;
+    this.guardarSesion('solo');
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
   }
@@ -297,6 +308,7 @@ class Game implements IGame {
   async crearPartidaFirestore() {
     const id = generateSessionName();
     this.network.idPartidaActual = id;
+    this.guardarSesion('host', id);
 
     const roomDisp = document.getElementById('roomDisplay');
     const roomIdVal = document.getElementById('roomIdVal');
@@ -358,6 +370,7 @@ class Game implements IGame {
 
   async unirseAPartidaFirestore(id: string) {
     this.network.idPartidaActual = id;
+    this.guardarSesion('guest', id);
     const roomDisp = document.getElementById('roomDisplay');
     const roomIdVal = document.getElementById('roomIdVal');
     if (roomDisp && roomIdVal) {
@@ -485,6 +498,7 @@ class Game implements IGame {
         if (preview) preview.style.display = 'block';
         if (creationSection) creationSection.style.display = 'none';
         if (options) options.style.display = 'flex';
+        this.revisarSesionGuardada();
 
         document.getElementById('previewName')!.textContent = this.protagonista.nombre;
         const colorDiv = document.getElementById('previewColor')!;
@@ -511,11 +525,23 @@ class Game implements IGame {
   }
 
   actualizarPanelAcciones() {
+      const btnWhirlwind = document.getElementById('btnWhirlwindAction');
       const btnBow = document.getElementById('btnBowAction');
       const btnFood = document.getElementById('btnCreateFoodAction');
+      const btnRadar = document.getElementById('btnRadarAction');
+      const btnFreeze = document.getElementById('btnFreezeAction');
+      const btnFireball = document.getElementById('btnFireballAction');
+      const btnGuard = document.getElementById('btnGuardAction');
+      const btnRestart = document.getElementById('btnRestartAction');
 
+      if (btnWhirlwind) btnWhirlwind.style.display = this.protagonista.clase === 'guerrero' ? 'block' : 'none';
+      if (btnFireball) btnFireball.style.display = (this.protagonista.clase === 'mago' || this.protagonista.clase === 'guerrero') ? 'block' : 'none';
+      if (btnFreeze) btnFreeze.style.display = this.protagonista.clase === 'mago' ? 'block' : 'none';
       if (btnBow) btnBow.style.display = this.protagonista.clase === 'explorador' ? 'block' : 'none';
       if (btnFood) btnFood.style.display = this.protagonista.clase === 'mago' ? 'block' : 'none';
+      if (btnRadar) btnRadar.style.display = this.protagonista.clase === 'explorador' ? 'block' : 'none';
+      if (btnGuard) btnGuard.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
+      if (btnRestart) btnRestart.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
   }
 
   abrirModalPersonaje() {
@@ -629,6 +655,69 @@ class Game implements IGame {
     this.colaDeMensajes.unshift(texto);
     if (this.colaDeMensajes.length > 5) this.colaDeMensajes.pop();
     console.log(mensaje);
+  }
+
+  guardarSesion(rol: string, roomId: string | null = null) {
+    localStorage.setItem('mazeRPG_lastSession', JSON.stringify({
+        roomId,
+        rol,
+        name: this.protagonista.nombre,
+        class: this.protagonista.clase,
+        color: this.protagonista.color,
+        diff: this.config.dificultad
+    }));
+  }
+
+  revisarSesionGuardada() {
+    const data = localStorage.getItem('mazeRPG_lastSession');
+    const btn = document.getElementById('btnReanudar');
+    if (data && btn) {
+        btn.style.display = 'block';
+        // Asegurar que el contenedor de opciones sea visible si hay algo que reanudar
+        const options = document.getElementById('gameOptions');
+        if (options) options.style.display = 'flex';
+        const creation = document.getElementById('charCreationSection');
+        if (creation) creation.style.display = 'none';
+    } else if (btn) {
+        btn.style.display = 'none';
+    }
+  }
+
+  async reanudarPartida() {
+    const dataStr = localStorage.getItem('mazeRPG_lastSession');
+    if (!dataStr) return;
+    const data = JSON.parse(dataStr);
+
+    this.protagonista.nombre = data.name;
+    this.protagonista.clase = data.class;
+    this.protagonista.color = data.color;
+    this.config.dificultad = data.diff || 'medio';
+    (this.protagonista as any).personajeCreado = true;
+    (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
+
+    if (data.rol === 'solo') {
+        this.empezarSolo();
+    } else if (data.rol === 'host') {
+        this.esHost = true;
+        this.network.esHost = true;
+        this.network.idPartidaActual = data.roomId;
+        const hc = document.getElementById('hostControls');
+        if (hc) hc.style.display = 'flex';
+        (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
+
+        const roomDisp = document.getElementById('roomDisplay');
+        const roomIdVal = document.getElementById('roomIdVal');
+        if (roomDisp && roomIdVal) {
+            roomDisp.style.display = 'block';
+            roomIdVal.textContent = data.roomId;
+        }
+
+        this.configurarIntervalosHost();
+        this.ui.ocultarLobby();
+        this.iniciarMotorJuego();
+    } else if (data.rol === 'guest') {
+        this.unirseAPartidaFirestore(data.roomId);
+    }
   }
 
   iniciarMotorJuego() {
@@ -882,7 +971,12 @@ class Game implements IGame {
 
     this.renderer.aplicarZoom(this.config);
     this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config);
-    this.renderer.dibujarNiebla(this.mapaLaberinto, offset, this.config);
+
+    let persistence = this.config.TIEMPO_DESVANECIMIENTO_NIEBLA;
+    if (this.protagonista.clase === 'explorador') {
+        persistence *= 1.5;
+    }
+    this.renderer.dibujarNiebla(this.mapaLaberinto, offset, this.config, persistence);
 
     this.protagonista.dibujar(this.renderer.getCtx(), offset, this.config);
     this.protagonista.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
@@ -945,7 +1039,27 @@ class Game implements IGame {
         if (ahoraR - r.inicio > r.duracion) {
             this.radares.splice(i, 1);
         } else {
-            this.renderer.dibujarRadar(r, offset, this.config);
+            this.renderer.dibujarRadar(r, offset, this.config, this.network.idLocal);
+        }
+    }
+
+    // Actualizar y dibujar whirlwinds
+    for (let i = this.whirlwinds.length - 1; i >= 0; i--) {
+        const w = this.whirlwinds[i];
+        if (ahoraR - w.inicio > w.duracion) {
+            this.whirlwinds.splice(i, 1);
+        } else {
+            this.renderer.dibujarWhirlwind(w, offset, this.config);
+        }
+    }
+
+    // Actualizar y dibujar freezes
+    for (let i = this.freezes.length - 1; i >= 0; i--) {
+        const f = this.freezes[i];
+        if (ahoraR - f.inicio > f.duracion) {
+            this.freezes.splice(i, 1);
+        } else {
+            this.renderer.dibujarFreeze(f, offset, this.config);
         }
     }
 
@@ -1102,9 +1216,13 @@ class Game implements IGame {
         this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
     }
 
-    const r = this.config.RADIO_VISION;
-    for (let f = Math.max(0, this.protagonista.fila - r); f <= Math.min(this.config.NUMERO_FILAS - 1, this.protagonista.fila + r); f++) {
-        for (let c = Math.max(0, this.protagonista.columna - r); c <= Math.min(this.config.NUMERO_COLUMNAS - 1, this.protagonista.columna + r); c++) {
+    let r = this.config.RADIO_VISION;
+    if (this.protagonista.clase === 'explorador') {
+        r *= 1.2;
+    }
+
+    for (let f = Math.max(0, this.protagonista.fila - Math.ceil(r)); f <= Math.min(this.config.NUMERO_FILAS - 1, this.protagonista.fila + Math.ceil(r)); f++) {
+        for (let c = Math.max(0, this.protagonista.columna - Math.ceil(r)); c <= Math.min(this.config.NUMERO_COLUMNAS - 1, this.protagonista.columna + Math.ceil(r)); c++) {
             if (Math.sqrt(Math.pow(f - this.protagonista.fila, 2) + Math.pow(c - this.protagonista.columna, 2)) <= r) {
                 this.mapaLaberinto[f][c].ultimoAvistamiento = ahora;
             }
@@ -1138,6 +1256,12 @@ class Game implements IGame {
 
     const posSpawn = this.obtenerPosicionInicioAleatoria();
     jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: posSpawn.f, c: posSpawn.c }));
+
+    // Sincronizar la posición del invitado en la representación del Host
+    if (jInfo.entidad) {
+        jInfo.entidad.fila = posSpawn.f;
+        jInfo.entidad.columna = posSpawn.c;
+    }
 
     this.network.jugadoresRemotos.forEach((other, otherId) => {
         if (otherId !== guestId && other.entidad) {
@@ -1181,7 +1305,14 @@ class Game implements IGame {
 
   resolverAccion(id: string, accion: any) {
     const entidad = this.obtenerEntidadPorId(id);
-    if (!entidad || !entidad.estaVivo) return;
+    if (!entidad) {
+        console.warn(`resolverAccion: No se encontró entidad para ID ${id}`);
+        return;
+    }
+    if (!entidad.estaVivo) {
+        console.warn(`resolverAccion: La entidad ${entidad.nombre} está muerta`);
+        return;
+    }
 
     if (accion.tipo === 'mover') {
         const { df, dc } = accion;
@@ -1254,7 +1385,10 @@ class Game implements IGame {
         }
 
         // 4. Límites del mapa
-        if (sigFila < 0 || sigFila >= this.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= this.config.NUMERO_COLUMNAS) return;
+        if (sigFila < 0 || sigFila >= this.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= this.config.NUMERO_COLUMNAS) {
+            console.warn(`resolverAccion: Intento de movimiento fuera de límites por ${entidad.nombre}`);
+            return;
+        }
 
         // 5. Muros y transitable
         const celdaActual = this.mapaLaberinto[entidad.fila][entidad.columna];
@@ -1263,6 +1397,10 @@ class Game implements IGame {
         if (df === 1 && !celdaActual.muros.inferior && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
         if (dc === -1 && !celdaActual.muros.izquierdo && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
         if (dc === 1 && !celdaActual.muros.derecho && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
+
+        if (!esMovimientoValido) {
+            console.warn(`resolverAccion: Movimiento inválido para ${entidad.nombre} hacia (${sigFila}, ${sigColumna}) desde (${entidad.fila}, ${entidad.columna})`);
+        }
 
         if (!esMovimientoValido && (entidad as any).tienePico) {
             const celdaObjetivo = this.mapaLaberinto[sigFila][sigColumna];
@@ -1290,6 +1428,7 @@ class Game implements IGame {
         if (esMovimientoValido) {
             entidad.fila = sigFila;
             entidad.columna = sigColumna;
+            console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
             entidad.estaCaminando = true;
             const celdaNueva = this.mapaLaberinto[entidad.fila][entidad.columna];
             (entidad as any).ultimaCasillaAtacada = null;
@@ -1330,6 +1469,12 @@ class Game implements IGame {
         this.crearComidaHabilidad(entidad, false);
     } else if (accion.tipo === 'radar') {
         this.lanzarRadar(entidad, false);
+    } else if (accion.tipo === 'whirlwind') {
+        this.lanzarWhirlwind(entidad, false);
+    } else if (accion.tipo === 'freeze') {
+        this.lanzarCongelar(entidad, false);
+    } else if (accion.tipo === 'stop_walking') {
+        entidad.estaCaminando = false;
     }
   }
 
@@ -1402,6 +1547,102 @@ class Game implements IGame {
          this.protagonista.fila = pos.f;
          this.protagonista.columna = pos.c;
          this.registrarEventoLog("¡Llamada a la guardia! Has sido teletransportado.");
+    }
+  }
+
+  lanzarCongelar(emisor: any, esLocal: boolean) {
+    const ahora = Date.now();
+    const cooldown = (120 / emisor.inteligencia) * 1000;
+
+    if (esLocal && emisor === this.protagonista) {
+        if (ahora - emisor.ultimaVezHabilidad.freeze < cooldown) return;
+        emisor.ultimaVezHabilidad.freeze = ahora;
+
+        if (this.network && this.network.multiplayerActivo) {
+            if (this.esHost) {
+                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'freeze' } });
+            } else {
+                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'freeze' } });
+            }
+            return;
+        }
+    }
+
+    const duracion = 15000;
+    this.freezes.push({
+        x: emisor.columna,
+        y: emisor.fila,
+        radio: 4,
+        inicio: ahora,
+        duracion: duracion
+    });
+
+    if (this.esHost || (this.network && !this.network.multiplayerActivo)) {
+        // Inmovilizar NPCs en el área
+        this.listaDeEnemigos.forEach(e => {
+            if (e.estaVivo && Math.sqrt(Math.pow(e.fila - emisor.fila, 2) + Math.pow(e.columna - emisor.columna, 2)) <= 4) {
+                e.inmovilizadoHasta = ahora + duracion;
+                this.registrarEventoLog(`¡${e.nombre} ha sido congelado!`);
+            }
+        });
+    }
+
+    if (this.esHost && this.network && this.network.multiplayerActivo) {
+        this.network.enviarMensaje({
+            tipo: 'freeze_spawn',
+            x: emisor.columna,
+            y: emisor.fila,
+            r: 4,
+            d: duracion
+        });
+    }
+  }
+
+  lanzarWhirlwind(emisor: any, esLocal: boolean) {
+    const ahora = Date.now();
+    const cooldown = (90 / emisor.fuerza) * 1000;
+
+    if (esLocal && emisor === this.protagonista) {
+        if (ahora - emisor.ultimaVezHabilidad.whirlwind < cooldown) return;
+        emisor.ultimaVezHabilidad.whirlwind = ahora;
+
+        if (this.network && this.network.multiplayerActivo) {
+            if (this.esHost) {
+                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'whirlwind' } });
+            } else {
+                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'whirlwind' } });
+            }
+            return;
+        }
+    }
+
+    this.whirlwinds.push({
+        x: emisor.columna,
+        y: emisor.fila,
+        inicio: ahora,
+        duracion: 800
+    });
+
+    if (this.esHost || (this.network && !this.network.multiplayerActivo)) {
+        // Daño a NPCs circundantes
+        const danoExtra = 1 + (10 * emisor.fuerza / 100);
+        this.listaDeEnemigos.forEach(e => {
+            if (e.estaVivo && Math.abs(e.fila - emisor.fila) <= 1 && Math.abs(e.columna - emisor.columna) <= 1) {
+                const vA = emisor.generarAtaque() * danoExtra;
+                const vD = e.generarDefensa();
+                const d = Math.max(1, Math.floor(vA - vD));
+                e.recibirDano(d);
+                this.registrarEventoLog(`¡Golpe de Giro! ${emisor.nombre} daña a ${e.nombre} (-${d} HP)`);
+            }
+        });
+    }
+
+    if (this.esHost && this.network && this.network.multiplayerActivo) {
+        this.network.enviarMensaje({
+            tipo: 'whirlwind_spawn',
+            x: emisor.columna,
+            y: emisor.fila
+        });
     }
   }
 
@@ -1587,27 +1828,69 @@ class Game implements IGame {
   }
 
   lanzarRadar(emisor: any, esLocal: boolean) {
-    if (esLocal && emisor === this.protagonista && this.network && this.network.multiplayerActivo) {
-        if (this.esHost) {
-            this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'radar' } });
-        } else {
-            this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'radar' } });
+    const ahora = Date.now();
+    const cooldown = ((30 * 2 / (emisor.agilidad + (2 * emisor.inteligencia))) + 5) * 1000;
+
+    if (esLocal && emisor === this.protagonista) {
+        if (ahora - emisor.ultimaVezHabilidad.radar < cooldown) return;
+        emisor.ultimaVezHabilidad.radar = ahora;
+
+        if (this.network && this.network.multiplayerActivo) {
+            if (this.esHost) {
+                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'radar' } });
+            } else {
+                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'radar' } });
+            }
+            return;
         }
-        return;
     }
 
-    this.radares.push({
+    const radarObj: any = {
         x: emisor.columna,
         y: emisor.fila,
-        inicio: Date.now(),
-        duracion: 5000
+        inicio: ahora,
+        duracion: 5000,
+        respuestas: [],
+        idEmisor: emisor.id || (this.network ? this.network.idLocal : 'unknown')
+    };
+
+    // Identificar hasta 5 NPCs o personajes cercanos
+    const entidades: {f: number, c: number, npc: boolean}[] = [];
+
+    // NPCs
+    this.listaDeEnemigos.forEach(e => {
+        if (e.estaVivo) {
+            const dist = Math.sqrt(Math.pow(e.fila - emisor.fila, 2) + Math.pow(e.columna - emisor.columna, 2));
+            entidades.push({ f: e.fila, c: e.columna, npc: true, dist } as any);
+        }
     });
 
-    if (this.esHost && this.network.multiplayerActivo) {
+    // Jugadores
+    if (this.protagonista !== emisor) {
+        const dist = Math.sqrt(Math.pow(this.protagonista.fila - emisor.fila, 2) + Math.pow(this.protagonista.columna - emisor.columna, 2));
+        entidades.push({ f: this.protagonista.fila, c: this.protagonista.columna, npc: false, dist } as any);
+    }
+    if (this.network && this.network.jugadoresRemotos) {
+        this.network.jugadoresRemotos.forEach((j: any) => {
+            if (j.entidad && j.entidad !== emisor) {
+                const dist = Math.sqrt(Math.pow(j.entidad.fila - emisor.fila, 2) + Math.pow(j.entidad.columna - emisor.columna, 2));
+                entidades.push({ f: j.entidad.fila, c: j.entidad.columna, npc: false, dist } as any);
+            }
+        });
+    }
+
+    entidades.sort((a: any, b: any) => a.dist - b.dist);
+    radarObj.respuestas = entidades.slice(0, 5);
+
+    this.radares.push(radarObj);
+
+    if (this.esHost && this.network && this.network.multiplayerActivo) {
         this.network.enviarMensaje({
             tipo: 'radar_spawn',
             x: emisor.columna,
-            y: emisor.fila
+            y: emisor.fila,
+            respuestas: radarObj.respuestas,
+            idEmisor: radarObj.idEmisor
         });
     }
   }
@@ -1659,42 +1942,37 @@ class Game implements IGame {
     if (!this.protagonista || !this.protagonista.estaVivo) return;
 
     const ahora = Date.now();
+    const p = this.protagonista;
 
-    // Fireball: 30 / INT segundos
-    const cooldownFireball = (30 / this.protagonista.inteligencia) * 1000;
-    const btnFireball = document.getElementById('btnFireballAction');
-    if (btnFireball) {
-        const transcurrido = ahora - this.protagonista.ultimaVezHabilidad.fireball;
-        if (transcurrido < cooldownFireball) {
-            btnFireball.classList.add('disabled');
-        } else {
-            btnFireball.classList.remove('disabled');
-        }
-    }
+    const skills = [
+        { id: 'btnFireballAction', last: p.ultimaVezHabilidad.fireball, cd: (30 / p.inteligencia) * 1000 },
+        { id: 'btnBowAction', last: p.ultimaVezHabilidad.bow, cd: (10 / p.agilidad) * 1000 },
+        { id: 'btnCreateFoodAction', last: p.ultimaVezHabilidad.food, cd: (10 / p.inteligencia) * 1000 },
+        { id: 'btnRadarAction', last: p.ultimaVezHabilidad.radar, cd: ((30 * 2 / (p.agilidad + (2 * p.inteligencia))) + 5) * 1000 },
+        { id: 'btnWhirlwindAction', last: p.ultimaVezHabilidad.whirlwind, cd: (90 / p.fuerza) * 1000 },
+        { id: 'btnFreezeAction', last: p.ultimaVezHabilidad.freeze, cd: (120 / p.inteligencia) * 1000 }
+    ];
 
-    // Bow: 10 / AGI segundos
-    const cooldownBow = (10 / this.protagonista.agilidad) * 1000;
-    const btnBow = document.getElementById('btnBowAction');
-    if (btnBow) {
-        const transcurrido = ahora - this.protagonista.ultimaVezHabilidad.bow;
-        if (transcurrido < cooldownBow) {
-            btnBow.classList.add('disabled');
-        } else {
-            btnBow.classList.remove('disabled');
-        }
-    }
+    skills.forEach(skill => {
+        const btn = document.getElementById(skill.id);
+        if (btn) {
+            const transcurrido = ahora - skill.last;
+            const overlay = btn.querySelector('.cooldown-overlay') as HTMLElement;
 
-    // Food (Mago): 10 / INT segundos
-    const cooldownFood = (10 / this.protagonista.inteligencia) * 1000;
-    const btnFood = document.getElementById('btnCreateFoodAction');
-    if (btnFood) {
-        const transcurrido = ahora - this.protagonista.ultimaVezHabilidad.food;
-        if (transcurrido < cooldownFood) {
-            btnFood.classList.add('disabled');
-        } else {
-            btnFood.classList.remove('disabled');
+            if (transcurrido < skill.cd) {
+                btn.classList.add('disabled');
+                btn.classList.add('charging');
+                if (overlay) {
+                    const pct = (transcurrido / skill.cd) * 100;
+                    overlay.style.width = `${pct}%`;
+                }
+            } else {
+                btn.classList.remove('disabled');
+                btn.classList.remove('charging');
+                if (overlay) overlay.style.width = '0%';
+            }
         }
-    }
+    });
   }
 
   resolverRondaDeCombate(pA: any, pB: any) {
@@ -1772,6 +2050,27 @@ class Game implements IGame {
                 });
             }
             break;
+        case 'freeze_spawn':
+            if (!this.esHost) {
+                this.freezes.push({
+                    x: msg.x,
+                    y: msg.y,
+                    radio: msg.r,
+                    inicio: Date.now(),
+                    duracion: msg.d
+                });
+            }
+            break;
+        case 'whirlwind_spawn':
+            if (!this.esHost) {
+                this.whirlwinds.push({
+                    x: msg.x,
+                    y: msg.y,
+                    inicio: Date.now(),
+                    duracion: 800
+                });
+            }
+            break;
         case 'object_spawned':
             if (!this.esHost) {
                 const celda = this.mapaLaberinto[msg.f][msg.c];
@@ -1800,7 +2099,13 @@ class Game implements IGame {
                             this.protagonista.estaVivo = entData.viva;
                             this.protagonista.estaCaminando = entData.cam;
                         } else {
-                            const rem = this.network.jugadoresRemotos.get(entData.id);
+                            let rem = this.network.jugadoresRemotos.get(entData.id);
+                            if (!rem) {
+                                // Crear entrada si no existe (para otros invitados o host recién identificado)
+                                rem = { pc: null as any, dc: null as any, entidad: null, unsubscribes: [] };
+                                this.network.jugadoresRemotos.set(entData.id, rem);
+                            }
+
                             if (rem && rem.entidad) {
                                 rem.entidad.fila = entData.f;
                                 rem.entidad.columna = entData.c;
@@ -1809,7 +2114,7 @@ class Game implements IGame {
                                 rem.entidad.estaVivo = entData.viva;
                                 rem.entidad.estaCaminando = entData.cam;
                                 rem.entidad.nombre = entData.nick;
-                            } else if (rem && !rem.entidad) {
+                            } else if (rem) {
                                 rem.entidad = new JugadorRemoto(entData.f, entData.c, entData.nick, entData.id);
                                 this.setupEntity(rem.entidad);
                             }
@@ -1824,7 +2129,9 @@ class Game implements IGame {
                     x: msg.x,
                     y: msg.y,
                     inicio: Date.now(),
-                    duracion: 5000
+                    duracion: 5000,
+                    respuestas: msg.respuestas,
+                    idEmisor: msg.idEmisor
                 });
             }
             break;

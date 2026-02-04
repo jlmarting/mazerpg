@@ -251,46 +251,49 @@ canvas {
     font-family: 'Courier New', monospace;
 }
 
-/* Menu Acciones (Derecha) */
+/* Menu Acciones (Inferior) */
 #actionsMenu {
     position: fixed;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%) translateX(100%);
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%) translateY(100%);
     z-index: 90;
     background: rgba(34, 34, 34, 0.9);
-    border-left: 2px solid #ff4444;
+    border-top: 2px solid #ff4444;
     transition: transform 0.4s ease;
     display: flex;
+    flex-direction: column;
     align-items: center;
+    border-radius: 10px 10px 0 0;
 }
 
 #actionsMenu.visible {
-    transform: translateY(-50%) translateX(0);
+    transform: translateX(-50%) translateY(0);
 }
 
 #actionsToggle {
     position: absolute;
-    left: -30px;
+    top: -25px;
     background: #ff4444;
     color: white;
-    padding: 10px 5px;
-    border-radius: 5px 0 0 5px;
+    padding: 2px 15px;
+    border-radius: 10px 10px 0 0;
     cursor: pointer;
     font-size: 10px;
     font-weight: bold;
-    writing-mode: vertical-lr;
-    transform: rotate(180deg);
 }
 
 .actions-content {
     padding: 15px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .action-btn {
+    position: relative;
     background: #444;
     color: white;
     border: 1px solid #666;
@@ -298,8 +301,36 @@ canvas {
     font-family: monospace;
     cursor: pointer;
     font-size: 11px;
-    text-align: left;
+    text-align: center;
     white-space: nowrap;
+    overflow: hidden;
+    z-index: 1;
+}
+
+/* Barra de enfriamiento (cooldown) */
+.action-btn .cooldown-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    background: #28a745; /* Color verde de "listo" o recarga */
+    z-index: -1;
+    transition: width 0.1s linear;
+    opacity: 0.6;
+}
+
+/* Efecto de "tomando color" */
+.action-btn.charging {
+    background: #555;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.action-btn.disabled {
+    opacity: 1; /* Sobrescribimos el opacity 0.3 general para manejarlo con charging */
+    filter: none;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 .action-btn:hover {

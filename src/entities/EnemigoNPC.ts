@@ -9,6 +9,7 @@ export class EnemigoNPC extends EntidadRPG {
   ultimaVezActuadoIA: number = 0;
   radioDeVisionIA: number = 5;
   huyendoHasta: number = 0;
+  inmovilizadoHasta: number = 0;
 
   constructor(fila: number, columna: number, nombre: string, tipo: string, id: number, dificultad: string = 'dificil') {
     super(fila, columna, nombre);
@@ -60,6 +61,8 @@ export class EnemigoNPC extends EntidadRPG {
 
   actualizarIA(game: IGame) {
     if (!this.estaVivo || game.juegoTerminado) return;
+
+    if (Date.now() < this.inmovilizadoHasta) return;
 
     // Si ya estamos en combate, resolvemos ronda si el objetivo sigue cerca
     if (this.enCombateCon) {

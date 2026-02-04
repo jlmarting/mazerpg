@@ -1257,6 +1257,12 @@ class Game implements IGame {
     const posSpawn = this.obtenerPosicionInicioAleatoria();
     jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: posSpawn.f, c: posSpawn.c }));
 
+    // Sincronizar la posición del invitado en la representación del Host
+    if (jInfo.entidad) {
+        jInfo.entidad.fila = posSpawn.f;
+        jInfo.entidad.columna = posSpawn.c;
+    }
+
     this.network.jugadoresRemotos.forEach((other, otherId) => {
         if (otherId !== guestId && other.entidad) {
             jInfo.dc.send(JSON.stringify({
@@ -1299,7 +1305,14 @@ class Game implements IGame {
 
   resolverAccion(id: string, accion: any) {
     const entidad = this.obtenerEntidadPorId(id);
-    if (!entidad || !entidad.estaVivo) return;
+    if (!entidad) {
+        console.warn(`resolverAccion: No se encontró entidad para ID ${id}`);
+        return;
+    }
+    if (!entidad.estaVivo) {
+        console.warn(`resolverAccion: La entidad ${entidad.nombre} está muerta`);
+        return;
+    }
 
     if (accion.tipo === 'mover') {
         const { df, dc } = accion;
@@ -1372,7 +1385,10 @@ class Game implements IGame {
         }
 
         // 4. Límites del mapa
-        if (sigFila < 0 || sigFila >= this.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= this.config.NUMERO_COLUMNAS) return;
+        if (sigFila < 0 || sigFila >= this.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= this.config.NUMERO_COLUMNAS) {
+            console.warn(`resolverAccion: Intento de movimiento fuera de límites por ${entidad.nombre}`);
+            return;
+        }
 
         // 5. Muros y transitable
         const celdaActual = this.mapaLaberinto[entidad.fila][entidad.columna];
@@ -1381,6 +1397,10 @@ class Game implements IGame {
         if (df === 1 && !celdaActual.muros.inferior && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
         if (dc === -1 && !celdaActual.muros.izquierdo && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
         if (dc === 1 && !celdaActual.muros.derecho && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
+
+        if (!esMovimientoValido) {
+            console.warn(`resolverAccion: Movimiento inválido para ${entidad.nombre} hacia (${sigFila}, ${sigColumna}) desde (${entidad.fila}, ${entidad.columna})`);
+        }
 
         if (!esMovimientoValido && (entidad as any).tienePico) {
             const celdaObjetivo = this.mapaLaberinto[sigFila][sigColumna];
@@ -1408,6 +1428,7 @@ class Game implements IGame {
         if (esMovimientoValido) {
             entidad.fila = sigFila;
             entidad.columna = sigColumna;
+            console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
             entidad.estaCaminando = true;
             const celdaNueva = this.mapaLaberinto[entidad.fila][entidad.columna];
             (entidad as any).ultimaCasillaAtacada = null;
@@ -2078,8 +2099,14 @@ class Game implements IGame {
                             this.protagonista.estaVivo = entData.viva;
                             this.protagonista.estaCaminando = entData.cam;
                         } else {
-                            const rem = this.network.jugadoresRemotos.get(entData.id);
-                            if (rem && rem.entidad) {
+                            let rem = this.network.jugadoresRemotos.get(entData.id);
+                            if (!rem) {
+                                // Crear entrada si no existe (para otros invitados o host recién identificado)
+                                rem = { pc: null, dc: null, entidad: null, unsubscribes: [] };
+                                this.network.jugadoresRemotos.set(entData.id, rem);
+                            }
+
+                            if (rem.entidad) {
                                 rem.entidad.fila = entData.f;
                                 rem.entidad.columna = entData.c;
                                 rem.entidad.vidaActual = entData.v;
@@ -2087,7 +2114,7 @@ class Game implements IGame {
                                 rem.entidad.estaVivo = entData.viva;
                                 rem.entidad.estaCaminando = entData.cam;
                                 rem.entidad.nombre = entData.nick;
-                            } else if (rem && !rem.entidad) {
+                            } else {
                                 rem.entidad = new JugadorRemoto(entData.f, entData.c, entData.nick, entData.id);
                                 this.setupEntity(rem.entidad);
                             }

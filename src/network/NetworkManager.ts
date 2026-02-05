@@ -15,6 +15,8 @@ export class NetworkManager {
   public jugadoresRemotos: Map<string, RemotePlayer> = new Map();
   public activo: boolean = false;
   public idRealDelHost: string | null = null;
+  public latenciaPeer: Map<string, number> = new Map();
+  private _intervaloPing: any = null;
 
   constructor() {}
 
@@ -32,6 +34,10 @@ export class NetworkManager {
   setupDataChannelHandlers(canal: RTCDataChannel, idEmisor: string, game: IGame) {
     canal.addEventListener('open', () => {
       this.activo = true;
+      this.latenciaPeer.set(idEmisor, 0);
+      if (!this._intervaloPing) {
+          this._intervaloPing = setInterval(() => this.realizarPings(game), 5000);
+      }
       this.multiplayerActivo = true;
       const nick = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
       this.enviarMensaje({ tipo: 'handshake', nick: nick, id: this.idLocal });
@@ -66,12 +72,50 @@ export class NetworkManager {
     });
   }
 
+  enviarMensajeAPeer(peerId: string, objeto: any) {
+      const j = this.jugadoresRemotos.get(peerId);
+      if (j && j.dc && j.dc.readyState === "open") {
+          try { j.dc.send(JSON.stringify(objeto)); } catch(e) { console.error(e); }
+      }
+  }
+
+  realizarPings(game: IGame) {
+      if (!this.multiplayerActivo) return;
+      this.jugadoresRemotos.forEach((_j, id) => {
+          this.enviarMensajeAPeer(id, { tipo: 'ping', t: Date.now() });
+      });
+  }
+
+  async forzarReconexion(game: IGame) {
+      game.registrarEventoLog("Iniciando reconexión forzada...");
+      if (this.esHost) {
+          // El host no suele reconectar, espera que los invitados lo hagan
+          game.registrarEventoLog("Como Host, notificando a invitados que refresquen...");
+          this.enviarMensaje({ tipo: 'force_reconnect_request' });
+      } else {
+          // Como invitado, reiniciamos el handshake con el host
+          if (this.idPartidaActual) {
+              game.registrarEventoLog("Reiniciando handshake con el Host...");
+              // Limpiamos rastro previo
+              const hostInfo = this.jugadoresRemotos.get('host') || this.jugadoresRemotos.get(this.idRealDelHost || '');
+              if (hostInfo && hostInfo.pc) {
+                  hostInfo.pc.close();
+              }
+              this.jugadoresRemotos.delete('host');
+              if (this.idRealDelHost) this.jugadoresRemotos.delete(this.idRealDelHost);
+
+              // Volvemos a iniciar
+              this.setupWebRTCGuest(this.idPartidaActual, game);
+          }
+      }
+  }
+
   async setupWebRTCHost(guestId: string, game: IGame) {
     if (!guestId) return;
     if (this.jugadoresRemotos.has(guestId)) {
       const existing = this.jugadoresRemotos.get(guestId)!;
-      if (existing.pc && (existing.pc.connectionState === 'connected' || existing.pc.connectionState === 'connecting')) {
-        return;
+      if (existing.pc) {
+          try { existing.pc.close(); } catch(e) {}
       }
     }
 
@@ -134,6 +178,26 @@ export class NetworkManager {
       });
 
     info.unsubscribes.push(unsubAnswer, unsubIce);
+  }
+
+  activarEscuchaConexiones(game: IGame) {
+      if (!this.idPartidaActual || !this.esHost) return;
+      game.firebase.getDb()!.collection('partidas').doc(this.idPartidaActual).collection('conexiones')
+          .onSnapshot((snapshot: any) => {
+              snapshot.docChanges().forEach((change: any) => {
+                  if (change.type === 'added' || change.type === 'modified') {
+                      const guestId = change.doc.id;
+                      if (guestId !== this.idLocal) {
+                          const data = change.doc.data();
+                          // Si es un handshake nuevo o una solicitud de reconexión (documento sin offer/answer del host)
+                          if (!data.offer && !data.answer) {
+                              game.registrarEventoLog(`Detectada solicitud de conexión de ${guestId}. Admitiendo...`);
+                              this.setupWebRTCHost(guestId, game);
+                          }
+                      }
+                  }
+              });
+          });
   }
 
   async setupWebRTCGuest(partidaId: string, game: IGame) {

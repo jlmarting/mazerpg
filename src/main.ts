@@ -99,11 +99,11 @@ class Game implements IGame {
 
   setupEventListeners() {
     document.getElementById('menuToggle')?.addEventListener('click', () => {
-      const menu = document.getElementById('topMenu');
+      const menu = document.getElementById('leftMenu');
       const toggle = document.getElementById('menuToggle');
       if (menu && toggle) {
           menu.classList.toggle('visible');
-          toggle.textContent = menu.classList.contains('visible') ? 'MENU ▴' : 'MENU ▾';
+          toggle.textContent = menu.classList.contains('visible') ? 'MENU ◂' : 'MENU ▸';
       }
     });
 
@@ -331,6 +331,7 @@ class Game implements IGame {
     }
 
     await this.firebase.crearPartida(id, this.network.idLocal, this.protagonista.nombre);
+    this.network.activarEscuchaConexiones(this);
     this.configurarIntervalosHost();
     this.ui.registrarLogConexion(`Partida creada: ${id}`);
     this.ui.ocultarLobby();
@@ -446,6 +447,7 @@ class Game implements IGame {
             hostNick: this.protagonista.nombre
         });
         this.registrarEventoLog("Ahora eres el Host de la partida.");
+        this.network.activarEscuchaConexiones(this);
         this.configurarIntervalosHost();
         (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
     }
@@ -487,7 +489,7 @@ class Game implements IGame {
     document.getElementById('lobbyManual')!.style.display = 'none';
     document.getElementById('lobby')!.style.display = 'flex';
     document.getElementById('mazeCanvas')!.style.display = 'none';
-    document.getElementById('topMenu')!.style.display = 'none';
+    document.getElementById('leftMenu')!.style.display = 'none';
     document.getElementById('actionsMenu')!.style.display = 'none';
     this.actualizarStatsLobby();
   }
@@ -547,14 +549,16 @@ class Game implements IGame {
       const btnGuard = document.getElementById('btnGuardAction');
       const btnRestart = document.getElementById('btnRestartAction');
 
-      if (btnWhirlwind) btnWhirlwind.style.display = this.protagonista.clase === 'guerrero' ? 'block' : 'none';
-      if (btnFireball) btnFireball.style.display = (this.protagonista.clase === 'mago' || this.protagonista.clase === 'guerrero') ? 'block' : 'none';
-      if (btnFreeze) btnFreeze.style.display = this.protagonista.clase === 'mago' ? 'block' : 'none';
-      if (btnBow) btnBow.style.display = this.protagonista.clase === 'explorador' ? 'block' : 'none';
-      if (btnFood) btnFood.style.display = this.protagonista.clase === 'mago' ? 'block' : 'none';
-      if (btnRadar) btnRadar.style.display = this.protagonista.clase === 'explorador' ? 'block' : 'none';
-      if (btnGuard) btnGuard.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
-      if (btnRestart) btnRestart.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
+      const isDebug = this.config.vistaDebugActivada;
+
+      if (btnWhirlwind) btnWhirlwind.style.display = (isDebug || this.protagonista.clase === 'guerrero') ? 'block' : 'none';
+      if (btnFireball) btnFireball.style.display = (isDebug || this.protagonista.clase === 'mago' || this.protagonista.clase === 'guerrero') ? 'block' : 'none';
+      if (btnFreeze) btnFreeze.style.display = (isDebug || this.protagonista.clase === 'mago') ? 'block' : 'none';
+      if (btnBow) btnBow.style.display = (isDebug || this.protagonista.clase === 'explorador') ? 'block' : 'none';
+      if (btnFood) btnFood.style.display = (isDebug || this.protagonista.clase === 'mago') ? 'block' : 'none';
+      if (btnRadar) btnRadar.style.display = (isDebug || this.protagonista.clase === 'explorador') ? 'block' : 'none';
+      if (btnGuard) btnGuard.style.display = isDebug ? 'block' : 'none';
+      if (btnRestart) btnRestart.style.display = isDebug ? 'block' : 'none';
   }
 
   abrirModalPersonaje() {
@@ -728,6 +732,7 @@ class Game implements IGame {
             roomIdVal.textContent = data.roomId;
         }
 
+        this.network.activarEscuchaConexiones(this);
         this.configurarIntervalosHost();
         this.ui.ocultarLobby();
         this.iniciarMotorJuego();
@@ -741,7 +746,7 @@ class Game implements IGame {
     this.motorIniciado = true;
 
     // Mostrar menús
-    document.getElementById('topMenu')!.style.display = 'flex';
+    document.getElementById('leftMenu')!.style.display = 'flex';
     document.getElementById('actionsMenu')!.style.display = 'flex';
 
     if (this.esHost || !this.network.multiplayerActivo) {
@@ -1306,6 +1311,17 @@ class Game implements IGame {
   desatascar() {
     this.registrarEventoLog("Intentando desatascar...");
     this.protagonista.enCombateCon = null;
+
+    if (this.network && this.network.multiplayerActivo) {
+        const idPeer = this.esHost ? Array.from(this.network.jugadoresRemotos.keys())[0] : 'host';
+        const latencia = this.network.latenciaPeer.get(idPeer) || 0;
+
+        if (latencia === 0 || latencia > 1000) {
+            this.registrarEventoLog("Problema de conexión detectado. Forzando reconexión...");
+            this.network.forzarReconexion(this);
+            return;
+        }
+    }
 
     // Buscar la celda transitable más cercana (incluyendo la actual)
     let found = false;
@@ -2402,6 +2418,19 @@ class Game implements IGame {
                     npc.estaVivo = npc.vidaActual > 0;
                 }
             });
+            break;
+        case 'ping':
+            this.network.enviarMensajeAPeer(idEmisor, { tipo: 'pong', t: msg.t });
+            break;
+        case 'pong':
+            const lat = Date.now() - msg.t;
+            this.network.latenciaPeer.set(idEmisor, lat);
+            break;
+        case 'force_reconnect_request':
+            if (!this.esHost) {
+                this.registrarEventoLog("El Host solicita reconexión.");
+                this.network.forzarReconexion(this);
+            }
             break;
     }
   }

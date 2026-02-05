@@ -209,3 +209,64 @@ export function generarLaberintoBSP(mapaLaberinto: Celda[][]) {
     }
   }
 }
+
+export function generarMapaHogar(mapa: Celda[][]) {
+  const filas = mapa.length;
+  const columnas = mapa[0].length;
+
+  for (let f = 0; f < filas; f++) {
+    for (let c = 0; c < columnas; c++) {
+      const celda = mapa[f][c];
+      celda.esTransitable = true;
+      celda.tipoTerreno = 'cesped';
+      celda.muros = { superior: false, inferior: false, izquierdo: false, derecho: false };
+      celda.esParedGruesa = false;
+
+      if (Math.random() < 0.03) {
+        celda.decoracion = 'arbol';
+      }
+    }
+  }
+
+  // Generar algunas casas
+  const numCasas = 50;
+  for (let i = 0; i < numCasas; i++) {
+    const w = Math.floor(Math.random() * 8) + 6;
+    const h = Math.floor(Math.random() * 8) + 6;
+    const f0 = Math.floor(Math.random() * (filas - h - 10)) + 5;
+    const c0 = Math.floor(Math.random() * (columnas - w - 10)) + 5;
+
+    for (let f = f0; f < f0 + h; f++) {
+      for (let c = c0; c < c0 + w; c++) {
+        const celda = mapa[f][c];
+        celda.tipoTerreno = 'baldosa';
+        celda.decoracion = null;
+
+        if (f === f0) { celda.muros.superior = true; celda.esParedGruesa = true; }
+        if (f === f0 + h - 1) { celda.muros.inferior = true; celda.esParedGruesa = true; }
+        if (c === c0) { celda.muros.izquierdo = true; celda.esParedGruesa = true; }
+        if (c === c0 + w - 1) { celda.muros.derecho = true; celda.esParedGruesa = true; }
+
+        // Puerta
+        if (i % 2 === 0) {
+            if (f === f0 + h - 1 && c === c0 + Math.floor(w/2)) {
+                celda.muros.inferior = false;
+                celda.esParedGruesa = false;
+            }
+        } else {
+             if (f === f0 + Math.floor(h/2) && c === c0) {
+                celda.muros.izquierdo = false;
+                celda.esParedGruesa = false;
+            }
+        }
+
+        if (f > f0 && f < f0 + h - 1 && c > c0 && c < c0 + w - 1) {
+            if (Math.random() < 0.15) {
+                const muebles = ['sofa', 'cama', 'mesa', 'silla'];
+                celda.decoracion = muebles[Math.floor(Math.random() * muebles.length)];
+            }
+        }
+      }
+    }
+  }
+}

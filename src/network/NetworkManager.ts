@@ -1,8 +1,8 @@
 import { IGame } from '../types';
 
 export interface RemotePlayer {
-    pc: RTCPeerConnection;
-    dc: RTCDataChannel;
+    pc: RTCPeerConnection | null;
+    dc: RTCDataChannel | null;
     entidad: any;
     unsubscribes: (() => void)[];
 }

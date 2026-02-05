@@ -70,38 +70,54 @@ export class Renderer {
 
         const celda = mapaLaberinto[fila][columna];
         if (celda.esTransitable) {
-          this.ctx.fillStyle = '#FFF';
+          if (celda.tipoTerreno === 'cesped') {
+            this.ctx.fillStyle = '#4a7c44';
+          } else if (celda.tipoTerreno === 'baldosa') {
+            this.ctx.fillStyle = '#d3d3d3';
+          } else {
+            this.ctx.fillStyle = '#FFF';
+          }
+
           const x = (columna - colOffset) * TAMANO_CELDA;
           const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
           this.ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
 
-          // Delinear bordes púrpura
-          this.ctx.strokeStyle = '#800080';
-          this.ctx.lineWidth = 2;
+          if (celda.decoracion) {
+              this.ctx.font = '20px serif';
+              this.ctx.textAlign = 'center';
+              let icon = '';
+              if (celda.decoracion === 'arbol') icon = '🌳';
+              else if (celda.decoracion === 'sofa') icon = '🛋️';
+              else if (celda.decoracion === 'cama') icon = '🛏️';
+              else if (celda.decoracion === 'mesa') icon = '🪑';
+              else if (celda.decoracion === 'silla') icon = '🪑';
+              if (icon) {
+                  this.ctx.fillText(icon, x + TAMANO_CELDA / 2, y + TAMANO_CELDA / 2 + 7);
+              }
+              this.ctx.textAlign = 'left';
+          }
+
+          // Delinear muros
+          const drawWall = (x1: number, y1: number, x2: number, y2: number, isParedGruesa: boolean) => {
+              this.ctx.strokeStyle = isParedGruesa ? '#8b4513' : '#800080';
+              this.ctx.lineWidth = isParedGruesa ? 4 : 2;
+              this.ctx.beginPath();
+              this.ctx.moveTo(x1, y1);
+              this.ctx.lineTo(x2, y2);
+              this.ctx.stroke();
+          };
 
           if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, y);
-            this.ctx.lineTo(x + TAMANO_CELDA, y);
-            this.ctx.stroke();
+              drawWall(x, y, x + TAMANO_CELDA, y, celda.esParedGruesa);
           }
           if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, y + TAMANO_CELDA);
-            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
-            this.ctx.stroke();
+              drawWall(x, y + TAMANO_CELDA, x + TAMANO_CELDA, y + TAMANO_CELDA, celda.esParedGruesa);
           }
           if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, y);
-            this.ctx.lineTo(x, y + TAMANO_CELDA);
-            this.ctx.stroke();
+              drawWall(x, y, x, y + TAMANO_CELDA, celda.esParedGruesa);
           }
           if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x + TAMANO_CELDA, y);
-            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
-            this.ctx.stroke();
+              drawWall(x + TAMANO_CELDA, y, x + TAMANO_CELDA, y + TAMANO_CELDA, celda.esParedGruesa);
           }
 
           // Dibujar Burbuja

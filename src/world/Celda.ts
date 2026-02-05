@@ -17,6 +17,9 @@ export class Celda {
   esPortal: boolean = false;
   tienePico: boolean = false;
   golpesCavar: number = 0;
+  tipoTerreno: 'laberinto' | 'cesped' | 'baldosa' = 'laberinto';
+  decoracion: string | null = null;
+  esParedGruesa: boolean = false;
 
   constructor(fila: number, columna: number) {
     this.fila = fila;

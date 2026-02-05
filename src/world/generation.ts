@@ -213,60 +213,191 @@ export function generarLaberintoBSP(mapaLaberinto: Celda[][]) {
 export function generarMapaHogar(mapa: Celda[][]) {
   const filas = mapa.length;
   const columnas = mapa[0].length;
+  const centroF = Math.floor(filas / 2);
+  const centroC = Math.floor(columnas / 2);
 
+  // 1. Inicializar como agua
   for (let f = 0; f < filas; f++) {
     for (let c = 0; c < columnas; c++) {
       const celda = mapa[f][c];
-      celda.esTransitable = true;
-      celda.tipoTerreno = 'cesped';
+      celda.tipoTerreno = 'agua';
+      celda.esTransitable = false;
       celda.muros = { superior: false, inferior: false, izquierdo: false, derecho: false };
       celda.esParedGruesa = false;
+      celda.decoracion = null;
+    }
+  }
 
-      if (Math.random() < 0.03) {
-        celda.decoracion = 'arbol';
+  // 2. Generar isla (cesped)
+  for (let f = 0; f < filas; f++) {
+    for (let c = 0; c < columnas; c++) {
+      const dist = Math.sqrt(Math.pow(f - centroF, 2) + Math.pow(c - centroC, 2));
+      const noise = Math.sin(f * 0.2) * 2 + Math.cos(c * 0.2) * 2;
+      if (dist < 35 + noise) {
+        const celda = mapa[f][c];
+        celda.tipoTerreno = 'cesped';
+        celda.esTransitable = true;
+        if (Math.random() < 0.05) celda.decoracion = 'arbol';
       }
     }
   }
 
-  // Generar algunas casas
-  const numCasas = 50;
-  for (let i = 0; i < numCasas; i++) {
-    const w = Math.floor(Math.random() * 8) + 6;
-    const h = Math.floor(Math.random() * 8) + 6;
-    const f0 = Math.floor(Math.random() * (filas - h - 10)) + 5;
-    const c0 = Math.floor(Math.random() * (columnas - w - 10)) + 5;
-
-    for (let f = f0; f < f0 + h; f++) {
-      for (let c = c0; c < c0 + w; c++) {
-        const celda = mapa[f][c];
-        celda.tipoTerreno = 'baldosa';
-        celda.decoracion = null;
-
-        if (f === f0) { celda.muros.superior = true; celda.esParedGruesa = true; }
-        if (f === f0 + h - 1) { celda.muros.inferior = true; celda.esParedGruesa = true; }
-        if (c === c0) { celda.muros.izquierdo = true; celda.esParedGruesa = true; }
-        if (c === c0 + w - 1) { celda.muros.derecho = true; celda.esParedGruesa = true; }
-
-        // Puerta
-        if (i % 2 === 0) {
-            if (f === f0 + h - 1 && c === c0 + Math.floor(w/2)) {
-                celda.muros.inferior = false;
-                celda.esParedGruesa = false;
+  // 3. Costa (arena y rocas)
+  for (let f = 0; f < filas; f++) {
+    for (let c = 0; c < columnas; c++) {
+      if (mapa[f][c].tipoTerreno === 'cesped') {
+        let esCosta = false;
+        for (let df = -1; df <= 1; df++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nf = f + df;
+            const nc = c + dc;
+            if (nf >= 0 && nf < filas && nc >= 0 && nc < columnas && mapa[nf][nc].tipoTerreno === 'agua') {
+              esCosta = true;
             }
-        } else {
-             if (f === f0 + Math.floor(h/2) && c === c0) {
-                celda.muros.izquierdo = false;
-                celda.esParedGruesa = false;
-            }
+          }
         }
 
-        if (f > f0 && f < f0 + h - 1 && c > c0 && c < c0 + w - 1) {
-            if (Math.random() < 0.15) {
-                const muebles = ['sofa', 'cama', 'mesa', 'silla'];
-                celda.decoracion = muebles[Math.floor(Math.random() * muebles.length)];
-            }
+        if (esCosta) {
+          const celda = mapa[f][c];
+          if (Math.random() < 0.6) {
+            celda.tipoTerreno = 'arena';
+            if (Math.random() < 0.1) celda.decoracion = 'palmera';
+          } else {
+            celda.tipoTerreno = 'roca';
+            if (Math.random() < 0.1) celda.decoracion = 'pino';
+          }
         }
       }
     }
+  }
+
+  // 4. Ríos (0-5)
+  const numRios = Math.floor(Math.random() * 6);
+  for (let r = 0; r < numRios; r++) {
+    const angulo = Math.random() * Math.PI * 2;
+    const distIni = 20 + Math.random() * 30;
+    let curF = Math.round(centroF + Math.sin(angulo) * distIni);
+    let curC = Math.round(centroC + Math.cos(angulo) * distIni);
+
+    for (let i = 0; i < 100; i++) {
+      if (curF < 0 || curF >= filas || curC < 0 || curC >= columnas) break;
+      const celda = mapa[curF][curC];
+      if (celda.tipoTerreno === 'agua' && i > 5) break; // Llegó al mar
+
+      celda.tipoTerreno = 'agua';
+      celda.esTransitable = false;
+      celda.decoracion = null;
+
+      // Mover hacia afuera
+      const df = Math.sign(curF - centroF) || (Math.random() > 0.5 ? 1 : -1);
+      const dc = Math.sign(curC - centroC) || (Math.random() > 0.5 ? 1 : -1);
+
+      if (Math.random() > 0.5) curF += df;
+      else curC += dc;
+    }
+  }
+
+  // 5. Casas (1-4 clustered)
+  const numCasas = Math.floor(Math.random() * 4) + 1;
+  const clusterF = centroF + Math.floor(Math.random() * 20) - 10;
+  const clusterC = centroC + Math.floor(Math.random() * 20) - 10;
+
+  for (let h = 0; h < numCasas; h++) {
+    const casaF = clusterF + Math.floor(Math.random() * 15) - 7;
+    const casaC = clusterC + Math.floor(Math.random() * 15) - 7;
+    const numRooms = Math.floor(Math.random() * 4) + 2;
+
+    const rooms: {f: number, c: number, w: number, h: number}[] = [];
+
+    // First room
+    let rw = Math.floor(Math.random() * 6) + 4;
+    let rh = Math.floor(Math.random() * 6) + 4;
+    rooms.push({ f: casaF, c: casaC, w: rw, h: rh });
+
+    for (let i = 1; i < numRooms; i++) {
+        const base = rooms[Math.floor(Math.random() * rooms.length)];
+        let nrw = Math.floor(Math.random() * 5) + 3;
+        let nrh = Math.floor(Math.random() * 5) + 3;
+        let nf = base.f;
+        let nc = base.c;
+
+        const side = Math.floor(Math.random() * 4);
+        if (side === 0) nf = base.f - nrh;
+        else if (side === 1) nf = base.f + base.h;
+        else if (side === 2) nc = base.c - nrw;
+        else nc = base.c + base.w;
+
+        rooms.push({ f: nf, c: nc, w: nrw, h: nrh });
+    }
+
+    // Apply rooms to map
+    rooms.forEach(room => {
+        for (let f = room.f; f < room.f + room.h; f++) {
+            for (let c = room.c; c < room.c + room.w; c++) {
+                if (f < 0 || f >= filas || c < 0 || c >= columnas) continue;
+                const celda = mapa[f][c];
+                celda.tipoTerreno = 'baldosa';
+                celda.esTransitable = true;
+                celda.decoracion = null;
+
+                // Walls (initially all)
+                if (f === room.f) { celda.muros.superior = true; celda.esParedGruesa = true; }
+                if (f === room.f + room.h - 1) { celda.muros.inferior = true; celda.esParedGruesa = true; }
+                if (c === room.c) { celda.muros.izquierdo = true; celda.esParedGruesa = true; }
+                if (c === room.c + room.w - 1) { celda.muros.derecho = true; celda.esParedGruesa = true; }
+            }
+        }
+    });
+
+    // Remove internal walls between rooms
+    for (let i = 0; i < rooms.length; i++) {
+        for (let j = i + 1; j < rooms.length; j++) {
+            const r1 = rooms[i];
+            const r2 = rooms[j];
+            // Check adjacency
+            for (let f = Math.max(r1.f, r2.f); f < Math.min(r1.f + r1.h, r2.f + r2.h); f++) {
+                if (r1.c + r1.w === r2.c) { // r1 left of r2
+                    mapa[f][r1.c + r1.w - 1].muros.derecho = false;
+                    mapa[f][r2.c].muros.izquierdo = false;
+                }
+                if (r2.c + r2.w === r1.c) { // r2 left of r1
+                    mapa[f][r2.c + r2.w - 1].muros.derecho = false;
+                    mapa[f][r1.c].muros.izquierdo = false;
+                }
+            }
+            for (let c = Math.max(r1.c, r2.c); c < Math.min(r1.c + r1.w, r2.c + r2.w); c++) {
+                if (r1.f + r1.h === r2.f) { // r1 above r2
+                    mapa[r1.f + r1.h - 1][c].muros.inferior = false;
+                    mapa[r2.f][c].muros.superior = false;
+                }
+                if (r2.f + r2.h === r1.f) { // r2 above r1
+                    mapa[r2.f + r2.h - 1][c].muros.inferior = false;
+                    mapa[r1.f][c].muros.superior = false;
+                }
+            }
+        }
+    }
+
+    // Ensure at least one door
+    const mainRoom = rooms[0];
+    const doorSide = Math.floor(Math.random() * 4);
+    let df = 0, dc = 0;
+    if (doorSide === 0) { df = mainRoom.f; dc = mainRoom.c + Math.floor(mainRoom.w / 2); mapa[df][dc].muros.superior = false; }
+    else if (doorSide === 1) { df = mainRoom.f + mainRoom.h - 1; dc = mainRoom.c + Math.floor(mainRoom.w / 2); mapa[df][dc].muros.inferior = false; }
+    else if (doorSide === 2) { df = mainRoom.f + Math.floor(mainRoom.h / 2); dc = mainRoom.c; mapa[df][dc].muros.izquierdo = false; }
+    else { df = mainRoom.f + Math.floor(mainRoom.h / 2); dc = mainRoom.c + mainRoom.w - 1; mapa[df][dc].muros.derecho = false; }
+
+    // Add furniture
+    rooms.forEach(room => {
+        for (let f = room.f + 1; f < room.f + room.h - 1; f++) {
+            for (let c = room.c + 1; c < room.c + room.w - 1; c++) {
+                if (f < 0 || f >= filas || c < 0 || c >= columnas) continue;
+                if (Math.random() < 0.1) {
+                    const muebles = ['sofa', 'cama', 'mesa', 'silla'];
+                    mapa[f][c].decoracion = muebles[Math.floor(Math.random() * muebles.length)];
+                }
+            }
+        }
+    });
   }
 }

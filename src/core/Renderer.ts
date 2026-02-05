@@ -55,7 +55,7 @@ export class Renderer {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
 
-    this.ctx.fillStyle = '#000';
+    this.ctx.fillStyle = config.esHogar ? '#0077be' : '#000';
     this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
 
     const fInicio = Math.floor(filaOffset);
@@ -74,6 +74,12 @@ export class Renderer {
             this.ctx.fillStyle = '#4a7c44';
           } else if (celda.tipoTerreno === 'baldosa') {
             this.ctx.fillStyle = '#d3d3d3';
+          } else if (celda.tipoTerreno === 'agua') {
+            this.ctx.fillStyle = '#0077be';
+          } else if (celda.tipoTerreno === 'arena') {
+            this.ctx.fillStyle = '#f2d2a9';
+          } else if (celda.tipoTerreno === 'roca') {
+            this.ctx.fillStyle = '#777';
           } else {
             this.ctx.fillStyle = '#FFF';
           }
@@ -87,6 +93,8 @@ export class Renderer {
               this.ctx.textAlign = 'center';
               let icon = '';
               if (celda.decoracion === 'arbol') icon = '🌳';
+              else if (celda.decoracion === 'palmera') icon = '🌴';
+              else if (celda.decoracion === 'pino') icon = '🌲';
               else if (celda.decoracion === 'sofa') icon = '🛋️';
               else if (celda.decoracion === 'cama') icon = '🛏️';
               else if (celda.decoracion === 'mesa') icon = '🪑';

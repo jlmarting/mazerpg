@@ -17,7 +17,7 @@ export class Celda {
   esPortal: boolean = false;
   tienePico: boolean = false;
   golpesCavar: number = 0;
-  tipoTerreno: 'laberinto' | 'cesped' | 'baldosa' = 'laberinto';
+  tipoTerreno: 'laberinto' | 'cesped' | 'baldosa' | 'agua' | 'arena' | 'roca' = 'laberinto';
   decoracion: string | null = null;
   esParedGruesa: boolean = false;
 

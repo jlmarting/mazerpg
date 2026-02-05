@@ -52,6 +52,7 @@ class Game implements IGame {
   public mapaHogar: Celda[][] = [];
   public estaEnHogar: boolean = false;
   public posicionLaberinto: { f: number, c: number } = { f: 0, c: 0 };
+  public posicionHogar: { f: number, c: number } = { f: 50, c: 50 };
   public colaAcciones: any[] = [];
   private _flowTarget: 'solo' | 'host' | 'manual' | null = null;
 
@@ -556,10 +557,10 @@ class Game implements IGame {
           this.posicionLaberinto = { f: this.protagonista.fila, c: this.protagonista.columna };
 
           if (this.mapaHogar.length === 0) {
-              // Inicializar mapa hogar 500x500
-              for (let f = 0; f < 500; f++) {
+              // Inicializar mapa hogar 100x100
+              for (let f = 0; f < 100; f++) {
                   let fila = [];
-                  for (let c = 0; c < 500; c++) {
+                  for (let c = 0; c < 100; c++) {
                       fila.push(new Celda(f, c));
                   }
                   this.mapaHogar.push(fila);
@@ -568,13 +569,14 @@ class Game implements IGame {
           }
 
           this.estaEnHogar = true;
-          this.protagonista.fila = 250;
-          this.protagonista.columna = 250;
+          this.protagonista.fila = this.posicionHogar.f;
+          this.protagonista.columna = this.posicionHogar.c;
           this.registrarEventoLog("¡Teletransportado a tu hogar bucólico!");
           const btn = document.getElementById('btnHomeAction');
           if (btn) btn.innerHTML = '🏰 AL LABERINTO<div class="cooldown-overlay"></div>';
       } else {
           // Volver al laberinto
+          this.posicionHogar = { f: this.protagonista.fila, c: this.protagonista.columna };
           this.protagonista.fila = this.posicionLaberinto.f;
           this.protagonista.columna = this.posicionLaberinto.c;
           this.estaEnHogar = false;
@@ -1011,8 +1013,9 @@ class Game implements IGame {
     const mapaActual = this.estaEnHogar ? this.mapaHogar : this.mapaLaberinto;
     const configActual = { ...this.config };
     if (this.estaEnHogar) {
-        configActual.NUMERO_FILAS = 500;
-        configActual.NUMERO_COLUMNAS = 500;
+        configActual.NUMERO_FILAS = 100;
+        configActual.NUMERO_COLUMNAS = 100;
+        configActual.esHogar = true;
     }
 
     const offset = this.renderer.obtenerOffsetCamara(this.protagonista, configActual);
@@ -1024,7 +1027,9 @@ class Game implements IGame {
     if (this.protagonista.clase === 'explorador') {
         persistence *= 1.5;
     }
-    this.renderer.dibujarNiebla(mapaActual, offset, configActual, persistence);
+    if (!this.estaEnHogar) {
+        this.renderer.dibujarNiebla(mapaActual, offset, configActual, persistence);
+    }
 
     this.protagonista.dibujar(this.renderer.getCtx(), offset, configActual);
     this.protagonista.dibujarBarraVida(this.renderer.getCtx(), offset, configActual, mapaActual);
@@ -1140,10 +1145,13 @@ class Game implements IGame {
         entities: []
     };
 
+    const hostF = this.estaEnHogar ? this.posicionLaberinto.f : this.protagonista.fila;
+    const hostC = this.estaEnHogar ? this.posicionLaberinto.c : this.protagonista.columna;
+
     snapshot.entities.push({
         id: this.network.idLocal,
-        f: this.protagonista.fila,
-        c: this.protagonista.columna,
+        f: hostF,
+        c: hostC,
         v: this.protagonista.vidaActual,
         vm: this.protagonista.vidaMaxima,
         cam: this.protagonista.estaCaminando,
@@ -1262,7 +1270,7 @@ class Game implements IGame {
 
     const ahora = Date.now();
 
-    if (!this.network.multiplayerActivo) {
+    if (!this.network.multiplayerActivo && !this.estaEnHogar) {
         this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
     }
 
@@ -1272,8 +1280,8 @@ class Game implements IGame {
     }
 
     const mapaActual = this.estaEnHogar ? this.mapaHogar : this.mapaLaberinto;
-    const nFilas = this.estaEnHogar ? 500 : this.config.NUMERO_FILAS;
-    const nCols = this.estaEnHogar ? 500 : this.config.NUMERO_COLUMNAS;
+    const nFilas = this.estaEnHogar ? 100 : this.config.NUMERO_FILAS;
+    const nCols = this.estaEnHogar ? 100 : this.config.NUMERO_COLUMNAS;
 
     for (let f = Math.max(0, this.protagonista.fila - Math.ceil(r)); f <= Math.min(nFilas - 1, this.protagonista.fila + Math.ceil(r)); f++) {
         for (let c = Math.max(0, this.protagonista.columna - Math.ceil(r)); c <= Math.min(nCols - 1, this.protagonista.columna + Math.ceil(r)); c++) {
@@ -1373,8 +1381,8 @@ class Game implements IGame {
 
     const esMiHogar = (id === this.network.idLocal && this.estaEnHogar);
     const mapa = esMiHogar ? this.mapaHogar : this.mapaLaberinto;
-    const nFilas = esMiHogar ? 500 : this.config.NUMERO_FILAS;
-    const nCols = esMiHogar ? 500 : this.config.NUMERO_COLUMNAS;
+    const nFilas = esMiHogar ? 100 : this.config.NUMERO_FILAS;
+    const nCols = esMiHogar ? 100 : this.config.NUMERO_COLUMNAS;
 
     if (accion.tipo === 'mover') {
         const { df, dc } = accion;
@@ -1456,11 +1464,12 @@ class Game implements IGame {
 
         // 5. Muros y transitable
         const celdaActual = mapa[entidad.fila][entidad.columna];
+        const celdaSig = mapa[sigFila][sigColumna];
         let esMovimientoValido = false;
-        if (df === -1 && !celdaActual.muros.superior && mapa[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-        if (df === 1 && !celdaActual.muros.inferior && mapa[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-        if (dc === -1 && !celdaActual.muros.izquierdo && mapa[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-        if (dc === 1 && !celdaActual.muros.derecho && mapa[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
+        if (df === -1 && !celdaActual.muros.superior && !celdaSig.muros.inferior && celdaSig.esTransitable) esMovimientoValido = true;
+        if (df === 1 && !celdaActual.muros.inferior && !celdaSig.muros.superior && celdaSig.esTransitable) esMovimientoValido = true;
+        if (dc === -1 && !celdaActual.muros.izquierdo && !celdaSig.muros.derecho && celdaSig.esTransitable) esMovimientoValido = true;
+        if (dc === 1 && !celdaActual.muros.derecho && !celdaSig.muros.izquierdo && celdaSig.esTransitable) esMovimientoValido = true;
 
         if (!esMovimientoValido) {
             console.warn(`resolverAccion: Movimiento inválido para ${entidad.nombre} hacia (${sigFila}, ${sigColumna}) desde (${entidad.fila}, ${entidad.columna})`);
@@ -2157,6 +2166,7 @@ class Game implements IGame {
                         }
                     } else {
                         if (entData.id === this.network.idLocal) {
+                            if (this.estaEnHogar) return;
                             this.protagonista.fila = entData.f;
                             this.protagonista.columna = entData.c;
                             this.protagonista.vidaActual = entData.v;

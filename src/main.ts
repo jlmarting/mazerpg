@@ -454,7 +454,7 @@ class Game implements IGame {
         if (this.esHost && this.network.multiplayerActivo) {
             // Sincronizar NPCs
             const listaNpcs = this.listaDeEnemigos.map(e => ({
-                id: (e as any).id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
+                id: e.id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
             }));
             this.network.enviarMensaje({ tipo: 'npc_sync_all', lista: listaNpcs });
 
@@ -499,7 +499,7 @@ class Game implements IGame {
     const creationSection = document.getElementById('charCreationSection');
     const options = document.getElementById('gameOptions');
 
-    if (this.protagonista.nombre !== "Jugador" || (this.protagonista as any).personajeCreado) {
+    if (this.protagonista.nombre !== "Jugador" || this.protagonista.personajeCreado) {
         if (preview) preview.style.display = 'block';
         if (creationSection) creationSection.style.display = 'none';
         if (options) options.style.display = 'flex';
@@ -633,7 +633,7 @@ class Game implements IGame {
       this.protagonista.color = (document.getElementById('charColorInput') as HTMLInputElement).value;
       const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
       this.protagonista.clase = selectedClass;
-      (this.protagonista as any).personajeCreado = true;
+      this.protagonista.personajeCreado = true;
 
       document.getElementById('characterModal')!.style.display = 'none';
 
@@ -735,7 +735,7 @@ class Game implements IGame {
     this.protagonista.clase = data.class;
     this.protagonista.color = data.color;
     this.config.dificultad = data.diff || 'medio';
-    (this.protagonista as any).personajeCreado = true;
+    this.protagonista.personajeCreado = true;
     (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
 
     if (data.rol === 'solo') {
@@ -1134,7 +1134,7 @@ class Game implements IGame {
         this.resolverAccion(item.id, item.accion);
     }
 
-    this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
+    this.listaDeEnemigos.forEach(e => { if (e.actualizarIA) e.actualizarIA(this); });
 
     this.enviarSnapshot();
   }
@@ -1175,7 +1175,7 @@ class Game implements IGame {
     });
 
     snapshot.entities.push(...this.listaDeEnemigos.map(e => ({
-        id: (e as any).id,
+        id: e.id,
         f: e.fila,
         c: e.columna,
         v: e.vidaActual,
@@ -1271,7 +1271,7 @@ class Game implements IGame {
     const ahora = Date.now();
 
     if (!this.network.multiplayerActivo && !this.estaEnHogar) {
-        this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
+        this.listaDeEnemigos.forEach(e => { if (e.actualizarIA) e.actualizarIA(this); });
     }
 
     let r = this.config.RADIO_VISION;
@@ -1475,13 +1475,13 @@ class Game implements IGame {
             console.warn(`resolverAccion: Movimiento inválido para ${entidad.nombre} hacia (${sigFila}, ${sigColumna}) desde (${entidad.fila}, ${entidad.columna})`);
         }
 
-        if (!esMovimientoValido && (entidad as any).tienePico && !esMiHogar) {
+        if (!esMovimientoValido && entidad.tienePico && !esMiHogar) {
             const celdaObjetivo = mapa[sigFila][sigColumna];
-            if ((entidad as any).ultimaCasillaAtacada && (entidad as any).ultimaCasillaAtacada.f === sigFila && (entidad as any).ultimaCasillaAtacada.c === sigColumna) {
+            if (entidad.ultimaCasillaAtacada && entidad.ultimaCasillaAtacada.f === sigFila && entidad.ultimaCasillaAtacada.c === sigColumna) {
                 celdaObjetivo.golpesCavar++;
             } else {
                 celdaObjetivo.golpesCavar = 1;
-                (entidad as any).ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
+                entidad.ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
             }
             if (celdaObjetivo.golpesCavar >= 5) {
                 celdaObjetivo.esTransitable = true;
@@ -1504,10 +1504,10 @@ class Game implements IGame {
             console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
             entidad.estaCaminando = true;
             const celdaNueva = mapa[entidad.fila][entidad.columna];
-            (entidad as any).ultimaCasillaAtacada = null;
+            entidad.ultimaCasillaAtacada = null;
 
             if (celdaNueva.tienePico) {
-                (entidad as any).tienePico = true;
+                entidad.tienePico = true;
                 celdaNueva.tienePico = false;
                 this.network.enviarMensaje({ tipo: 'pick_collected', f: entidad.fila, c: entidad.columna });
             }
@@ -1527,10 +1527,10 @@ class Game implements IGame {
             }
             this.verificarPortal(entidad);
 
-            (entidad as any).pasosDesdeUltimoDano = ((entidad as any).pasosDesdeUltimoDano || 0) + 1;
+            entidad.pasosDesdeUltimoDano = (entidad.pasosDesdeUltimoDano || 0) + 1;
             const factorDificultad = this.config.dificultad === 'facil' ? 1 : (this.config.dificultad === 'medio' ? 2 : 3);
-            if ((entidad as any).pasosDesdeUltimoDano >= 10 * factorDificultad) {
-                (entidad as any).pasosDesdeUltimoDano = 0;
+            if (entidad.pasosDesdeUltimoDano >= 10 * factorDificultad) {
+                entidad.pasosDesdeUltimoDano = 0;
                 entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + 1);
             }
         }
@@ -1556,7 +1556,7 @@ class Game implements IGame {
     this.listaDeEnemigos.forEach(e => {
         const dist = Math.sqrt(Math.pow(e.fila - fila, 2) + Math.pow(e.columna - columna, 2));
         if (dist <= r) {
-            (e as any).huyendoHasta = Date.now() + 10000;
+            e.huyendoHasta = Date.now() + 10000;
         }
     });
   }
@@ -2156,7 +2156,7 @@ class Game implements IGame {
             if (!this.esHost) {
                 msg.entities.forEach((entData: any) => {
                     if (entData.isNpc) {
-                        const npc = this.listaDeEnemigos.find(e => (e as any).id === entData.id);
+                        const npc = this.listaDeEnemigos.find(e => e.id === entData.id);
                         if (npc) {
                             npc.fila = entData.f;
                             npc.columna = entData.c;

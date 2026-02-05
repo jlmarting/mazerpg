@@ -9,6 +9,7 @@ export class Jugador extends EntidadRPG {
   ultimaVezHabilidad: { fireball: number, bow: number, food: number, radar: number, whirlwind: number, freeze: number } = { fireball: 0, bow: 0, food: 0, radar: 0, whirlwind: 0, freeze: 0 };
   clase: string = 'guerrero';
   color: string = '#007bff';
+  personajeCreado: boolean = false;
 
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
@@ -173,9 +174,9 @@ export class Jugador extends EntidadRPG {
     if (ahora - this.ultimaInteraccion < 100) return false;
     this.ultimaInteraccion = ahora;
 
-    if (game.network && game.network.multiplayerActivo && !(game as any).estaEnHogar) {
+    if (game.network && game.network.multiplayerActivo && !game.estaEnHogar) {
         if (game.esHost) {
-            (game as any).colaAcciones.push({ id: game.network.idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
+            game.colaAcciones.push({ id: game.network.idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
         } else {
             game.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
         }
@@ -183,7 +184,7 @@ export class Jugador extends EntidadRPG {
         return true;
     } else {
         // En modo solo, resolvemos inmediatamente usando la lógica de resolución centralizada
-        (game as any).resolverAccion(game.network.idLocal, { tipo: 'mover', df: deltaFila, dc: deltaColumna });
+        game.resolverAccion(game.network.idLocal, { tipo: 'mover', df: deltaFila, dc: deltaColumna });
         return true;
     }
   }

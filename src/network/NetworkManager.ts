@@ -36,7 +36,7 @@ export class NetworkManager {
       this.activo = true;
       this.latenciaPeer.set(idEmisor, 0);
       if (!this._intervaloPing) {
-          this._intervaloPing = setInterval(() => this.realizarPings(game), 5000);
+          this._intervaloPing = setInterval(() => this.realizarPings(), 5000);
       }
       this.multiplayerActivo = true;
       const nick = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
@@ -79,7 +79,7 @@ export class NetworkManager {
       }
   }
 
-  realizarPings(game: IGame) {
+  realizarPings() {
       if (!this.multiplayerActivo) return;
       this.jugadoresRemotos.forEach((_j, id) => {
           this.enviarMensajeAPeer(id, { tipo: 'ping', t: Date.now() });

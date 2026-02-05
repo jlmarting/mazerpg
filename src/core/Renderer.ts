@@ -208,43 +208,6 @@ export class Renderer {
   dibujarUI(game: any) {
     const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = game.config;
 
-    this.ctx.fillStyle = '#111';
-    this.ctx.fillRect(0, 0, this.canvas.width, ALTO_UI_TOP);
-    this.ctx.fillRect(0, this.canvas.height - ALTO_UI_BOTTOM, this.canvas.width, ALTO_UI_BOTTOM);
-
-    this.ctx.strokeStyle = '#555';
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.moveTo(0, ALTO_UI_TOP); this.ctx.lineTo(this.canvas.width, ALTO_UI_TOP);
-    this.ctx.moveTo(0, this.canvas.height - ALTO_UI_BOTTOM); this.ctx.lineTo(this.canvas.width, this.canvas.height - ALTO_UI_BOTTOM);
-    this.ctx.stroke();
-
-    this.ctx.fillStyle = '#fff';
-    this.ctx.font = 'bold 12px monospace';
-    this.ctx.fillText("HÉROE", 20, 20);
-    this.ctx.font = '11px monospace';
-    this.ctx.fillText(`HP: ${game.protagonista.vidaActual}/${game.protagonista.vidaMaxima}`, 20, 32);
-    this.ctx.fillText(`FUE:${game.protagonista.fuerza} AGI:${game.protagonista.agilidad}`, 20, 44);
-    this.ctx.fillText(`INT:${game.protagonista.inteligencia} XP:${game.protagonista.puntosExperiencia}`, 20, 56);
-
-    let enemigoVisible = game.obtenerEnemigoAMostrar();
-    if (enemigoVisible) {
-      this.ctx.textAlign = 'right';
-      this.ctx.fillStyle = '#f55';
-      this.ctx.font = 'bold 12px monospace';
-      this.ctx.fillText(enemigoVisible.nombre.toUpperCase(), this.canvas.width - 10, 20);
-      this.ctx.font = '11px monospace';
-      this.ctx.fillText(`HP: ${enemigoVisible.vidaActual}/${enemigoVisible.vidaMaxima}`, this.canvas.width - 10, 35);
-      this.ctx.fillText(`FUE:${enemigoVisible.fuerza} AGI:${enemigoVisible.agilidad}`, this.canvas.width - 10, 50);
-      this.ctx.textAlign = 'left';
-    }
-
-    this.ctx.fillStyle = '#aaa';
-    this.ctx.font = '10px monospace';
-    game.colaDeMensajes.forEach((msj: string, i: number) => {
-      this.ctx.fillText(msj, 10, this.canvas.height - ALTO_UI_BOTTOM + 20 + (i * 15));
-    });
-
     if (game.juegoTerminado) {
       this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
       this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM);

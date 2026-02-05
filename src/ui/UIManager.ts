@@ -2,12 +2,14 @@ import { IGame } from '../types';
 
 export class UIManager {
   private logTextArea: HTMLTextAreaElement | null = null;
+  private actionLogTextArea: HTMLTextAreaElement | null = null;
   private listaTextosFlotantes: any[] = [];
   private notificacionGrande: { texto: string, expira: number, color: string } | null = null;
   public listaMensajesChat: any[] = [];
 
   constructor() {
     this.logTextArea = document.getElementById('logTextArea') as HTMLTextAreaElement;
+    this.actionLogTextArea = document.getElementById('actionLogTextArea') as HTMLTextAreaElement;
   }
 
   ocultarLobby() {
@@ -24,6 +26,15 @@ export class UIManager {
       this.logTextArea.scrollTop = this.logTextArea.scrollHeight;
     }
     console.log(`[CONN-LOG] ${msg}`);
+  }
+
+  registrarAccionLog(msg: string) {
+    if (this.actionLogTextArea) {
+        const timestamp = new Date().toLocaleTimeString();
+        this.actionLogTextArea.value += `[${timestamp}] ${msg}\n`;
+        this.actionLogTextArea.scrollTop = this.actionLogTextArea.scrollHeight;
+    }
+    console.log(`[ACTION-LOG] ${msg}`);
   }
 
   toggleChat(game: IGame) {

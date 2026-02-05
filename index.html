@@ -17,7 +17,7 @@
 </head>
 <body>
     <div id="topMenu" style="display: none;">
-        <div id="menuToggle">MENU</div>
+        <div id="menuToggle">MENU ▾</div>
         <div class="menu-content">
             <div id="roomDisplay" style="color: #007bff; font-weight: bold; margin-right: 15px; display: none;">SALA: <span id="roomIdVal">---</span></div>
             <button id="btnAceptarJugadores" class="menu-btn" disabled>ADMITIR JUGADORES</button>
@@ -65,7 +65,10 @@
             </div>
         </div>
         <div id="logPanel">
-            <textarea id="logTextArea" readonly placeholder="Esperando logs de conexión..."></textarea>
+            <div class="log-container">
+                <textarea id="logTextArea" readonly placeholder="Esperando logs de conexión..."></textarea>
+                <textarea id="actionLogTextArea" readonly placeholder="Esperando registro de acciones..."></textarea>
+            </div>
         </div>
     </div>
 
@@ -99,7 +102,10 @@
             </div>
 
             <div id="gameOptions" style="display: none; flex-direction: column; align-items: center; width: 100%; max-width: 450px;">
-                <button id="btnReanudar" style="display: none; width: 100%; padding: 12px; cursor: pointer; background: #6f42c1; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px; margin-bottom: 15px;">REANUDAR PARTIDA</button>
+                <div style="display: flex; gap: 10px; width: 100%; margin-bottom: 15px;">
+                    <button id="btnReanudar" style="display: none; flex: 2; padding: 12px; cursor: pointer; background: #6f42c1; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px;">REANUDAR PARTIDA</button>
+                    <button id="btnNuevaPartida" style="display: none; flex: 1; padding: 12px; cursor: pointer; background: #444; color: white; border: 1px solid #666; font-family: monospace; font-weight: bold; border-radius: 5px; font-size: 10px;">NUEVA PARTIDA</button>
+                </div>
                 <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 15px; gap: 10px;">
                     <button id="btnCrearPartida" style="flex: 1; padding: 12px; cursor: pointer; background: #007bff; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px;">CREAR PARTIDA</button>
                     <button id="btnUnirseLobby" style="flex: 1; padding: 12px; cursor: pointer; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px;">UNIRSE A PARTIDA</button>
@@ -242,10 +248,8 @@
         </div>
     </div>
 
-    <canvas id="mazeCanvas" style="display: none;"></canvas>
-
     <div id="actionsMenu" style="display: none;">
-        <div id="actionsToggle">ACCIONES ▲</div>
+        <div id="actionsToggle">ACCIONES ▾</div>
         <div class="actions-content">
             <button id="btnWhirlwindAction" class="action-btn" title="Golpe de Giro" style="display: none;">🌀 GOLPE GIRO<div class="cooldown-overlay"></div></button>
             <button id="btnFireballAction" class="action-btn" title="Bola de Fuego (F)">🔥 BOLA FUEGO<div class="cooldown-overlay"></div></button>
@@ -257,6 +261,8 @@
             <button id="btnRestartAction" class="action-btn" title="Reiniciar Partida" style="display: none;">🔄 REINICIAR<div class="cooldown-overlay"></div></button>
         </div>
     </div>
+
+    <canvas id="mazeCanvas" style="display: none;"></canvas>
 
     <div id="endGameUI" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; color: white;">
         <h1 id="endGameTitle" style="color: #ff4444;">HAS CAÍDO</h1>

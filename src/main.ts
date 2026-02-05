@@ -99,7 +99,12 @@ class Game implements IGame {
 
   setupEventListeners() {
     document.getElementById('menuToggle')?.addEventListener('click', () => {
-      document.getElementById('topMenu')?.classList.toggle('visible');
+      const menu = document.getElementById('topMenu');
+      const toggle = document.getElementById('menuToggle');
+      if (menu && toggle) {
+          menu.classList.toggle('visible');
+          toggle.textContent = menu.classList.contains('visible') ? 'MENU ▴' : 'MENU ▾';
+      }
     });
 
     document.getElementById('actionsToggle')?.addEventListener('click', () => {
@@ -107,7 +112,7 @@ class Game implements IGame {
         const toggle = document.getElementById('actionsToggle');
         if (menu && toggle) {
             menu.classList.toggle('visible');
-            toggle.textContent = menu.classList.contains('visible') ? 'ACCIONES ▼' : 'ACCIONES ▲';
+            toggle.textContent = menu.classList.contains('visible') ? 'ACCIONES ▴' : 'ACCIONES ▾';
         }
     });
 
@@ -141,6 +146,12 @@ class Game implements IGame {
 
     document.getElementById('btnRefrescar')?.addEventListener('click', () => this.listarPartidasFirestore());
     document.getElementById('btnReanudar')?.addEventListener('click', () => this.reanudarPartida());
+    document.getElementById('btnNuevaPartida')?.addEventListener('click', () => {
+        if (confirm("¿Estás seguro de que quieres empezar de cero? Se borrará tu personaje y progreso actual.")) {
+            localStorage.removeItem('mazeRPG_lastSession');
+            window.location.reload();
+        }
+    });
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
@@ -654,7 +665,7 @@ class Game implements IGame {
     const texto = `[${new Date().toLocaleTimeString()}] ${mensaje}`;
     this.colaDeMensajes.unshift(texto);
     if (this.colaDeMensajes.length > 5) this.colaDeMensajes.pop();
-    console.log(mensaje);
+    this.ui.registrarAccionLog(mensaje);
   }
 
   guardarSesion(rol: string, roomId: string | null = null) {
@@ -671,15 +682,18 @@ class Game implements IGame {
   revisarSesionGuardada() {
     const data = localStorage.getItem('mazeRPG_lastSession');
     const btn = document.getElementById('btnReanudar');
+    const btnNueva = document.getElementById('btnNuevaPartida');
     if (data && btn) {
         btn.style.display = 'block';
+        if (btnNueva) btnNueva.style.display = 'block';
         // Asegurar que el contenedor de opciones sea visible si hay algo que reanudar
         const options = document.getElementById('gameOptions');
         if (options) options.style.display = 'flex';
         const creation = document.getElementById('charCreationSection');
         if (creation) creation.style.display = 'none';
-    } else if (btn) {
-        btn.style.display = 'none';
+    } else {
+        if (btn) btn.style.display = 'none';
+        if (btnNueva) btnNueva.style.display = 'none';
     }
   }
 

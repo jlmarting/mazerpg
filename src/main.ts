@@ -134,6 +134,8 @@ class Game implements IGame {
       document.getElementById('logPanel')?.classList.toggle('visible');
     });
 
+    document.getElementById('btnDesatascar')?.addEventListener('click', () => this.desatascar());
+
     document.getElementById('btnSolo')?.addEventListener('click', () => this.mostrarSeleccionDificultad('solo'));
     document.getElementById('btnCrearPartida')?.addEventListener('click', () => this.mostrarSeleccionDificultad('host'));
     document.getElementById('btnUnirseLobby')?.addEventListener('click', () => this.mostrarLobbyFirebase());
@@ -739,8 +741,8 @@ class Game implements IGame {
     this.motorIniciado = true;
 
     // Mostrar menús
-    document.getElementById('topMenu')!.style.display = 'block';
-    document.getElementById('actionsMenu')!.style.display = 'block';
+    document.getElementById('topMenu')!.style.display = 'flex';
+    document.getElementById('actionsMenu')!.style.display = 'flex';
 
     if (this.esHost || !this.network.multiplayerActivo) {
         generarLaberintoBSP(this.mapaLaberinto);
@@ -1301,6 +1303,51 @@ class Game implements IGame {
     }
   }
 
+  desatascar() {
+    this.registrarEventoLog("Intentando desatascar...");
+    this.protagonista.enCombateCon = null;
+
+    // Buscar la celda transitable más cercana (incluyendo la actual)
+    let found = false;
+    for (let r = 0; r < 5; r++) {
+        for (let df = -r; df <= r; df++) {
+            for (let dc = -r; dc <= r; dc++) {
+                const nf = this.protagonista.fila + df;
+                const nc = this.protagonista.columna + dc;
+                if (nf >= 0 && nf < this.config.NUMERO_FILAS && nc >= 0 && nc < this.config.NUMERO_COLUMNAS) {
+                    if (this.mapaLaberinto[nf][nc].esTransitable) {
+                        this.protagonista.fila = nf;
+                        this.protagonista.columna = nc;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (found) break;
+        }
+        if (found) break;
+    }
+
+    if (this.network && this.network.multiplayerActivo) {
+        // Informar al host de la nueva posición forzada
+        this.network.enviarMensaje({
+            tipo: 'posicion',
+            f: this.protagonista.fila,
+            c: this.protagonista.columna,
+            cam: false,
+            id: this.network.idLocal,
+            nick: this.protagonista.nombre,
+            hp: this.protagonista.vidaActual,
+            maxHp: this.protagonista.vidaMaxima
+        });
+
+        if (!this.esHost) {
+            this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'unstick' } });
+        }
+    }
+    this.registrarEventoLog("¡Control recuperado!");
+  }
+
 
   obtenerEntidadPorNombre(nombre: string) {
     if (nombre === this.protagonista.nombre) return this.protagonista;
@@ -1489,6 +1536,9 @@ class Game implements IGame {
         this.lanzarCongelar(entidad, false);
     } else if (accion.tipo === 'stop_walking') {
         entidad.estaCaminando = false;
+    } else if (accion.tipo === 'unstick') {
+        entidad.enCombateCon = null;
+        console.log(`resolverAccion: ${entidad.nombre} ha usado desatascar`);
     }
   }
 
@@ -1534,7 +1584,11 @@ class Game implements IGame {
                     const nf = lider.fila + df;
                     const nc = lider.columna + dc;
                     if (nf >= 0 && nf < this.config.NUMERO_FILAS && nc >= 0 && nc < this.config.NUMERO_COLUMNAS) {
-                        if (this.mapaLaberinto[nf][nc].esTransitable && !posicionesLibres.some(p => p.f === nf && p.c === nc)) {
+                        // Verificación extra: que no haya muros cerrados en todas direcciones
+                        const celda = this.mapaLaberinto[nf][nc];
+                        const tieneSalida = !celda.muros.superior || !celda.muros.inferior || !celda.muros.izquierdo || !celda.muros.derecho;
+
+                        if (celda.esTransitable && tieneSalida && !posicionesLibres.some(p => p.f === nf && p.c === nc)) {
                             posicionesLibres.push({ f: nf, c: nc });
                         }
                     }

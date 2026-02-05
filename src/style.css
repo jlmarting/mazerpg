@@ -27,9 +27,14 @@ canvas {
     border-bottom: 2px solid #007bff;
     transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     transform: translateY(-100%);
-    display: flex;
+    display: none; /* Oculto inicialmente, se muestra al iniciar juego */
     flex-direction: column;
     align-items: center;
+    pointer-events: none; /* No bloquea el canvas fuera de sus botones */
+}
+
+#topMenu > * {
+    pointer-events: auto;
 }
 
 #topMenu.visible {
@@ -49,6 +54,9 @@ canvas {
     font-size: 10px;
     font-weight: bold;
     box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    z-index: 110;
+    min-width: 80px;
+    text-align: center;
 }
 
 .menu-content {
@@ -276,9 +284,14 @@ canvas {
     border-bottom: 2px solid #ff4444;
     transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     transform: translateY(-100%);
-    display: flex;
+    display: none; /* Oculto inicialmente, se muestra al iniciar juego */
     flex-direction: column;
     align-items: center;
+    pointer-events: none; /* No bloquea el canvas fuera de sus botones */
+}
+
+#actionsMenu > * {
+    pointer-events: auto;
 }
 
 #actionsMenu.visible {
@@ -298,6 +311,9 @@ canvas {
     font-size: 10px;
     font-weight: bold;
     box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    z-index: 110;
+    min-width: 80px;
+    text-align: center;
 }
 
 .actions-content {

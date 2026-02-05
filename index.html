@@ -16,7 +16,7 @@
     </script>
 </head>
 <body>
-    <div id="topMenu" style="display: none;">
+    <div id="topMenu">
         <div id="menuToggle">MENU ▾</div>
         <div class="menu-content">
             <div id="roomDisplay" style="color: #007bff; font-weight: bold; margin-right: 15px; display: none;">SALA: <span id="roomIdVal">---</span></div>
@@ -29,6 +29,7 @@
                 <div class="dropdown-content">
                     <button id="btnDebug" class="menu-btn">DEBUG (D)</button>
                     <button id="btnLogPanel" class="menu-btn">VER CONEXIONES</button>
+                    <button id="btnDesatascar" class="menu-btn">DESATASCAR</button>
                     <button id="btnEmpezar" class="menu-btn" disabled>REINTENTAR</button>
                     <button id="btnAbandonar" class="menu-btn" style="background: #dc3545; color: white;">ABANDONAR</button>
                 </div>
@@ -248,7 +249,7 @@
         </div>
     </div>
 
-    <div id="actionsMenu" style="display: none;">
+    <div id="actionsMenu">
         <div id="actionsToggle">ACCIONES ▾</div>
         <div class="actions-content">
             <button id="btnWhirlwindAction" class="action-btn" title="Golpe de Giro" style="display: none;">🌀 GOLPE GIRO<div class="cooldown-overlay"></div></button>

@@ -66,7 +66,27 @@ Al introducir un servidor Node.js con WebSockets, cambiamos el modelo de **Estre
 3. **Jugador Host** valida el movimiento, actualiza la IA y envía un "Snapshot" al servidor Node.js.
 4. **Servidor Node.js** retransmite el "Snapshot" a todos los clientes (incluido Cliente A).
 
-## 4. Conclusión del Análisis
+## 4. El Factor "Lag" (Latencia)
+
+Es totalmente cierto: **técnicamente, un servidor relay introduce más latencia que una conexión P2P directa.**
+
+### Comparativa de Latencia Teórica
+- **P2P Directo**: `Cliente A -> Cliente B` (Latencia: 30ms).
+- **WebSocket Relay**: `Cliente A -> Servidor -> Cliente B` (Latencia: 30ms + 30ms = 60ms).
+
+### ¿Por qué sigue siendo una opción viable para Laberinto RPG?
+
+1.  **WebRTC ya usa Relays (TURN)**: Cuando WebRTC no puede conectar directamente (30% de los casos), usa un servidor TURN. El servidor TURN introduce **exactamente el mismo lag** que un WebSocket Relay, pero es más difícil de configurar.
+2.  **Tipo de Juego (Tile-based)**: Laberinto RPG no es un shooter (FPS) de ritmo frenético. Los movimientos están limitados por un cooldown (100ms) y las celdas son discretas. Un incremento de 40-60ms en la latencia es prácticamente imperceptible en este género.
+3.  **Estabilidad vs. Velocidad**: Es preferible tener 70ms de lag constantes y garantizados para todos, que tener 20ms para algunos y que otros ni siquiera puedan conectar.
+
+### Estrategias para Mitigar el Lag Perceptual
+Si el lag se vuelve un problema, el plan incluye:
+- **Interpolación de Snapshots**: Los clientes no "teletransportan" a los jugadores a la nueva posición, sino que los deslizan suavemente entre el estado anterior y el nuevo.
+- **Predicción en el Cliente**: Cuando pulsas "Arriba", tu personaje se mueve visualmente al instante en tu pantalla, y el servidor confirma ese movimiento milisegundos después.
+- **Compensación de Lag**: El Host puede tener en cuenta la latencia de los jugadores al calcular el combate.
+
+## 5. Conclusión del Análisis
 La migración a **WebSockets (Escenario 1: Relay)** es altamente recomendada para mejorar la tasa de éxito de conexión entre jugadores y simplificar el mantenimiento del código, manteniendo la lógica actual de juego.
 
 ---

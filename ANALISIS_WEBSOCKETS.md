@@ -58,7 +58,26 @@ Al introducir un servidor Node.js con WebSockets, cambiamos el modelo de **Estre
 | Modelo | Rol del Servidor (Node.js) | Rol del Jugador Host | Complejidad |
 | :--- | :--- | :--- | :--- |
 | **Relay (Propuesto)** | Retransmite mensajes. Gestiona salas. | Ejecuta IA, valida acciones, genera mapa. | Baja (Reutiliza lógica actual) |
-| **Full Server** | Ejecuta toda la lógica del juego. | Es un cliente "tonto" (solo envía input y renderiza). | Alta (Requiere portar lógica a Node) |
+| **Dedicated WebRTC Server** | Fuente única de verdad. Ejecuta lógica. | Cliente "tonto". Conecta vía UDP. | Muy Alta (Infraestructura dedicada) |
+| **Full Server (WS)** | Ejecuta toda la lógica del juego. | Cliente "tonto". Conecta vía TCP. | Alta (Portar lógica a Node) |
+
+### La Idea Radical: Servidor Autoritativo Dedicado (WebRTC)
+
+En lugar de usar WebSockets o un Host P2P, esta opción propone un **Servidor Permanente WebRTC**.
+
+#### ¿Cómo funcionaría?
+1.  **Instancia de Juego en Servidor**: El servidor Node.js no solo retransmite, sino que ejecuta su propia versión de `Game` (sin renderizado).
+2.  **WebRTC como Transporte UDP**: En lugar de usar WebSockets (TCP), el servidor abre `DataChannels` con cada cliente.
+3.  **ICE Lite**: El servidor tiene una IP pública fija, por lo que actúa como un servidor WebRTC simplificado (ICE Lite), eliminando la necesidad de STUN/TURN para él.
+
+#### Ventajas del Servidor WebRTC Permanente
+- **UDP Real (Baja Latencia)**: WebRTC permite enviar paquetes "unreliable" y "unordered". En un juego, esto es vital para los snapshots de posición; si un paquete se pierde, no bloqueamos la cola (como hace TCP/WebSockets), simplemente esperamos al siguiente.
+- **Fuente Única de Verdad**: Se eliminan las trampas y las inconsistencias entre jugadores. El servidor decide si un golpe acierta o si un movimiento es válido.
+- **Persistencia**: Las partidas pueden durar días o semanas en el servidor, independientemente de si los jugadores se desconectan.
+
+#### Desafíos Técnicos
+- **Librerías de Node.js**: Requiere usar `node-datachannel` (bindings de C++) para gestionar miles de conexiones WebRTC en el backend, lo cual es más complejo que `socket.io`.
+- **Consumo de Recursos**: Mantener la IA de cientos de NPCs y la lógica de colisiones de múltiples partidas en un solo servidor requiere mucha CPU.
 
 ### Flujo de Mensajes en Modo Relay
 1. **Cliente A** envía "Mover a (5,5)" al servidor Node.js.

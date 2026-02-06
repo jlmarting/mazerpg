@@ -76,7 +76,7 @@ class Game implements IGame {
   }
 
   async inicializarAssets() {
-    const sm = this.renderer.spriteManager;
+    // const sm = this.renderer.spriteManager;
 
     // Aquí se cargarían los assets reales. Ejemplo:
     // try {

@@ -19,9 +19,14 @@ export class JugadorRemoto extends EntidadRPG {
     const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
     const escala = TAMANO_CELDA * 0.6;
 
+    const spriteManager = (window as any).game?.renderer?.spriteManager;
+    const currentSprite = `player_remote_${this.estaCaminando ? 'walk' : 'idle'}`;
+
     ctx.save();
 
-    if (!this.estaVivo) {
+    if (spriteManager && spriteManager.obtenerSprite(currentSprite) && this.estaVivo) {
+        spriteManager.dibujarSprite(ctx, currentSprite, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
+    } else if (!this.estaVivo) {
         ctx.fillStyle = '#888';
         ctx.strokeStyle = '#444';
         ctx.lineWidth = 2;

@@ -61,6 +61,7 @@ class Game implements IGame {
     window.addEventListener('resize', () => this.ajustarDimensiones());
     this.setupEventListeners();
     (window as any).game = this;
+    this.inicializarAssets();
     this.revisarSesionGuardada();
 
     canvas.addEventListener('touchstart', (e) => {
@@ -72,6 +73,22 @@ class Game implements IGame {
     canvas.addEventListener('mousedown', (e) => {
         this.manejarTap(e.clientX, e.clientY);
     });
+  }
+
+  async inicializarAssets() {
+    const sm = this.renderer.spriteManager;
+
+    // Aquí se cargarían los assets reales. Ejemplo:
+    // try {
+    //     await sm.cargarImagen('tileset', 'assets/tileset.png');
+    //     sm.definirSprite('floor', 'tileset', 0, 0, 32, 32);
+    //     sm.definirSprite('wall_top', 'tileset', 32, 0, 32, 32);
+    //     this.registrarEventoLog("Sistema de sprites inicializado.");
+    // } catch (e) {
+    //     console.error("Error cargando sprites:", e);
+    // }
+
+    this.registrarEventoLog("Sistema de sprites preparado.");
   }
 
   initMap() {

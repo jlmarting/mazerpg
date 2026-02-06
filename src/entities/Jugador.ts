@@ -9,6 +9,7 @@ export class Jugador extends EntidadRPG {
   ultimaVezHabilidad: { fireball: number, bow: number, food: number, radar: number, whirlwind: number, freeze: number } = { fireball: 0, bow: 0, food: 0, radar: 0, whirlwind: 0, freeze: 0 };
   clase: string = 'guerrero';
   color: string = '#007bff';
+  spriteKey: string = 'player_idle';
 
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
@@ -65,16 +66,22 @@ export class Jugador extends EntidadRPG {
     this.vidaActual = this.vidaMaxima;
   }
 
-  dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
+  dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, _mapaLaberinto?: any) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
     const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
     const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
     const escala = TAMANO_CELDA * 0.6;
 
+    // Intentar obtener el SpriteManager desde el contexto o el objeto global
+    const spriteManager = (window as any).game?.renderer?.spriteManager;
+    const currentSprite = this.estaCaminando ? `player_${this.clase}_walk` : `player_${this.clase}_idle`;
+
     ctx.save();
 
-    if (!this.estaVivo) {
+    if (spriteManager && spriteManager.obtenerSprite(currentSprite) && this.estaVivo) {
+        spriteManager.dibujarSprite(ctx, currentSprite, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
+    } else if (!this.estaVivo) {
         // Dibujar Lápida
         ctx.fillStyle = '#888';
         ctx.strokeStyle = '#444';

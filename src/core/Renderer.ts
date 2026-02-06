@@ -1,13 +1,16 @@
 import { Celda } from '../world/Celda';
 import { CameraOffset, GameConfig } from '../types';
+import { SpriteManager } from './SpriteManager';
 
 export class Renderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  public spriteManager: SpriteManager;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
+    this.spriteManager = new SpriteManager();
   }
 
   limpiar() {
@@ -69,39 +72,61 @@ export class Renderer {
         if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
 
         const celda = mapaLaberinto[fila][columna];
-        if (celda.esTransitable) {
-          this.ctx.fillStyle = '#FFF';
-          const x = (columna - colOffset) * TAMANO_CELDA;
-          const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
-          this.ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
+        const x = (columna - colOffset) * TAMANO_CELDA;
+        const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
 
-          // Delinear bordes púrpura
+        if (celda.esTransitable) {
+          // Intentar dibujar sprite de suelo
+          if (this.spriteManager.obtenerSprite('floor')) {
+            this.spriteManager.dibujarSprite(this.ctx, 'floor', x, y, TAMANO_CELDA, TAMANO_CELDA);
+          } else {
+            this.ctx.fillStyle = '#FFF';
+            this.ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
+          }
+
+          // Delinear bordes o dibujar muros con sprites
           this.ctx.strokeStyle = '#800080';
           this.ctx.lineWidth = 2;
 
           if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, y);
-            this.ctx.lineTo(x + TAMANO_CELDA, y);
-            this.ctx.stroke();
+            if (this.spriteManager.obtenerSprite('wall_top')) {
+                this.spriteManager.dibujarSprite(this.ctx, 'wall_top', x, y, TAMANO_CELDA, 4);
+            } else {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, y);
+                this.ctx.lineTo(x + TAMANO_CELDA, y);
+                this.ctx.stroke();
+            }
           }
           if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, y + TAMANO_CELDA);
-            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
-            this.ctx.stroke();
+            if (this.spriteManager.obtenerSprite('wall_bottom')) {
+                this.spriteManager.dibujarSprite(this.ctx, 'wall_bottom', x, y + TAMANO_CELDA - 4, TAMANO_CELDA, 4);
+            } else {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, y + TAMANO_CELDA);
+                this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
+                this.ctx.stroke();
+            }
           }
           if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, y);
-            this.ctx.lineTo(x, y + TAMANO_CELDA);
-            this.ctx.stroke();
+            if (this.spriteManager.obtenerSprite('wall_left')) {
+                this.spriteManager.dibujarSprite(this.ctx, 'wall_left', x, y, 4, TAMANO_CELDA);
+            } else {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, y);
+                this.ctx.lineTo(x, y + TAMANO_CELDA);
+                this.ctx.stroke();
+            }
           }
           if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x + TAMANO_CELDA, y);
-            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
-            this.ctx.stroke();
+            if (this.spriteManager.obtenerSprite('wall_right')) {
+                this.spriteManager.dibujarSprite(this.ctx, 'wall_right', x + TAMANO_CELDA - 4, y, 4, TAMANO_CELDA);
+            } else {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x + TAMANO_CELDA, y);
+                this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
+                this.ctx.stroke();
+            }
           }
 
           // Dibujar Burbuja
@@ -131,24 +156,33 @@ export class Renderer {
 
           // Dibujar Alimento
           if (celda.alimento) {
-            this.ctx.font = '16px serif';
-            this.ctx.textAlign = 'center';
-            let icon = '🍎';
-            if (celda.alimento.tipo === 'Plátano') icon = '🍌';
-            if (celda.alimento.tipo === 'Kiwi') icon = '🥝';
-            if (celda.alimento.tipo === 'Brócoli') icon = '🥦';
-            if (celda.alimento.tipo === 'Muslo de pollo') icon = '🍗';
-            if (celda.alimento.tipo === 'Chuleta') icon = '🥩';
-            if (celda.alimento.tipo === 'Pescado') icon = '🐟';
+            const spriteName = `food_${celda.alimento.tipo.toLowerCase().replace(/ /g, '_')}`;
+            if (this.spriteManager.obtenerSprite(spriteName)) {
+                this.spriteManager.dibujarSprite(this.ctx, spriteName, x + 4, y + 4, TAMANO_CELDA - 8, TAMANO_CELDA - 8);
+            } else {
+                this.ctx.font = '16px serif';
+                this.ctx.textAlign = 'center';
+                let icon = '🍎';
+                if (celda.alimento.tipo === 'Plátano') icon = '🍌';
+                if (celda.alimento.tipo === 'Kiwi') icon = '🥝';
+                if (celda.alimento.tipo === 'Brócoli') icon = '🥦';
+                if (celda.alimento.tipo === 'Muslo de pollo') icon = '🍗';
+                if (celda.alimento.tipo === 'Chuleta') icon = '🥩';
+                if (celda.alimento.tipo === 'Pescado') icon = '🐟';
 
-            this.ctx.fillText(icon, (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
+                this.ctx.fillText(icon, (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
+            }
           }
 
           // Dibujar Pico
           if (celda.tienePico) {
-            this.ctx.font = '16px serif';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('⛏️', (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
+            if (this.spriteManager.obtenerSprite('pickaxe')) {
+                this.spriteManager.dibujarSprite(this.ctx, 'pickaxe', x + 4, y + 4, TAMANO_CELDA - 8, TAMANO_CELDA - 8);
+            } else {
+                this.ctx.font = '16px serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('⛏️', (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
+            }
           }
         }
       }

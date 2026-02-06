@@ -209,6 +209,14 @@ export class EnemigoNPC extends EntidadRPG {
     const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
     const escala = TAMANO_CELDA * 0.4;
 
+    const spriteManager = (window as any).game?.renderer?.spriteManager;
+    const spriteKey = `npc_${this.tipo.toLowerCase()}`;
+
+    if (spriteManager && spriteManager.obtenerSprite(spriteKey)) {
+        spriteManager.dibujarSprite(ctx, spriteKey, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
+        return;
+    }
+
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1;
 

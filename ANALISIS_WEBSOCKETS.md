@@ -35,12 +35,36 @@ Migrar a una arquitectura de **Servidor Centralizado**:
 | **Latencia** | Mínima (directa) | Media (salto extra por servidor) |
 | **Coste Servidor** | Casi nulo (solo señalización) | Elevado (tráfico de datos central) |
 
-## 3. Impacto en la Arquitectura
-La migración permitiría simplificar enormemente el `NetworkManager`. En lugar de gestionar múltiples `RTCPeerConnection`, el cliente solo mantendría **una única conexión** con el servidor de WebSockets.
+## 3. Impacto en la Arquitectura: El Servidor Relay
+
+### ¿Por qué Node.js si ya tenemos un Host Autoritativo?
+Es una pregunta clave. Si un jugador ya actúa como "servidor" (Host Lógico), ¿para qué añadir un servidor real en Node.js? La respuesta no es por la *lógica*, sino por la **conectividad (el transporte)**.
+
+#### 1. El Problema del "Punto a Punto" (WebRTC)
+WebRTC intenta conectar a los jugadores directamente. Sin embargo, en el mundo real:
+- **NATs Simétricos y Firewalls**: Aproximadamente el **20-30% de las conexiones P2P fallan** porque los routers no permiten conexiones entrantes no solicitadas.
+- **Servidores TURN**: Para solucionar esto, WebRTC necesita servidores TURN (Traversal Using Relays around NAT). Un servidor TURN es, literalmente, un servidor que retransmite (relay) los datos. Configurar y pagar un servidor TURN profesional es complejo y caro.
+
+#### 2. Node.js como Relay (El "Intermediario")
+Al introducir un servidor Node.js con WebSockets, cambiamos el modelo de **Estrella P2P** a una **Estrella Centralizada**:
+- **Bypass de NAT**: Todos los clientes se conectan *hacia afuera* al servidor Node.js. Como es una conexión saliente, los firewalls y NATs la permiten siempre.
+- **Simplicidad de Señalización**: Eliminamos Firebase para el "handshake". El servidor Node.js sabe quién está en cada sala y conecta a los jugadores instantáneamente.
+- **Host Lógico vs. Relay Físico**:
+    - El **Jugador Host** sigue siendo el dueño de la verdad (IA, daño, mapa).
+    - El **Servidor Node.js** es solo el "cartero" que asegura que los mensajes lleguen al Host y vuelvan a los clientes sin fallos de conexión.
 
 ### Escenarios de Migración
-1.  **Relevo (Relay)**: El servidor solo reenvía mensajes. Uno de los clientes sigue siendo el "Host" lógico. Es la migración más fácil.
-2.  **Autoritativo (Full Server)**: La lógica de NPCs, colisiones y estado del mundo se mueve al servidor Node.js. Esto elimina las trampas y mejora la estabilidad, pero requiere reescribir mucha lógica de TypeScript en el backend.
+
+| Modelo | Rol del Servidor (Node.js) | Rol del Jugador Host | Complejidad |
+| :--- | :--- | :--- | :--- |
+| **Relay (Propuesto)** | Retransmite mensajes. Gestiona salas. | Ejecuta IA, valida acciones, genera mapa. | Baja (Reutiliza lógica actual) |
+| **Full Server** | Ejecuta toda la lógica del juego. | Es un cliente "tonto" (solo envía input y renderiza). | Alta (Requiere portar lógica a Node) |
+
+### Flujo de Mensajes en Modo Relay
+1. **Cliente A** envía "Mover a (5,5)" al servidor Node.js.
+2. **Servidor Node.js** reenvía el mensaje al **Jugador Host**.
+3. **Jugador Host** valida el movimiento, actualiza la IA y envía un "Snapshot" al servidor Node.js.
+4. **Servidor Node.js** retransmite el "Snapshot" a todos los clientes (incluido Cliente A).
 
 ## 4. Conclusión del Análisis
 La migración a **WebSockets (Escenario 1: Relay)** es altamente recomendada para mejorar la tasa de éxito de conexión entre jugadores y simplificar el mantenimiento del código, manteniendo la lógica actual de juego.

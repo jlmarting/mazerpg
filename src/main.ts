@@ -49,6 +49,7 @@ class Game implements IGame {
   public whirlwinds: any[] = [];
   public freezes: any[] = [];
   public ultimoTick: number = 0;
+  private _isEditingAndResuming: boolean = false;
   public mapaHogar: Celda[][] = [];
   public estaEnHogar: boolean = false;
   public posicionLaberinto: { f: number, c: number } = { f: 0, c: 0 };
@@ -144,7 +145,29 @@ class Game implements IGame {
     });
 
     document.getElementById('btnRefrescar')?.addEventListener('click', () => this.listarPartidasFirestore());
-    document.getElementById('btnReanudar')?.addEventListener('click', () => this.reanudarPartida());
+    document.getElementById('btnElegirPersonaje')?.addEventListener('click', () => {
+        document.getElementById('choiceModal')!.style.display = 'flex';
+    });
+
+    document.getElementById('btnBackFromChoice')?.addEventListener('click', () => {
+        document.getElementById('choiceModal')!.style.display = 'none';
+    });
+
+    document.getElementById('btnChoiceNew')?.addEventListener('click', () => {
+        if (confirm("¿Seguro que quieres crear un nuevo personaje? Esto descartará tu sesión actual.")) {
+            localStorage.removeItem('mazeRPG_lastSession');
+            this.protagonista = new Jugador();
+            this.setupEntity(this.protagonista);
+            document.getElementById('choiceModal')!.style.display = 'none';
+            this.abrirModalPersonaje();
+        }
+    });
+
+    document.getElementById('btnChoiceEdit')?.addEventListener('click', () => {
+        this._isEditingAndResuming = true;
+        document.getElementById('choiceModal')!.style.display = 'none';
+        this.abrirModalPersonaje();
+    });
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
@@ -639,7 +662,23 @@ class Game implements IGame {
 
       // Sincronizar con el nickInput original por compatibilidad con el resto del código
       (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
-      this.actualizarStatsLobby();
+
+      // Si había una sesión guardada, actualizarla con los nuevos datos del personaje
+      const savedData = localStorage.getItem('mazeRPG_lastSession');
+      if (savedData) {
+          const data = JSON.parse(savedData);
+          data.name = this.protagonista.nombre;
+          data.class = this.protagonista.clase;
+          data.color = this.protagonista.color;
+          localStorage.setItem('mazeRPG_lastSession', JSON.stringify(data));
+      }
+
+      if (this._isEditingAndResuming) {
+          this._isEditingAndResuming = false;
+          this.reanudarPartida();
+      } else {
+          this.actualizarStatsLobby();
+      }
       this.registrarEventoLog(`Personaje guardado: ${this.protagonista.nombre} (${selectedClass})`);
   }
 
@@ -712,15 +751,28 @@ class Game implements IGame {
   }
 
   revisarSesionGuardada() {
-    const data = localStorage.getItem('mazeRPG_lastSession');
-    const btn = document.getElementById('btnReanudar');
-    if (data && btn) {
-        btn.style.display = 'block';
+    const dataStr = localStorage.getItem('mazeRPG_lastSession');
+    const btn = document.getElementById('btnElegirPersonaje');
+    if (dataStr) {
+        const data = JSON.parse(dataStr);
+        // Cargar datos del personaje en el protagonista para la previsualización del lobby
+        if (this.protagonista.nombre === "Jugador" && !this.protagonista.personajeCreado) {
+            this.protagonista.nombre = data.name;
+            this.protagonista.clase = data.class;
+            this.protagonista.color = data.color;
+            this.protagonista.personajeCreado = true;
+            this.protagonista.generarStats(data.class); // Regenerar stats basados en la clase
+        }
+
+        if (btn) btn.style.display = 'block';
         // Asegurar que el contenedor de opciones sea visible si hay algo que reanudar
         const options = document.getElementById('gameOptions');
         if (options) options.style.display = 'flex';
         const creation = document.getElementById('charCreationSection');
         if (creation) creation.style.display = 'none';
+
+        // Refrescar el lobby para mostrar la previsualización
+        this.actualizarStatsLobby();
     } else if (btn) {
         btn.style.display = 'none';
     }

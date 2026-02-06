@@ -6,8 +6,8 @@ import { EnemigoNPC } from './entities/EnemigoNPC';
 import { Renderer } from './core/Renderer';
 import { UIManager } from './ui/UIManager';
 import { FirebaseManager } from './network/FirebaseManager';
-import { NetworkManager } from './network/NetworkManager';
-import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
+import { NetworkManager, RemotePlayer } from './network/NetworkManager';
+import { generarLaberintoBSP, eliminarMurosEntre, generarMapaHogar } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
 import { GameConfig, IGame } from './types';
@@ -49,6 +49,11 @@ class Game implements IGame {
   public whirlwinds: any[] = [];
   public freezes: any[] = [];
   public ultimoTick: number = 0;
+  private _isEditingAndResuming: boolean = false;
+  public mapaHogar: Celda[][] = [];
+  public estaEnHogar: boolean = false;
+  public posicionLaberinto: { f: number, c: number } = { f: 0, c: 0 };
+  public posicionHogar: { f: number, c: number } = { f: 50, c: 50 };
   public colaAcciones: any[] = [];
   private _flowTarget: 'solo' | 'host' | 'manual' | null = null;
 
@@ -140,7 +145,29 @@ class Game implements IGame {
     });
 
     document.getElementById('btnRefrescar')?.addEventListener('click', () => this.listarPartidasFirestore());
-    document.getElementById('btnReanudar')?.addEventListener('click', () => this.reanudarPartida());
+    document.getElementById('btnElegirPersonaje')?.addEventListener('click', () => {
+        document.getElementById('choiceModal')!.style.display = 'flex';
+    });
+
+    document.getElementById('btnBackFromChoice')?.addEventListener('click', () => {
+        document.getElementById('choiceModal')!.style.display = 'none';
+    });
+
+    document.getElementById('btnChoiceNew')?.addEventListener('click', () => {
+        if (confirm("¿Seguro que quieres crear un nuevo personaje? Esto descartará tu sesión actual.")) {
+            localStorage.removeItem('mazeRPG_lastSession');
+            this.protagonista = new Jugador();
+            this.setupEntity(this.protagonista);
+            document.getElementById('choiceModal')!.style.display = 'none';
+            this.abrirModalPersonaje();
+        }
+    });
+
+    document.getElementById('btnChoiceEdit')?.addEventListener('click', () => {
+        this._isEditingAndResuming = true;
+        document.getElementById('choiceModal')!.style.display = 'none';
+        this.abrirModalPersonaje();
+    });
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
@@ -220,6 +247,7 @@ class Game implements IGame {
     document.getElementById('btnCreateFoodAction')?.addEventListener('click', () => this.crearComidaHabilidad(this.protagonista, true));
     document.getElementById('btnGuardAction')?.addEventListener('click', () => this.teletransportarAliados(this.protagonista, true));
     document.getElementById('btnRadarAction')?.addEventListener('click', () => this.lanzarRadar(this.protagonista, true));
+    document.getElementById('btnHomeAction')?.addEventListener('click', () => this.alternarHogar());
     document.getElementById('btnRestartAction')?.addEventListener('click', () => window.location.reload());
 
     document.getElementById('zoomSlider')?.addEventListener('input', (e) => {
@@ -449,7 +477,7 @@ class Game implements IGame {
         if (this.esHost && this.network.multiplayerActivo) {
             // Sincronizar NPCs
             const listaNpcs = this.listaDeEnemigos.map(e => ({
-                id: (e as any).id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
+                id: e.id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
             }));
             this.network.enviarMensaje({ tipo: 'npc_sync_all', lista: listaNpcs });
 
@@ -494,7 +522,7 @@ class Game implements IGame {
     const creationSection = document.getElementById('charCreationSection');
     const options = document.getElementById('gameOptions');
 
-    if (this.protagonista.nombre !== "Jugador" || (this.protagonista as any).personajeCreado) {
+    if (this.protagonista.nombre !== "Jugador" || this.protagonista.personajeCreado) {
         if (preview) preview.style.display = 'block';
         if (creationSection) creationSection.style.display = 'none';
         if (options) options.style.display = 'flex';
@@ -532,6 +560,7 @@ class Game implements IGame {
       const btnFreeze = document.getElementById('btnFreezeAction');
       const btnFireball = document.getElementById('btnFireballAction');
       const btnGuard = document.getElementById('btnGuardAction');
+      const btnHome = document.getElementById('btnHomeAction');
       const btnRestart = document.getElementById('btnRestartAction');
 
       if (btnWhirlwind) btnWhirlwind.style.display = this.protagonista.clase === 'guerrero' ? 'block' : 'none';
@@ -541,7 +570,44 @@ class Game implements IGame {
       if (btnFood) btnFood.style.display = this.protagonista.clase === 'mago' ? 'block' : 'none';
       if (btnRadar) btnRadar.style.display = this.protagonista.clase === 'explorador' ? 'block' : 'none';
       if (btnGuard) btnGuard.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
+      if (btnHome) btnHome.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
       if (btnRestart) btnRestart.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
+  }
+
+  alternarHogar() {
+      if (!this.estaEnHogar) {
+          // Ir al hogar
+          this.posicionLaberinto = { f: this.protagonista.fila, c: this.protagonista.columna };
+
+          if (this.mapaHogar.length === 0) {
+              // Inicializar mapa hogar 100x100
+              for (let f = 0; f < 100; f++) {
+                  let fila = [];
+                  for (let c = 0; c < 100; c++) {
+                      fila.push(new Celda(f, c));
+                  }
+                  this.mapaHogar.push(fila);
+              }
+              generarMapaHogar(this.mapaHogar);
+          }
+
+          this.estaEnHogar = true;
+          this.protagonista.fila = this.posicionHogar.f;
+          this.protagonista.columna = this.posicionHogar.c;
+          this.registrarEventoLog("¡Teletransportado a tu hogar bucólico!");
+          const btn = document.getElementById('btnHomeAction');
+          if (btn) btn.innerHTML = '🏰 AL LABERINTO<div class="cooldown-overlay"></div>';
+      } else {
+          // Volver al laberinto
+          this.posicionHogar = { f: this.protagonista.fila, c: this.protagonista.columna };
+          this.protagonista.fila = this.posicionLaberinto.f;
+          this.protagonista.columna = this.posicionLaberinto.c;
+          this.estaEnHogar = false;
+          this.registrarEventoLog("Has regresado al laberinto.");
+          const btn = document.getElementById('btnHomeAction');
+          if (btn) btn.innerHTML = '🏠 A CASA<div class="cooldown-overlay"></div>';
+      }
+      this.ajustarDimensiones();
   }
 
   abrirModalPersonaje() {
@@ -590,13 +656,29 @@ class Game implements IGame {
       this.protagonista.color = (document.getElementById('charColorInput') as HTMLInputElement).value;
       const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
       this.protagonista.clase = selectedClass;
-      (this.protagonista as any).personajeCreado = true;
+      this.protagonista.personajeCreado = true;
 
       document.getElementById('characterModal')!.style.display = 'none';
 
       // Sincronizar con el nickInput original por compatibilidad con el resto del código
       (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
-      this.actualizarStatsLobby();
+
+      // Si había una sesión guardada, actualizarla con los nuevos datos del personaje
+      const savedData = localStorage.getItem('mazeRPG_lastSession');
+      if (savedData) {
+          const data = JSON.parse(savedData);
+          data.name = this.protagonista.nombre;
+          data.class = this.protagonista.clase;
+          data.color = this.protagonista.color;
+          localStorage.setItem('mazeRPG_lastSession', JSON.stringify(data));
+      }
+
+      if (this._isEditingAndResuming) {
+          this._isEditingAndResuming = false;
+          this.reanudarPartida();
+      } else {
+          this.actualizarStatsLobby();
+      }
       this.registrarEventoLog(`Personaje guardado: ${this.protagonista.nombre} (${selectedClass})`);
   }
 
@@ -669,15 +751,28 @@ class Game implements IGame {
   }
 
   revisarSesionGuardada() {
-    const data = localStorage.getItem('mazeRPG_lastSession');
-    const btn = document.getElementById('btnReanudar');
-    if (data && btn) {
-        btn.style.display = 'block';
+    const dataStr = localStorage.getItem('mazeRPG_lastSession');
+    const btn = document.getElementById('btnElegirPersonaje');
+    if (dataStr) {
+        const data = JSON.parse(dataStr);
+        // Cargar datos del personaje en el protagonista para la previsualización del lobby
+        if (this.protagonista.nombre === "Jugador" && !this.protagonista.personajeCreado) {
+            this.protagonista.nombre = data.name;
+            this.protagonista.clase = data.class;
+            this.protagonista.color = data.color;
+            this.protagonista.personajeCreado = true;
+            this.protagonista.generarStats(data.class); // Regenerar stats basados en la clase
+        }
+
+        if (btn) btn.style.display = 'block';
         // Asegurar que el contenedor de opciones sea visible si hay algo que reanudar
         const options = document.getElementById('gameOptions');
         if (options) options.style.display = 'flex';
         const creation = document.getElementById('charCreationSection');
         if (creation) creation.style.display = 'none';
+
+        // Refrescar el lobby para mostrar la previsualización
+        this.actualizarStatsLobby();
     } else if (btn) {
         btn.style.display = 'none';
     }
@@ -692,7 +787,7 @@ class Game implements IGame {
     this.protagonista.clase = data.class;
     this.protagonista.color = data.color;
     this.config.dificultad = data.diff || 'medio';
-    (this.protagonista as any).personajeCreado = true;
+    this.protagonista.personajeCreado = true;
     (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
 
     if (data.rol === 'solo') {
@@ -967,36 +1062,48 @@ class Game implements IGame {
   cicloDeJuego() {
     this.actualizar();
     this.renderer.limpiar();
-    const offset = this.renderer.obtenerOffsetCamara(this.protagonista, this.config);
+    const mapaActual = this.estaEnHogar ? this.mapaHogar : this.mapaLaberinto;
+    const configActual = { ...this.config };
+    if (this.estaEnHogar) {
+        configActual.NUMERO_FILAS = 100;
+        configActual.NUMERO_COLUMNAS = 100;
+        configActual.esHogar = true;
+    }
 
-    this.renderer.aplicarZoom(this.config);
-    this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config);
+    const offset = this.renderer.obtenerOffsetCamara(this.protagonista, configActual);
 
-    let persistence = this.config.TIEMPO_DESVANECIMIENTO_NIEBLA;
+    this.renderer.aplicarZoom(configActual);
+    this.renderer.dibujarLaberinto(mapaActual, offset, configActual);
+
+    let persistence = configActual.TIEMPO_DESVANECIMIENTO_NIEBLA;
     if (this.protagonista.clase === 'explorador') {
         persistence *= 1.5;
     }
-    this.renderer.dibujarNiebla(this.mapaLaberinto, offset, this.config, persistence);
+    if (!this.estaEnHogar) {
+        this.renderer.dibujarNiebla(mapaActual, offset, configActual, persistence);
+    }
 
-    this.protagonista.dibujar(this.renderer.getCtx(), offset, this.config);
-    this.protagonista.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-    this.protagonista.dibujarBubbleChat(this.renderer.getCtx(), offset, this.config);
+    this.protagonista.dibujar(this.renderer.getCtx(), offset, configActual);
+    this.protagonista.dibujarBarraVida(this.renderer.getCtx(), offset, configActual, mapaActual);
+    this.protagonista.dibujarBubbleChat(this.renderer.getCtx(), offset, configActual);
 
-    this.network.jugadoresRemotos.forEach(j => {
-        if (j.entidad) {
-            j.entidad.dibujar(this.renderer.getCtx(), offset, this.config);
-            j.entidad.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-            j.entidad.dibujarBubbleChat(this.renderer.getCtx(), offset, this.config);
-        }
-    });
+    if (!this.estaEnHogar) {
+        this.network.jugadoresRemotos.forEach(j => {
+            if (j.entidad) {
+                j.entidad.dibujar(this.renderer.getCtx(), offset, configActual);
+                j.entidad.dibujarBarraVida(this.renderer.getCtx(), offset, configActual, mapaActual);
+                j.entidad.dibujarBubbleChat(this.renderer.getCtx(), offset, configActual);
+            }
+        });
 
-    this.listaDeEnemigos.forEach(e => {
-        if (e.estaVivo) {
-            e.dibujar(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-            e.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-            e.dibujarBubbleChat(this.renderer.getCtx(), offset, this.config);
-        }
-    });
+        this.listaDeEnemigos.forEach(e => {
+            if (e.estaVivo) {
+                e.dibujar(this.renderer.getCtx(), offset, configActual, mapaActual);
+                e.dibujarBarraVida(this.renderer.getCtx(), offset, configActual, mapaActual);
+                e.dibujarBubbleChat(this.renderer.getCtx(), offset, configActual);
+            }
+        });
+    }
 
     this.ui.actualizarTextosFlotantes();
     this.ui.dibujarTextosFlotantes(this.renderer.getCtx());
@@ -1079,7 +1186,7 @@ class Game implements IGame {
         this.resolverAccion(item.id, item.accion);
     }
 
-    this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
+    this.listaDeEnemigos.forEach(e => { if (e.actualizarIA) e.actualizarIA(this); });
 
     this.enviarSnapshot();
   }
@@ -1090,10 +1197,13 @@ class Game implements IGame {
         entities: []
     };
 
+    const hostF = this.estaEnHogar ? this.posicionLaberinto.f : this.protagonista.fila;
+    const hostC = this.estaEnHogar ? this.posicionLaberinto.c : this.protagonista.columna;
+
     snapshot.entities.push({
         id: this.network.idLocal,
-        f: this.protagonista.fila,
-        c: this.protagonista.columna,
+        f: hostF,
+        c: hostC,
         v: this.protagonista.vidaActual,
         vm: this.protagonista.vidaMaxima,
         cam: this.protagonista.estaCaminando,
@@ -1117,7 +1227,7 @@ class Game implements IGame {
     });
 
     snapshot.entities.push(...this.listaDeEnemigos.map(e => ({
-        id: (e as any).id,
+        id: e.id,
         f: e.fila,
         c: e.columna,
         v: e.vidaActual,
@@ -1212,8 +1322,8 @@ class Game implements IGame {
 
     const ahora = Date.now();
 
-    if (!this.network.multiplayerActivo) {
-        this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
+    if (!this.network.multiplayerActivo && !this.estaEnHogar) {
+        this.listaDeEnemigos.forEach(e => { if (e.actualizarIA) e.actualizarIA(this); });
     }
 
     let r = this.config.RADIO_VISION;
@@ -1221,10 +1331,14 @@ class Game implements IGame {
         r *= 1.2;
     }
 
-    for (let f = Math.max(0, this.protagonista.fila - Math.ceil(r)); f <= Math.min(this.config.NUMERO_FILAS - 1, this.protagonista.fila + Math.ceil(r)); f++) {
-        for (let c = Math.max(0, this.protagonista.columna - Math.ceil(r)); c <= Math.min(this.config.NUMERO_COLUMNAS - 1, this.protagonista.columna + Math.ceil(r)); c++) {
+    const mapaActual = this.estaEnHogar ? this.mapaHogar : this.mapaLaberinto;
+    const nFilas = this.estaEnHogar ? 100 : this.config.NUMERO_FILAS;
+    const nCols = this.estaEnHogar ? 100 : this.config.NUMERO_COLUMNAS;
+
+    for (let f = Math.max(0, this.protagonista.fila - Math.ceil(r)); f <= Math.min(nFilas - 1, this.protagonista.fila + Math.ceil(r)); f++) {
+        for (let c = Math.max(0, this.protagonista.columna - Math.ceil(r)); c <= Math.min(nCols - 1, this.protagonista.columna + Math.ceil(r)); c++) {
             if (Math.sqrt(Math.pow(f - this.protagonista.fila, 2) + Math.pow(c - this.protagonista.columna, 2)) <= r) {
-                this.mapaLaberinto[f][c].ultimoAvistamiento = ahora;
+                mapaActual[f][c].ultimoAvistamiento = ahora;
             }
         }
     }
@@ -1263,20 +1377,23 @@ class Game implements IGame {
         jInfo.entidad.columna = posSpawn.c;
     }
 
-    this.network.jugadoresRemotos.forEach((other, otherId) => {
-        if (otherId !== guestId && other.entidad) {
-            jInfo.dc.send(JSON.stringify({
-                tipo: 'posicion', f: other.entidad.fila, c: other.entidad.columna,
-                cam: false, nick: other.entidad.nombre, id: otherId,
-                hp: other.entidad.vidaActual, maxHp: other.entidad.vidaMaxima
-            }));
-        }
-    });
-    jInfo.dc.send(JSON.stringify({
-        tipo: 'posicion', f: this.protagonista.fila, c: this.protagonista.columna,
-        cam: false, nick: this.protagonista.nombre, id: this.network.idLocal,
-        hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
-    }));
+    if (jInfo.dc) {
+        const dataChannel = jInfo.dc;
+        this.network.jugadoresRemotos.forEach((other, otherId) => {
+            if (otherId !== guestId && other.entidad) {
+                dataChannel.send(JSON.stringify({
+                    tipo: 'posicion', f: other.entidad.fila, c: other.entidad.columna,
+                    cam: false, nick: other.entidad.nombre, id: otherId,
+                    hp: other.entidad.vidaActual, maxHp: other.entidad.vidaMaxima
+                }));
+            }
+        });
+        dataChannel.send(JSON.stringify({
+            tipo: 'posicion', f: this.protagonista.fila, c: this.protagonista.columna,
+            cam: false, nick: this.protagonista.nombre, id: this.network.idLocal,
+            hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
+        }));
+    }
   }
 
   comprobarVictoria() {
@@ -1313,6 +1430,11 @@ class Game implements IGame {
         console.warn(`resolverAccion: La entidad ${entidad.nombre} está muerta`);
         return;
     }
+
+    const esMiHogar = (id === this.network.idLocal && this.estaEnHogar);
+    const mapa = esMiHogar ? this.mapaHogar : this.mapaLaberinto;
+    const nFilas = esMiHogar ? 100 : this.config.NUMERO_FILAS;
+    const nCols = esMiHogar ? 100 : this.config.NUMERO_COLUMNAS;
 
     if (accion.tipo === 'mover') {
         const { df, dc } = accion;
@@ -1369,51 +1491,54 @@ class Game implements IGame {
         });
 
         // 2. Verificar colisión con enemigos
-        const enemigoEnCasilla = this.listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
-        if (enemigoEnCasilla) {
-            if (entidad.enCombateCon === enemigoEnCasilla) {
-                this.resolverRondaDeCombate(entidad, enemigoEnCasilla);
-            } else {
-                this.iniciarCombate(entidad, enemigoEnCasilla);
+        if (!esMiHogar) {
+            const enemigoEnCasilla = this.listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
+            if (enemigoEnCasilla) {
+                if (entidad.enCombateCon === enemigoEnCasilla) {
+                    this.resolverRondaDeCombate(entidad, enemigoEnCasilla);
+                } else {
+                    this.iniciarCombate(entidad, enemigoEnCasilla);
+                }
+                return;
             }
-            return;
-        }
 
-        // 3. Rehuir combate
-        if (entidad.enCombateCon) {
-            if (!this.intentarRehuirCombate(entidad)) return;
+            // 3. Rehuir combate
+            if (entidad.enCombateCon) {
+                if (!this.intentarRehuirCombate(entidad)) return;
+            }
         }
 
         // 4. Límites del mapa
-        if (sigFila < 0 || sigFila >= this.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= this.config.NUMERO_COLUMNAS) {
+        if (sigFila < 0 || sigFila >= nFilas || sigColumna < 0 || sigColumna >= nCols) {
             console.warn(`resolverAccion: Intento de movimiento fuera de límites por ${entidad.nombre}`);
             return;
         }
 
         // 5. Muros y transitable
-        const celdaActual = this.mapaLaberinto[entidad.fila][entidad.columna];
+        const celdaActual = mapa[entidad.fila][entidad.columna];
+        const celdaSig = mapa[sigFila][sigColumna];
         let esMovimientoValido = false;
-        if (df === -1 && !celdaActual.muros.superior && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-        if (df === 1 && !celdaActual.muros.inferior && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-        if (dc === -1 && !celdaActual.muros.izquierdo && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
-        if (dc === 1 && !celdaActual.muros.derecho && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
+        if (df === -1 && !celdaActual.muros.superior && !celdaSig.muros.inferior && celdaSig.esTransitable) esMovimientoValido = true;
+        if (df === 1 && !celdaActual.muros.inferior && !celdaSig.muros.superior && celdaSig.esTransitable) esMovimientoValido = true;
+        if (dc === -1 && !celdaActual.muros.izquierdo && !celdaSig.muros.derecho && celdaSig.esTransitable) esMovimientoValido = true;
+        if (dc === 1 && !celdaActual.muros.derecho && !celdaSig.muros.izquierdo && celdaSig.esTransitable) esMovimientoValido = true;
 
         if (!esMovimientoValido) {
             console.warn(`resolverAccion: Movimiento inválido para ${entidad.nombre} hacia (${sigFila}, ${sigColumna}) desde (${entidad.fila}, ${entidad.columna})`);
         }
 
-        if (!esMovimientoValido && (entidad as any).tienePico) {
-            const celdaObjetivo = this.mapaLaberinto[sigFila][sigColumna];
-            if ((entidad as any).ultimaCasillaAtacada && (entidad as any).ultimaCasillaAtacada.f === sigFila && (entidad as any).ultimaCasillaAtacada.c === sigColumna) {
+        if (!esMovimientoValido && entidad.tienePico && !esMiHogar) {
+            const celdaObjetivo = mapa[sigFila][sigColumna];
+            if (entidad.ultimaCasillaAtacada && entidad.ultimaCasillaAtacada.f === sigFila && entidad.ultimaCasillaAtacada.c === sigColumna) {
                 celdaObjetivo.golpesCavar++;
             } else {
                 celdaObjetivo.golpesCavar = 1;
-                (entidad as any).ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
+                entidad.ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
             }
             if (celdaObjetivo.golpesCavar >= 5) {
                 celdaObjetivo.esTransitable = true;
                 celdaObjetivo.golpesCavar = 0;
-                eliminarMurosEntre(this.mapaLaberinto[entidad.fila][entidad.columna], celdaObjetivo);
+                eliminarMurosEntre(mapa[entidad.fila][entidad.columna], celdaObjetivo);
                 this.network.enviarMensaje({
                     tipo: 'dig_completed',
                     f: sigFila,
@@ -1430,15 +1555,15 @@ class Game implements IGame {
             entidad.columna = sigColumna;
             console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
             entidad.estaCaminando = true;
-            const celdaNueva = this.mapaLaberinto[entidad.fila][entidad.columna];
-            (entidad as any).ultimaCasillaAtacada = null;
+            const celdaNueva = mapa[entidad.fila][entidad.columna];
+            entidad.ultimaCasillaAtacada = null;
 
             if (celdaNueva.tienePico) {
-                (entidad as any).tienePico = true;
+                entidad.tienePico = true;
                 celdaNueva.tienePico = false;
                 this.network.enviarMensaje({ tipo: 'pick_collected', f: entidad.fila, c: entidad.columna });
             }
-            if (celdaNueva.alimento) {
+            if (celdaNueva.alimento && !esMiHogar) {
                 const PC = celdaNueva.alimento.pc;
                 const CC = ((3 * entidad.fuerza) + (2 * entidad.agilidad) + (1 * entidad.inteligencia)) / 6;
                 const recuperacion = Math.floor(PC / CC);
@@ -1446,7 +1571,7 @@ class Game implements IGame {
                 celdaNueva.alimento = null;
                 this.network.enviarMensaje({ tipo: 'food_consumed', f: entidad.fila, c: entidad.columna });
             }
-            if (celdaNueva.burbuja) {
+            if (celdaNueva.burbuja && !esMiHogar) {
                 const ahoraB = Date.now();
                 if (ahoraB > entidad.inmunidadHasta) {
                     entidad.inmunidadHasta = ahoraB + 30000;
@@ -1454,10 +1579,10 @@ class Game implements IGame {
             }
             this.verificarPortal(entidad);
 
-            (entidad as any).pasosDesdeUltimoDano = ((entidad as any).pasosDesdeUltimoDano || 0) + 1;
+            entidad.pasosDesdeUltimoDano = (entidad.pasosDesdeUltimoDano || 0) + 1;
             const factorDificultad = this.config.dificultad === 'facil' ? 1 : (this.config.dificultad === 'medio' ? 2 : 3);
-            if ((entidad as any).pasosDesdeUltimoDano >= 10 * factorDificultad) {
-                (entidad as any).pasosDesdeUltimoDano = 0;
+            if (entidad.pasosDesdeUltimoDano >= 10 * factorDificultad) {
+                entidad.pasosDesdeUltimoDano = 0;
                 entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + 1);
             }
         }
@@ -1483,7 +1608,7 @@ class Game implements IGame {
     this.listaDeEnemigos.forEach(e => {
         const dist = Math.sqrt(Math.pow(e.fila - fila, 2) + Math.pow(e.columna - columna, 2));
         if (dist <= r) {
-            (e as any).huyendoHasta = Date.now() + 10000;
+            e.huyendoHasta = Date.now() + 10000;
         }
     });
   }
@@ -1896,8 +2021,9 @@ class Game implements IGame {
   }
 
   verificarPortal(entidad: any) {
+    if (entidad === this.protagonista && this.estaEnHogar) return;
     const celda = this.mapaLaberinto[entidad.fila][entidad.columna];
-    if (celda.esPortal) {
+    if (celda && celda.esPortal) {
         const todosLosPortales: {f: number, c: number}[] = [];
         for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
             for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
@@ -2082,7 +2208,7 @@ class Game implements IGame {
             if (!this.esHost) {
                 msg.entities.forEach((entData: any) => {
                     if (entData.isNpc) {
-                        const npc = this.listaDeEnemigos.find(e => (e as any).id === entData.id);
+                        const npc = this.listaDeEnemigos.find(e => e.id === entData.id);
                         if (npc) {
                             npc.fila = entData.f;
                             npc.columna = entData.c;
@@ -2092,6 +2218,7 @@ class Game implements IGame {
                         }
                     } else {
                         if (entData.id === this.network.idLocal) {
+                            if (this.estaEnHogar) return;
                             this.protagonista.fila = entData.f;
                             this.protagonista.columna = entData.c;
                             this.protagonista.vidaActual = entData.v;
@@ -2102,11 +2229,12 @@ class Game implements IGame {
                             let rem = this.network.jugadoresRemotos.get(entData.id);
                             if (!rem) {
                                 // Crear entrada si no existe (para otros invitados o host recién identificado)
-                                rem = { pc: null as any, dc: null as any, entidad: null, unsubscribes: [] };
-                                this.network.jugadoresRemotos.set(entData.id, rem);
+                                const newRem: RemotePlayer = { pc: null, dc: null, entidad: null, unsubscribes: [] };
+                                this.network.jugadoresRemotos.set(entData.id, newRem);
+                                rem = newRem;
                             }
 
-                            if (rem && rem.entidad) {
+                            if (rem.entidad) {
                                 rem.entidad.fila = entData.f;
                                 rem.entidad.columna = entData.c;
                                 rem.entidad.vidaActual = entData.v;
@@ -2147,9 +2275,7 @@ class Game implements IGame {
             }
 
             if (!this.network.jugadoresRemotos.has(realId)) {
-                const pc: any = null;
-                const dc: any = null;
-                this.network.jugadoresRemotos.set(realId, { pc, dc, entidad: null, unsubscribes: [] });
+                this.network.jugadoresRemotos.set(realId, { pc: null, dc: null, entidad: null, unsubscribes: [] });
             }
             const jInfo = this.network.jugadoresRemotos.get(realId)!;
             if (!jInfo.entidad) {

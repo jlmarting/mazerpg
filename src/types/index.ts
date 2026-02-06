@@ -16,6 +16,7 @@ export interface GameConfig {
     targetZoom: number;
     autoZoom: boolean;
     tickRate: number;
+    esHogar?: boolean;
 }
 
 export interface CameraOffset {
@@ -24,6 +25,7 @@ export interface CameraOffset {
 }
 
 export interface IEntidadRPG {
+    id: any;
     fila: number;
     columna: number;
     nombre: string;
@@ -35,10 +37,24 @@ export interface IEntidadRPG {
     puntosExperiencia: number;
     inmunidadHasta: number;
     bubbleChat: { texto: string, expira: number } | null;
+    fuerza: number;
+    agilidad: number;
+    inteligencia: number;
+    clase?: string;
+    color?: string;
+    ultimaVezHabilidad?: { fireball: number, bow: number, food: number, radar: number, whirlwind: number, freeze: number };
+    consecutiveInteractions?: Map<string, number>;
+    tienePico?: boolean;
+    ultimaCasillaAtacada?: {f: number, c: number} | null;
+    pasosDesdeUltimoDano?: number;
+    personajeCreado?: boolean;
+    huyendoHasta?: number;
+    inmovilizadoHasta?: number;
     recibirDano(cantidad: number, atacante?: IEntidadRPG | null): number;
     obtenerIniciativa(): number;
     generarAtaque(): number;
     generarDefensa(): number;
+    actualizarIA?(game: IGame): void;
     dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto?: any): void;
     dibujarBarraVida(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto: any[][]): void;
     dibujarBubbleChat(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig): void;
@@ -46,12 +62,17 @@ export interface IEntidadRPG {
 
 export interface IGame {
     mapaLaberinto: Celda[][];
+    mapaHogar: Celda[][] | null;
+    posicionLaberinto: { f: number, c: number } | null;
+    posicionHogar: { f: number, c: number } | null;
+    estaEnHogar: boolean;
     config: GameConfig;
     protagonista: IEntidadRPG;
     listaDeEnemigos: IEntidadRPG[];
     jugadoresRemotos: Map<string, any>;
     esHost: boolean;
     juegoTerminado: boolean;
+    colaAcciones: any[];
     firebase: any;
     network: any;
     ui: any;
@@ -64,4 +85,5 @@ export interface IGame {
     iniciarEleccionHost(): void;
     unirseAPartidaFirestore(id: string): Promise<void>;
     obtenerEntidadPorNombre(nombre: string): IEntidadRPG | null;
+    resolverAccion(id: string, accion: any): void;
 }

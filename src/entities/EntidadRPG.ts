@@ -1,6 +1,7 @@
 import { CameraOffset, GameConfig } from '../types';
 
 export abstract class EntidadRPG {
+  id: any = 0;
   fila: number;
   columna: number;
   nombre: string;

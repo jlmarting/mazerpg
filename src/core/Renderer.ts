@@ -55,7 +55,7 @@ export class Renderer {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
 
-    this.ctx.fillStyle = '#000';
+    this.ctx.fillStyle = config.esHogar ? '#0077be' : '#000';
     this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
 
     const fInicio = Math.floor(filaOffset);
@@ -69,39 +69,82 @@ export class Renderer {
         if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
 
         const celda = mapaLaberinto[fila][columna];
-        if (celda.esTransitable) {
-          this.ctx.fillStyle = '#FFF';
-          const x = (columna - colOffset) * TAMANO_CELDA;
-          const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+
+        const x = (columna - colOffset) * TAMANO_CELDA;
+        const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+
+        // Movimiento de olas para el agua (incluso si no es transitable)
+        if (celda.tipoTerreno === 'agua') {
+          const time = Date.now() / 1000;
+          const wave = Math.sin(time + fila * 0.5 + columna * 0.5) * 10;
+          this.ctx.fillStyle = `rgb(0, ${110 + wave}, ${190 + wave})`;
           this.ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
 
-          // Delinear bordes púrpura
-          this.ctx.strokeStyle = '#800080';
-          this.ctx.lineWidth = 2;
+          // Dibujar una ondita extra animada
+          const shift = Math.sin(Date.now() / 500) * 2;
+          this.ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+          this.ctx.beginPath();
+          this.ctx.moveTo(x + 2, y + 10 + shift);
+          this.ctx.quadraticCurveTo(x + 10, y + 5 + shift, x + 18, y + 10 + shift);
+          this.ctx.stroke();
+          continue; // El agua no suele tener muros o decoraciones encima en este juego
+        }
+
+        if (celda.esTransitable) {
+          if (celda.tipoTerreno === 'cesped') {
+            this.ctx.fillStyle = '#4a7c44';
+          } else if (celda.tipoTerreno === 'baldosa') {
+            this.ctx.fillStyle = '#d3d3d3';
+          } else if (celda.tipoTerreno === 'puente') {
+            this.ctx.fillStyle = '#8b4513';
+          } else if (celda.tipoTerreno === 'arena') {
+            this.ctx.fillStyle = '#f2d2a9';
+          } else if (celda.tipoTerreno === 'roca') {
+            this.ctx.fillStyle = '#777';
+          } else {
+            this.ctx.fillStyle = '#FFF';
+          }
+
+          this.ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
+
+          if (celda.decoracion) {
+              this.ctx.font = '20px serif';
+              this.ctx.textAlign = 'center';
+              let icon = '';
+              if (celda.decoracion === 'arbol') icon = '🌳';
+              else if (celda.decoracion === 'palmera') icon = '🌴';
+              else if (celda.decoracion === 'pino') icon = '🌲';
+              else if (celda.decoracion === 'sofa') icon = '🛋️';
+              else if (celda.decoracion === 'cama') icon = '🛏️';
+              else if (celda.decoracion === 'mesa') icon = '🪑';
+              else if (celda.decoracion === 'silla') icon = '🪑';
+              if (icon) {
+                  this.ctx.fillText(icon, x + TAMANO_CELDA / 2, y + TAMANO_CELDA / 2 + 7);
+              }
+              this.ctx.textAlign = 'left';
+          }
+
+          // Delinear muros
+          const drawWall = (x1: number, y1: number, x2: number, y2: number, isParedGruesa: boolean) => {
+              this.ctx.strokeStyle = isParedGruesa ? '#8b4513' : '#800080';
+              this.ctx.lineWidth = isParedGruesa ? 4 : 2;
+              this.ctx.beginPath();
+              this.ctx.moveTo(x1, y1);
+              this.ctx.lineTo(x2, y2);
+              this.ctx.stroke();
+          };
 
           if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, y);
-            this.ctx.lineTo(x + TAMANO_CELDA, y);
-            this.ctx.stroke();
+              drawWall(x, y, x + TAMANO_CELDA, y, celda.esParedGruesa);
           }
           if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, y + TAMANO_CELDA);
-            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
-            this.ctx.stroke();
+              drawWall(x, y + TAMANO_CELDA, x + TAMANO_CELDA, y + TAMANO_CELDA, celda.esParedGruesa);
           }
           if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, y);
-            this.ctx.lineTo(x, y + TAMANO_CELDA);
-            this.ctx.stroke();
+              drawWall(x, y, x, y + TAMANO_CELDA, celda.esParedGruesa);
           }
           if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x + TAMANO_CELDA, y);
-            this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
-            this.ctx.stroke();
+              drawWall(x + TAMANO_CELDA, y, x + TAMANO_CELDA, y + TAMANO_CELDA, celda.esParedGruesa);
           }
 
           // Dibujar Burbuja
@@ -142,6 +185,18 @@ export class Renderer {
             if (celda.alimento.tipo === 'Pescado') icon = '🐟';
 
             this.ctx.fillText(icon, (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
+          }
+
+          // Dibujar Puerta/Vetas en puente
+          if (celda.tipoTerreno === 'puente') {
+              this.ctx.strokeStyle = '#5d2906';
+              this.ctx.lineWidth = 1;
+              for(let i=1; i<4; i++) {
+                  this.ctx.beginPath();
+                  this.ctx.moveTo(x + (TAMANO_CELDA/4)*i, y);
+                  this.ctx.lineTo(x + (TAMANO_CELDA/4)*i, y + TAMANO_CELDA);
+                  this.ctx.stroke();
+              }
           }
 
           // Dibujar Pico

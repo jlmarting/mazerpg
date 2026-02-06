@@ -55,13 +55,13 @@ class Game implements IGame {
   constructor() {
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas);
+    this.inicializarAssets();
     this.setupEntity(this.protagonista);
     this.initMap();
     this.ajustarDimensiones();
     window.addEventListener('resize', () => this.ajustarDimensiones());
     this.setupEventListeners();
     (window as any).game = this;
-    this.inicializarAssets();
     this.revisarSesionGuardada();
 
     canvas.addEventListener('touchstart', (e) => {
@@ -73,66 +73,6 @@ class Game implements IGame {
     canvas.addEventListener('mousedown', (e) => {
         this.manejarTap(e.clientX, e.clientY);
     });
-  }
-
-  async inicializarAssets() {
-    const sm = this.renderer.spriteManager;
-
-    const assets = {
-        floor: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAARUlEQVR4nO3TsREAIAhDUXDWjJWBGMsBsMTC86cMd7wqKUlStNge6bOqejuYdfU7wCeA7eNhqmcHAC8A7AAAgB0AAETEBmXmKuQaeq+RAAAAAElFTkSuQmCC",
-        wall: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAPklEQVR4nO3NQQ0AMAzDwGwqjoIofzRB0t8YRNrDBuA7M6NkJam7Q3fbN7R+AQAAAAAAAAAAAPwClCTbOWAB98UGgLgIu1MAAAAASUVORK5CYII=",
-        player: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAPklEQVR4nGP8//8/Ay0BE01NH7Vg1AKqABZcEoyppBn0fzZ28aEfRKMWjFowasGoBSPCAsbRdtGoBaMWMAAAkbwIO3HORrAAAAAASUVORK5CYII=",
-        orc: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAT0lEQVR4nGP8//8/Ay0BE01NH7Vg1AKqABZcEozTGUky6H8m9vw09INocFjwP4s0cZItYJxGmjjJFlACRi0YtWDUAjpYwDjaLhq1YNQCBgCCGA073/3AxgAAAABJRU5ErkJggg==",
-        food: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAARElEQVR4nGP8//8/Ay0BE01NH7Vg1IJRCxgYGBgYWAjIMzISNgNvWTD0g2jUglELRi0YBGURxW2OoR9EoxaMWjAELAAAUI4HP9mcIXQAAAAASUVORK5CYII=",
-        pick: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKUlEQVR4nO3MQQ0AMBAEofGvbGVVxT2agADq0ja73W632+12u93+yV4P1rpLAWquDRAAAAAASUVORK5CYII="
-    };
-
-    try {
-        await sm.cargarImagen('demo_floor', assets.floor);
-        await sm.cargarImagen('demo_wall', assets.wall);
-        await sm.cargarImagen('demo_player', assets.player);
-        await sm.cargarImagen('demo_orc', assets.orc);
-        await sm.cargarImagen('demo_food', assets.food);
-        await sm.cargarImagen('demo_pick', assets.pick);
-
-        sm.definirSprite('floor', 'demo_floor', 0, 0, 32, 32);
-        sm.definirSprite('wall_top', 'demo_wall', 0, 0, 32, 32);
-        sm.definirSprite('wall_bottom', 'demo_wall', 0, 0, 32, 32);
-        sm.definirSprite('wall_left', 'demo_wall', 0, 0, 32, 32);
-        sm.definirSprite('wall_right', 'demo_wall', 0, 0, 32, 32);
-
-        // Sprites para el jugador (idle y caminar)
-        sm.definirSprite('player_guerrero_idle', 'demo_player', 0, 0, 32, 32);
-        sm.definirSprite('player_guerrero_walk', 'demo_player', 0, 0, 32, 32);
-        sm.definirSprite('player_explorador_idle', 'demo_player', 0, 0, 32, 32);
-        sm.definirSprite('player_explorador_walk', 'demo_player', 0, 0, 32, 32);
-        sm.definirSprite('player_mago_idle', 'demo_player', 0, 0, 32, 32);
-        sm.definirSprite('player_mago_walk', 'demo_player', 0, 0, 32, 32);
-
-        // Sprites para remotos
-        sm.definirSprite('player_remote_idle', 'demo_player', 0, 0, 32, 32);
-        sm.definirSprite('player_remote_walk', 'demo_player', 0, 0, 32, 32);
-
-        // Sprites para enemigos
-        sm.definirSprite('npc_orco', 'demo_orc', 0, 0, 32, 32);
-        sm.definirSprite('npc_esqueleto', 'demo_orc', 0, 0, 32, 32);
-        sm.definirSprite('npc_goblin', 'demo_orc', 0, 0, 32, 32);
-        sm.definirSprite('npc_minotauro', 'demo_orc', 0, 0, 32, 32);
-
-        // Ítems
-        sm.definirSprite('food_manzana', 'demo_food', 0, 0, 32, 32);
-        sm.definirSprite('food_plátano', 'demo_food', 0, 0, 32, 32);
-        sm.definirSprite('food_kiwi', 'demo_food', 0, 0, 32, 32);
-        sm.definirSprite('food_brócoli', 'demo_food', 0, 0, 32, 32);
-        sm.definirSprite('food_muslo_de_pollo', 'demo_food', 0, 0, 32, 32);
-        sm.definirSprite('food_chuleta', 'demo_food', 0, 0, 32, 32);
-        sm.definirSprite('food_pescado', 'demo_food', 0, 0, 32, 32);
-        sm.definirSprite('pickaxe', 'demo_pick', 0, 0, 32, 32);
-
-        this.registrarEventoLog("Sprites de demostración cargados.");
-    } catch (e) {
-        console.error("Error cargando sprites demo:", e);
-    }
   }
 
   initMap() {
@@ -527,6 +467,50 @@ class Game implements IGame {
             this.network.enviarMensaje({ tipo: 'objetos', lista: objetos, is_update: true });
         }
     }, 5000);
+  }
+
+  inicializarAssets() {
+      const sm = this.renderer.spriteManager;
+
+      // Suelo (Césped - Verde)
+      sm.cargarImagen('floor_grass', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALUlEQVRYR+3VQQEAAAgDoK1/aCPoYwYmYAnS9atSBAIECBAgQIAAAQIECBAgMAsf+AARKp88AAAAAElFTkSuQmCC');
+      sm.definirSprite('floor', 'floor_grass', 0, 0, 32, 32);
+
+      // Muro (Piedra - Gris)
+      sm.cargarImagen('wall_stone', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAM0lEQVRYR+3VwQkAMAgEMKv779S7hyCId8ALEn6vSREIECBAgAABAgQIECBAgMAtfOAAESofvzwAAAAASUVORK5CYII=');
+      sm.definirSprite('wall_top', 'wall_stone', 0, 0, 32, 4);
+      sm.definirSprite('wall_bottom', 'wall_stone', 0, 28, 32, 4);
+      sm.definirSprite('wall_left', 'wall_stone', 0, 0, 4, 32);
+      sm.definirSprite('wall_right', 'wall_stone', 28, 0, 4, 32);
+
+      // Comida (Manzana)
+      sm.cargarImagen('food_apple', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVRYR+3VQQEAAAgDoK1/aBvCByYmYAnS9atSBAIECBAgQIAAAQIECBAgMAtbWAAREmR4OgAAAABJRU5ErkJggg==');
+      sm.definirSprite('food_manzana', 'food_apple', 0, 0, 32, 32);
+
+      // Herramienta (Pico)
+      sm.cargarImagen('tool_pickaxe', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVRYR+3VQQEAAAgDoK1/aBvCByYmYAnS9atSBAIECBAgQIAAAQIECBAgMAtbWAAREmR4OgAAAABJRU5ErkJggg==');
+      sm.definirSprite('pickaxe', 'tool_pickaxe', 0, 0, 32, 32);
+
+      // Definir Sprite de Jugador (Demo)
+      const playerBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAASklEQVRYR+2X0QoAIAiG7f9/unNoiFpD2vAmCOqDOfVpUoRE6p0Z0AFYAVP+qgAx8O9T0HXiM0D6R9E9YLoHiAb8YMDvAQ6I7gGvA78Y7AAXRE8N5O0AAAAASUVORK5CYII=';
+
+      const clases = ['guerrero', 'explorador', 'mago'];
+      const estados = ['idle', 'walking', 'attacking', 'defending', 'fallen'];
+
+      clases.forEach(c => {
+          estados.forEach(e => {
+              const frames = (e === 'defending' || e === 'idle') ? 1 : 3;
+              for (let f = 0; f < frames; f++) {
+                  const key = `player_${c}_${e}_${f}`;
+                  sm.cargarImagen(key, playerBase64);
+              }
+          });
+      });
+
+      // NPC (Orco)
+      sm.cargarImagen('npc_orco_idle_0', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAARElEQVRYR+2V0QoAIAiG7f9/unNoG0zXEDZ0FYJ9MKa9pAhJpD5pAA6AA6Z0KgI6kO8UfB38N4B0T8E+wPYOUA3owIBfA/YA7BPvAb8Y7AA2xU8NnIEnAAAAAElFTkSuQmCC');
+      sm.cargarImagen('npc_orco_walking_0', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAARElEQVRYR+2V0QoAIAiG7f9/unNoG0zXEDZ0FYJ9MKa9pAhJpD5pAA6AA6Z0KgI6kO8UfB38N4B0T8E+wPYOUA3owIBfA/YA7BPvAb8Y7AA2xU8NnIEnAAAAAElFTkSuQmCC');
+      sm.cargarImagen('npc_orco_attacking_0', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAARElEQVRYR+2V0QoAIAiG7f9/unNoG0zXEDZ0FYJ9MKa9pAhJpD5pAA6AA6Z0KgI6kO8UfB38N4B0T8E+wPYOUA3owIBfA/YA7BPvAb8Y7AA2xU8NnIEnAAAAAElFTkSuQmCC');
   }
 
   regresarAlLobby() {
@@ -1159,7 +1143,9 @@ class Game implements IGame {
         vm: this.protagonista.vidaMaxima,
         cam: this.protagonista.estaCaminando,
         viva: this.protagonista.estaVivo,
-        nick: this.protagonista.nombre
+        nick: this.protagonista.nombre,
+        est: this.protagonista.estadoActual,
+        fr: this.protagonista.frameActual
     });
 
     this.network.jugadoresRemotos.forEach((j: any, id: string) => {
@@ -1172,7 +1158,9 @@ class Game implements IGame {
                 vm: j.entidad.vidaMaxima,
                 cam: j.entidad.estaCaminando,
                 viva: j.entidad.estaVivo,
-                nick: j.entidad.nombre
+                nick: j.entidad.nombre,
+                est: j.entidad.estadoActual,
+                fr: j.entidad.frameActual
             });
         }
     });
@@ -1184,7 +1172,9 @@ class Game implements IGame {
         v: e.vidaActual,
         vm: e.vidaMaxima,
         viva: e.estaVivo,
-        isNpc: true
+        isNpc: true,
+        est: e.estadoActual,
+        fr: e.frameActual
     })));
 
     this.network.enviarMensaje(snapshot);
@@ -1432,6 +1422,7 @@ class Game implements IGame {
         // 2. Verificar colisión con enemigos
         const enemigoEnCasilla = this.listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
         if (enemigoEnCasilla) {
+            entidad.setEstado('attacking', 500);
             if (entidad.enCombateCon === enemigoEnCasilla) {
                 this.resolverRondaDeCombate(entidad, enemigoEnCasilla);
             } else {
@@ -2098,6 +2089,8 @@ class Game implements IGame {
             break;
         case 'arrow_spawn':
             if (!this.esHost) {
+                const emisorA = this.obtenerEntidadPorId(idSujeto);
+                if (emisorA) emisorA.setEstado('attacking', 800);
                 this.bolasDeFuego.push({
                     x: msg.ex,
                     y: msg.ey,
@@ -2124,6 +2117,8 @@ class Game implements IGame {
             break;
         case 'whirlwind_spawn':
             if (!this.esHost) {
+                const emisorW = this.obtenerEntidadPorId(idSujeto);
+                if (emisorW) emisorW.setEstado('attacking', 800);
                 this.whirlwinds.push({
                     x: msg.x,
                     y: msg.y,
@@ -2150,6 +2145,8 @@ class Game implements IGame {
                             npc.vidaActual = entData.v;
                             npc.vidaMaxima = entData.vm;
                             npc.estaVivo = entData.viva;
+                            if (entData.est) npc.estadoActual = entData.est;
+                            if (entData.fr !== undefined) npc.frameActual = entData.fr;
                         }
                     } else {
                         if (entData.id === this.network.idLocal) {
@@ -2175,6 +2172,8 @@ class Game implements IGame {
                                 rem.entidad.estaVivo = entData.viva;
                                 rem.entidad.estaCaminando = entData.cam;
                                 rem.entidad.nombre = entData.nick;
+                                if (entData.est) rem.entidad.estadoActual = entData.est;
+                                if (entData.fr !== undefined) rem.entidad.frameActual = entData.fr;
                             } else if (rem) {
                                 rem.entidad = new JugadorRemoto(entData.f, entData.c, entData.nick, entData.id);
                                 this.setupEntity(rem.entidad);
@@ -2373,6 +2372,8 @@ class Game implements IGame {
             break;
         case 'fireball_spawn':
             if (!this.esHost) {
+                const emisorF = this.obtenerEntidadPorId(idSujeto);
+                if (emisorF) emisorF.setEstado('attacking', 800);
                 this.bolasDeFuego.push({
                     x: msg.ex,
                     y: msg.ey,

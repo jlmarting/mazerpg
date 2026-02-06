@@ -9,6 +9,8 @@ export class JugadorRemoto extends EntidadRPG {
   }
 
   dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig) {
+    this.actualizarEstado();
+
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
 
@@ -20,11 +22,11 @@ export class JugadorRemoto extends EntidadRPG {
     const escala = TAMANO_CELDA * 0.6;
 
     const spriteManager = (window as any).game?.renderer?.spriteManager;
-    const currentSprite = `player_remote_${this.estaCaminando ? 'walk' : 'idle'}`;
+    const currentSprite = `player_remote_${this.estadoActual}_${this.frameActual}`;
 
     ctx.save();
 
-    if (spriteManager && spriteManager.obtenerSprite(currentSprite) && this.estaVivo) {
+    if (spriteManager && this.estaVivo) {
         spriteManager.dibujarSprite(ctx, currentSprite, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
     } else if (!this.estaVivo) {
         ctx.fillStyle = '#888';

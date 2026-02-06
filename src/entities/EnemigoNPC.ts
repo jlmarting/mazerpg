@@ -191,6 +191,8 @@ export class EnemigoNPC extends EntidadRPG {
   }
 
   dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto: Celda[][]) {
+    this.actualizarEstado();
+
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, TIEMPO_DESVANECIMIENTO_NIEBLA, vistaDebugActivada } = config;
 
@@ -210,9 +212,9 @@ export class EnemigoNPC extends EntidadRPG {
     const escala = TAMANO_CELDA * 0.4;
 
     const spriteManager = (window as any).game?.renderer?.spriteManager;
-    const spriteKey = `npc_${this.tipo.toLowerCase()}`;
+    const spriteKey = `npc_${this.tipo.toLowerCase()}_${this.estadoActual}_${this.frameActual}`;
 
-    if (spriteManager && spriteManager.obtenerSprite(spriteKey)) {
+    if (spriteManager && (spriteManager.obtenerSprite(spriteKey) || spriteManager.obtenerSprite(`npc_${this.tipo.toLowerCase()}`))) {
         spriteManager.dibujarSprite(ctx, spriteKey, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
         return;
     }

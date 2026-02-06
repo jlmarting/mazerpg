@@ -67,6 +67,8 @@ export class Jugador extends EntidadRPG {
   }
 
   dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, _mapaLaberinto?: any) {
+    this.actualizarEstado();
+
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
     const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
@@ -75,11 +77,16 @@ export class Jugador extends EntidadRPG {
 
     // Intentar obtener el SpriteManager desde el contexto o el objeto global
     const spriteManager = (window as any).game?.renderer?.spriteManager;
-    const currentSprite = this.estaCaminando ? `player_${this.clase}_walk` : `player_${this.clase}_idle`;
+    const currentSprite = `player_${this.clase}_${this.estadoActual}_${this.frameActual}`;
+    if (!this.estaVivo) {
+        // ...
+    } else if (!spriteManager?.obtenerSprite(currentSprite)) {
+        // console.warn(`Jugador: Sprite no encontrado: ${currentSprite}`);
+    }
 
     ctx.save();
 
-    if (spriteManager && spriteManager.obtenerSprite(currentSprite) && this.estaVivo) {
+    if (spriteManager && this.estaVivo) {
         spriteManager.dibujarSprite(ctx, currentSprite, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
     } else if (!this.estaVivo) {
         // Dibujar Lápida

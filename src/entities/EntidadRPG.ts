@@ -20,6 +20,12 @@ export abstract class EntidadRPG {
   public bubbleChat: { texto: string, expira: number } | null = null;
   public onDamageReceived?: (amount: number, entity: EntidadRPG) => void;
 
+  // Sistema de Animación y Estados
+  estadoActual: 'idle' | 'walking' | 'attacking' | 'defending' | 'fallen' = 'idle';
+  frameActual: number = 0;
+  ultimaActualizacionFrame: number = 0;
+  estadoExpira: number = 0;
+
   constructor(fila: number, columna: number, nombre: string) {
     this.fila = fila;
     this.columna = columna;
@@ -59,11 +65,64 @@ export abstract class EntidadRPG {
     if (this.vidaActual <= 0) {
       this.estaVivo = false;
       this.vidaActual = 0;
+      this.setEstado('fallen');
+    } else if (cantidad > 0 && this.estadoActual !== 'attacking') {
+        this.setEstado('defending', 500);
     }
+
     if (this.onDamageReceived && cantidad > 0) {
       this.onDamageReceived(cantidad, this);
     }
     return cantidad;
+  }
+
+  setEstado(nuevoEstado: 'idle' | 'walking' | 'attacking' | 'defending' | 'fallen', duracion: number = 0) {
+    if (this.estadoActual === 'fallen' && nuevoEstado !== 'fallen') return; // Una vez caído, no cambia (a menos que reviva)
+
+    if (this.estadoActual !== nuevoEstado) {
+        this.estadoActual = nuevoEstado;
+        this.frameActual = 0;
+        this.ultimaActualizacionFrame = Date.now();
+    }
+
+    if (duracion > 0) {
+        this.estadoExpira = Date.now() + duracion;
+    } else {
+        this.estadoExpira = 0;
+    }
+  }
+
+  actualizarEstado() {
+    const ahora = Date.now();
+
+    // Volver a idle si el estado temporal expiró
+    if (this.estadoExpira > 0 && ahora > this.estadoExpira) {
+        this.estadoExpira = 0;
+    }
+
+    if (this.estaVivo && this.estadoExpira === 0) {
+        const estadoDeseado = this.estaCaminando ? 'walking' : 'idle';
+        if (this.estadoActual !== estadoDeseado) {
+            this.setEstado(estadoDeseado);
+        }
+    }
+
+    // Actualizar frames (ej. cada 200ms)
+    const msPorFrame = 200;
+    if (ahora - this.ultimaActualizacionFrame > msPorFrame) {
+        this.ultimaActualizacionFrame = ahora;
+
+        // La mayoría de animaciones tienen 3 fases, excepto defender (1)
+        let maxFrames = 3;
+        if (this.estadoActual === 'defending') maxFrames = 1;
+        if (this.estadoActual === 'idle') maxFrames = 1;
+
+        if (this.estadoActual === 'fallen' && this.frameActual === 2) {
+            // Se queda en el último frame de caído
+        } else {
+            this.frameActual = (this.frameActual + 1) % maxFrames;
+        }
+    }
   }
 
   abstract dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto?: any): void;

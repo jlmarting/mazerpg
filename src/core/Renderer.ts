@@ -8,9 +8,11 @@ export class Renderer {
   public spriteManager: SpriteManager;
 
   constructor(canvas: HTMLCanvasElement) {
+    console.log("Renderer constructor iniciado");
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.spriteManager = new SpriteManager();
+    console.log("Renderer constructor finalizado");
   }
 
   limpiar() {

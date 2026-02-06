@@ -76,19 +76,63 @@ class Game implements IGame {
   }
 
   async inicializarAssets() {
-    // const sm = this.renderer.spriteManager;
+    const sm = this.renderer.spriteManager;
 
-    // Aquí se cargarían los assets reales. Ejemplo:
-    // try {
-    //     await sm.cargarImagen('tileset', 'assets/tileset.png');
-    //     sm.definirSprite('floor', 'tileset', 0, 0, 32, 32);
-    //     sm.definirSprite('wall_top', 'tileset', 32, 0, 32, 32);
-    //     this.registrarEventoLog("Sistema de sprites inicializado.");
-    // } catch (e) {
-    //     console.error("Error cargando sprites:", e);
-    // }
+    const assets = {
+        floor: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAARUlEQVR4nO3TsREAIAhDUXDWjJWBGMsBsMTC86cMd7wqKUlStNge6bOqejuYdfU7wCeA7eNhqmcHAC8A7AAAgB0AAETEBmXmKuQaeq+RAAAAAElFTkSuQmCC",
+        wall: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAPklEQVR4nO3NQQ0AMAzDwGwqjoIofzRB0t8YRNrDBuA7M6NkJam7Q3fbN7R+AQAAAAAAAAAAAPwClCTbOWAB98UGgLgIu1MAAAAASUVORK5CYII=",
+        player: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAPklEQVR4nGP8//8/Ay0BE01NH7Vg1AKqABZcEoyppBn0fzZ28aEfRKMWjFowasGoBSPCAsbRdtGoBaMWMAAAkbwIO3HORrAAAAAASUVORK5CYII=",
+        orc: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAT0lEQVR4nGP8//8/Ay0BE01NH7Vg1AKqABZcEozTGUky6H8m9vw09INocFjwP4s0cZItYJxGmjjJFlACRi0YtWDUAjpYwDjaLhq1YNQCBgCCGA073/3AxgAAAABJRU5ErkJggg==",
+        food: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAARElEQVR4nGP8//8/Ay0BE01NH7Vg1IJRCxgYGBgYWAjIMzISNgNvWTD0g2jUglELRi0YBGURxW2OoR9EoxaMWjAELAAAUI4HP9mcIXQAAAAASUVORK5CYII=",
+        pick: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKUlEQVR4nO3MQQ0AMBAEofGvbGVVxT2agADq0ja73W632+12u93+yV4P1rpLAWquDRAAAAAASUVORK5CYII="
+    };
 
-    this.registrarEventoLog("Sistema de sprites preparado.");
+    try {
+        await sm.cargarImagen('demo_floor', assets.floor);
+        await sm.cargarImagen('demo_wall', assets.wall);
+        await sm.cargarImagen('demo_player', assets.player);
+        await sm.cargarImagen('demo_orc', assets.orc);
+        await sm.cargarImagen('demo_food', assets.food);
+        await sm.cargarImagen('demo_pick', assets.pick);
+
+        sm.definirSprite('floor', 'demo_floor', 0, 0, 32, 32);
+        sm.definirSprite('wall_top', 'demo_wall', 0, 0, 32, 32);
+        sm.definirSprite('wall_bottom', 'demo_wall', 0, 0, 32, 32);
+        sm.definirSprite('wall_left', 'demo_wall', 0, 0, 32, 32);
+        sm.definirSprite('wall_right', 'demo_wall', 0, 0, 32, 32);
+
+        // Sprites para el jugador (idle y caminar)
+        sm.definirSprite('player_guerrero_idle', 'demo_player', 0, 0, 32, 32);
+        sm.definirSprite('player_guerrero_walk', 'demo_player', 0, 0, 32, 32);
+        sm.definirSprite('player_explorador_idle', 'demo_player', 0, 0, 32, 32);
+        sm.definirSprite('player_explorador_walk', 'demo_player', 0, 0, 32, 32);
+        sm.definirSprite('player_mago_idle', 'demo_player', 0, 0, 32, 32);
+        sm.definirSprite('player_mago_walk', 'demo_player', 0, 0, 32, 32);
+
+        // Sprites para remotos
+        sm.definirSprite('player_remote_idle', 'demo_player', 0, 0, 32, 32);
+        sm.definirSprite('player_remote_walk', 'demo_player', 0, 0, 32, 32);
+
+        // Sprites para enemigos
+        sm.definirSprite('npc_orco', 'demo_orc', 0, 0, 32, 32);
+        sm.definirSprite('npc_esqueleto', 'demo_orc', 0, 0, 32, 32);
+        sm.definirSprite('npc_goblin', 'demo_orc', 0, 0, 32, 32);
+        sm.definirSprite('npc_minotauro', 'demo_orc', 0, 0, 32, 32);
+
+        // Ítems
+        sm.definirSprite('food_manzana', 'demo_food', 0, 0, 32, 32);
+        sm.definirSprite('food_plátano', 'demo_food', 0, 0, 32, 32);
+        sm.definirSprite('food_kiwi', 'demo_food', 0, 0, 32, 32);
+        sm.definirSprite('food_brócoli', 'demo_food', 0, 0, 32, 32);
+        sm.definirSprite('food_muslo_de_pollo', 'demo_food', 0, 0, 32, 32);
+        sm.definirSprite('food_chuleta', 'demo_food', 0, 0, 32, 32);
+        sm.definirSprite('food_pescado', 'demo_food', 0, 0, 32, 32);
+        sm.definirSprite('pickaxe', 'demo_pick', 0, 0, 32, 32);
+
+        this.registrarEventoLog("Sprites de demostración cargados.");
+    } catch (e) {
+        console.error("Error cargando sprites demo:", e);
+    }
   }
 
   initMap() {

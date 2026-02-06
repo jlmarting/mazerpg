@@ -37,3 +37,15 @@ Se propone la creación de una clase `SpriteManager` que:
 
 ## 4. Conclusión
 La migración es **altamente viable** y no requiere cambios estructurales en la lógica de juego, solo en la capa de presentación. Esto permitirá una mejora visual significativa y la posibilidad de añadir mayor variedad estética al mundo del laberinto.
+
+## 5. Implementación de Demostración
+Se ha implementado una demostración funcional en `src/main.ts` utilizando assets en base64.
+
+### Cómo añadir assets reales:
+1. Colocar las imágenes en la carpeta `public/assets/`.
+2. En `src/main.ts`, dentro de `inicializarAssets`:
+   ```typescript
+   await sm.cargarImagen('nombre_hoja', 'assets/mi_imagen.png');
+   sm.definirSprite('floor', 'nombre_hoja', x, y, ancho, alto);
+   ```
+3. El motor automáticamente utilizará el sprite definido en lugar del renderizado geométrico por defecto.

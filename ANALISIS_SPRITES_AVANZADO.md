@@ -26,14 +26,23 @@ jugadores: {
 }
 ```
 
-## 3. Propuesta de Herramienta para Diseño
+## 3. Herramienta de Diseño: STRUCTOR
 
-Para facilitar la relación entre acciones y gráficos, se propone la creación de un **Sprite Mapping Tool** (Web-based):
+Se ha implementado una aplicación independiente para facilitar el mapeo de sprites: **STRUCTOR** (disponible en `structor.html`).
 
-1. **Carga de Imagen:** El diseñador carga la hoja de sprites.
-2. **Definición de Rejilla:** Se define el tamaño del tile (ej. 32x32).
-3. **Mapeo Visual:** El diseñador hace clic en las filas/celdas y selecciona a qué acción corresponden (ej. "Click en fila 2" -> Asignar a "Mago - Caminando").
-4. **Exportación JSON:** La herramienta genera automáticamente un archivo JSON compatible con `SpriteConfig.ts`.
+### Funcionalidades:
+- **Carga Visual:** Permite cargar cualquier imagen local como hoja de sprites.
+- **Selección Libre:** Cursor interactivo para seleccionar regiones (por defecto 32x32, pero totalmente redimensionable para Bosses o elementos grandes).
+- **Control Preciso:** Uso de teclado (flechas) para mover la selección píxel a píxel (con Shift) o por rejilla (sin Shift).
+- **Asignación Lógica:** Permite definir la Categoría, Clase y Estado del juego al que corresponde la selección.
+- **Exportación Directa:** Genera el bloque de metadatos JSON listo para ser copiado a `SpriteConfig.ts`.
+
+### Flujo de Trabajo:
+1. Abrir `structor.html` en el navegador.
+2. Cargar la hoja de sprites deseada.
+3. Seleccionar visualmente el frame o sprite.
+4. Definir a qué elemento del juego pertenece (ej: Jugadores -> Guerrero -> Walking).
+5. Copiar el JSON generado al proyecto.
 
 ## 4. Flujo de Renderizado
 

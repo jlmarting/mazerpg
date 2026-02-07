@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Structor - Sprite Mapping Tool</title>
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
+        #sidebar { width: 350px; background: #1e1e1e; border-right: 1px solid #333; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; }
+        #viewer { flex: 1; position: relative; overflow: auto; background: #000; display: flex; align-items: flex-start; justify-content: flex-start; cursor: crosshair; }
+
+        h1 { font-size: 20px; color: #007bff; margin: 0 0 20px 0; }
+        .group { margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
+        .group label { display: block; font-size: 12px; color: #888; margin-bottom: 5px; }
+        .group input, .group select { width: 100%; padding: 8px; background: #2d2d2d; border: 1px solid #444; color: #fff; box-sizing: border-box; border-radius: 4px; }
+
+        .coords-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        #canvasContainer { position: relative; transform-origin: top left; }
+        #selectionBox { position: absolute; border: 2px solid #00ff00; background: rgba(0, 255, 0, 0.2); pointer-events: none; box-shadow: 0 0 10px rgba(0,255,0,0.5); }
+
+        .btn { padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: monospace; transition: background 0.2s; }
+        .btn-primary { background: #007bff; color: #fff; }
+        .btn-primary:hover { background: #0056b3; }
+        .btn-secondary { background: #444; color: #fff; margin-top: 10px; }
+
+        #output { flex: 1; margin-top: 10px; background: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 10px; border-radius: 4px; border: 1px solid #333; overflow: auto; white-space: pre-wrap; }
+
+        .preview-area { width: 100%; height: 100px; background: #000; border: 1px dashed #555; margin-top: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        #previewCanvas { image-rendering: pixelated; }
+
+        .toolbar { position: absolute; top: 10px; right: 10px; display: flex; gap: 10px; z-index: 100; }
+        .tool-btn { background: rgba(30, 30, 30, 0.8); color: white; border: 1px solid #555; padding: 5px 10px; cursor: pointer; border-radius: 4px; }
+        #gridOverlay { position: absolute; top: 0; left: 0; pointer-events: none; opacity: 0.3; }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h1>STRUCTOR v1.0</h1>
+
+        <div class="group">
+            <label>CARGAR HOJA DE SPRITES:</label>
+            <input type="file" id="fileInput" accept="image/*">
+            <button class="btn btn-secondary" id="btnLoadDemo">USAR DEMO SHEET</button>
+        </div>
+
+        <div class="group">
+            <label>PROPIEDADES DE SELECCIÓN:</label>
+            <div class="coords-grid">
+                <div><label>X:</label><input type="number" id="boxX" value="0"></div>
+                <div><label>Y:</label><input type="number" id="boxY" value="0"></div>
+                <div><label>ANCHO:</label><input type="number" id="boxW" value="32"></div>
+                <div><label>ALTO:</label><input type="number" id="boxH" value="32"></div>
+            </div>
+        </div>
+
+        <div class="group">
+            <label>ASIGNACIÓN LÓGICA:</label>
+            <select id="catSelect">
+                <option value="jugadores">JUGADORES</option>
+                <option value="npcs">NPCs</option>
+                <option value="escenario_estatico">ESCENARIO ESTÁTICO</option>
+                <option value="escenario_dinamico">ESCENARIO DINÁMICO</option>
+            </select>
+            <input type="text" id="claseInput" placeholder="Clase (ej. guerrero)" style="margin-top:5px;">
+            <input type="text" id="estadoInput" placeholder="Estado (ej. walking)" style="margin-top:5px;">
+        </div>
+
+        <div class="group" style="flex: 1; display: flex; flex-direction: column;">
+            <label>VISTA PREVIA:</label>
+            <div class="preview-area">
+                <canvas id="previewCanvas" width="64" height="64"></canvas>
+            </div>
+
+            <label style="margin-top: 15px;">SALIDA METADATOS:</label>
+            <div id="output">{}</div>
+            <button class="btn btn-primary" id="btnExport" style="margin-top: 10px;">AÑADIR A CONFIG</button>
+        </div>
+    </div>
+
+    <div id="viewer">
+        <div class="toolbar">
+            <button class="tool-btn" id="btnToggleGrid">GRILLA ON/OFF</button>
+            <button class="tool-btn" id="btnZoomIn">ZOOM +</button>
+            <button class="tool-btn" id="btnZoomOut">ZOOM -</button>
+            <button class="tool-btn" id="btnResetZoom">1:1</button>
+        </div>
+        <div id="canvasContainer">
+            <canvas id="spriteCanvas"></canvas>
+            <canvas id="gridOverlay"></canvas>
+            <div id="selectionBox"></div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/tools/structor.ts"></script>
+</body>
+</html>

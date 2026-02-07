@@ -11,6 +11,7 @@ import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
 import { inicializarSpritesheets } from './core/SpriteConfig';
+import { ExternalSpriteMetadata } from './core/ExternalMetadata';
 import { GameConfig, IGame } from './types';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
@@ -477,14 +478,24 @@ class Game implements IGame {
       // Aquí usaremos la misma imagen base64 como "hoja de sprites" para la demo.
       const sheetBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAM0lEQVRYR+3VwQkAMAgEMKv779S7hyCId8ALEn6vSREIECBAgAABAgQIECBAgMAtfOAAESofvzwAAAAASUVORK5CYII=';
 
-      await Promise.all([
+      const imagesToLoad = [
           sm.cargarImagen('sheet_players', sheetBase64),
           sm.cargarImagen('sheet_npcs', sheetBase64),
           sm.cargarImagen('sheet_static', sheetBase64),
           sm.cargarImagen('sheet_dynamic', sheetBase64),
           sm.cargarImagen('food_apple', sheetBase64),
           sm.cargarImagen('tool_pickaxe', sheetBase64)
-      ]);
+      ];
+
+      // Cargar imágenes de metadatos externos si existen
+      if (ExternalSpriteMetadata && ExternalSpriteMetadata.imagen) {
+          // Para la demo, si es 'hero.png', usaremos el mismo placeholder base64
+          // En producción esto cargaría el archivo real del servidor.
+          const url = ExternalSpriteMetadata.imagen === 'hero.png' ? sheetBase64 : ExternalSpriteMetadata.imagen;
+          imagesToLoad.push(sm.cargarImagen(ExternalSpriteMetadata.imagen, url));
+      }
+
+      await Promise.all(imagesToLoad);
 
       // Inicializar todos los mapeos desde la configuración
       inicializarSpritesheets(sm);

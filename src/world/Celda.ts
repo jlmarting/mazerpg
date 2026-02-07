@@ -17,6 +17,8 @@ export class Celda {
   esPortal: boolean = false;
   tienePico: boolean = false;
   golpesCavar: number = 0;
+  tipoEscenario: 'ninguno' | 'puerta' | 'trampa' = 'ninguno';
+  estadoEscenario: string = 'idle';
 
   constructor(fila: number, columna: number) {
     this.fila = fila;

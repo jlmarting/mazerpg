@@ -78,8 +78,11 @@ export class Renderer {
         const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
 
         if (celda.esTransitable) {
-          // Intentar dibujar sprite de suelo
-          if (this.spriteManager.obtenerSprite('floor')) {
+          // Intentar dibujar sprite de suelo (Hoja de escenario estático)
+          const spriteSuelo = 'static_suelo_cesped';
+          if (this.spriteManager.obtenerSprite(spriteSuelo)) {
+            this.spriteManager.dibujarSprite(this.ctx, spriteSuelo, x, y, TAMANO_CELDA, TAMANO_CELDA);
+          } else if (this.spriteManager.obtenerSprite('floor')) {
             this.spriteManager.dibujarSprite(this.ctx, 'floor', x, y, TAMANO_CELDA, TAMANO_CELDA);
           } else {
             this.ctx.fillStyle = '#FFF';
@@ -91,7 +94,10 @@ export class Renderer {
           this.ctx.lineWidth = 2;
 
           if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
-            if (this.spriteManager.obtenerSprite('wall_top')) {
+            const spriteMuro = 'static_muro_normal';
+            if (this.spriteManager.obtenerSprite(spriteMuro)) {
+                this.spriteManager.dibujarSprite(this.ctx, spriteMuro, x, y, TAMANO_CELDA, 4);
+            } else if (this.spriteManager.obtenerSprite('wall_top')) {
                 this.spriteManager.dibujarSprite(this.ctx, 'wall_top', x, y, TAMANO_CELDA, 4);
             } else {
                 this.ctx.beginPath();
@@ -185,6 +191,14 @@ export class Renderer {
                 this.ctx.textAlign = 'center';
                 this.ctx.fillText('⛏️', (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
             }
+          }
+
+          // Dibujar Escenario Dinámico (Puertas, Trampas)
+          if (celda.tipoEscenario !== 'ninguno') {
+              const spriteDyn = `dynamic_${celda.tipoEscenario}_${celda.estadoEscenario}_0`;
+              if (this.spriteManager.obtenerSprite(spriteDyn)) {
+                  this.spriteManager.dibujarSprite(this.ctx, spriteDyn, x, y, TAMANO_CELDA, TAMANO_CELDA);
+              }
           }
         }
       }

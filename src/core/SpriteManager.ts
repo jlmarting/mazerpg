@@ -38,8 +38,28 @@ export class SpriteManager {
             console.warn(`Imagen ${imagenNombre} no encontrada para definir sprite ${nombre}. Imágenes disponibles: ${Array.from(this.images.keys()).join(', ')}`);
             return;
         }
-        // console.log(`Sprite definido: ${nombre}`);
         this.sprites.set(nombre, { image, sx, sy, sw, sh });
+    }
+
+    /**
+     * Define múltiples sprites a partir de una cuadrícula (spritesheet).
+     */
+    definirCuadricula(imagenNombre: string, prefijo: string, columnas: number, filas: number, sw: number, sh: number, padding: number = 0) {
+        for (let f = 0; f < filas; f++) {
+            for (let c = 0; c < columnas; c++) {
+                const nombre = `${prefijo}_${f}_${c}`;
+                this.definirSprite(nombre, imagenNombre, c * (sw + padding), f * (sh + padding), sw, sh);
+            }
+        }
+    }
+
+    /**
+     * Define una animación a partir de una fila o secuencia en la hoja.
+     */
+    definirAnimacion(nombreAnim: string, imagenNombre: string, frames: number, fila: number, sw: number, sh: number, padding: number = 0) {
+        for (let i = 0; i < frames; i++) {
+            this.definirSprite(`${nombreAnim}_${i}`, imagenNombre, i * (sw + padding), fila * (sh + padding), sw, sh);
+        }
     }
 
     obtenerSprite(nombre: string): SpriteInfo | undefined {

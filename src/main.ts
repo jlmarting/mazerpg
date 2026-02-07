@@ -10,6 +10,7 @@ import { NetworkManager } from './network/NetworkManager';
 import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
+import { inicializarSpritesheets } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
@@ -469,48 +470,33 @@ class Game implements IGame {
     }, 5000);
   }
 
-  inicializarAssets() {
+  async inicializarAssets() {
       const sm = this.renderer.spriteManager;
 
-      // Suelo (Césped - Verde)
-      sm.cargarImagen('floor_grass', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALUlEQVRYR+3VQQEAAAgDoK1/aCPoYwYmYAnS9atSBAIECBAgQIAAAQIECBAgMAsf+AARKp88AAAAAElFTkSuQmCC');
-      sm.definirSprite('floor', 'floor_grass', 0, 0, 32, 32);
+      // En un entorno real, cargaríamos imágenes reales.
+      // Aquí usaremos la misma imagen base64 como "hoja de sprites" para la demo.
+      const sheetBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAM0lEQVRYR+3VwQkAMAgEMKv779S7hyCId8ALEn6vSREIECBAgAABAgQIECBAgMAtfOAAESofvzwAAAAASUVORK5CYII=';
 
-      // Muro (Piedra - Gris)
-      sm.cargarImagen('wall_stone', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAM0lEQVRYR+3VwQkAMAgEMKv779S7hyCId8ALEn6vSREIECBAgAABAgQIECBAgMAtfOAAESofvzwAAAAASUVORK5CYII=');
-      sm.definirSprite('wall_top', 'wall_stone', 0, 0, 32, 4);
-      sm.definirSprite('wall_bottom', 'wall_stone', 0, 28, 32, 4);
-      sm.definirSprite('wall_left', 'wall_stone', 0, 0, 4, 32);
-      sm.definirSprite('wall_right', 'wall_stone', 28, 0, 4, 32);
+      await Promise.all([
+          sm.cargarImagen('sheet_players', sheetBase64),
+          sm.cargarImagen('sheet_npcs', sheetBase64),
+          sm.cargarImagen('sheet_static', sheetBase64),
+          sm.cargarImagen('sheet_dynamic', sheetBase64),
+          sm.cargarImagen('food_apple', sheetBase64),
+          sm.cargarImagen('tool_pickaxe', sheetBase64)
+      ]);
 
-      // Comida (Manzana)
-      sm.cargarImagen('food_apple', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVRYR+3VQQEAAAgDoK1/aBvCByYmYAnS9atSBAIECBAgQIAAAQIECBAgMAtbWAAREmR4OgAAAABJRU5ErkJggg==');
-      sm.definirSprite('food_manzana', 'food_apple', 0, 0, 32, 32);
+      // Inicializar todos los mapeos desde la configuración
+      inicializarSpritesheets(sm);
 
-      // Herramienta (Pico)
-      sm.cargarImagen('tool_pickaxe', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVRYR+3VQQEAAAgDoK1/aBvCByYmYAnS9atSBAIECBAgQIAAAQIECBAgMAtbWAAREmR4OgAAAABJRU5ErkJggg==');
+      // Compatibilidad con nombres antiguos para no romper nada mientras refactorizamos
+      sm.definirSprite('floor', 'sheet_static', 0, 25 * 32, 32, 32);
+      sm.definirSprite('wall_top', 'sheet_static', 0, 23 * 32, 32, 4);
+      sm.definirSprite('wall_bottom', 'sheet_static', 0, 23 * 32 + 28, 32, 4);
+      sm.definirSprite('wall_left', 'sheet_static', 0, 23 * 32, 4, 32);
+      sm.definirSprite('wall_right', 'sheet_static', 28, 23 * 32, 4, 32);
       sm.definirSprite('pickaxe', 'tool_pickaxe', 0, 0, 32, 32);
-
-      // Definir Sprite de Jugador (Demo)
-      const playerBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAASklEQVRYR+2X0QoAIAiG7f9/unNoiFpD2vAmCOqDOfVpUoRE6p0Z0AFYAVP+qgAx8O9T0HXiM0D6R9E9YLoHiAb8YMDvAQ6I7gGvA78Y7AAXRE8N5O0AAAAASUVORK5CYII=';
-
-      const clases = ['guerrero', 'explorador', 'mago'];
-      const estados = ['idle', 'walking', 'attacking', 'defending', 'fallen'];
-
-      clases.forEach(c => {
-          estados.forEach(e => {
-              const frames = (e === 'defending' || e === 'idle') ? 1 : 3;
-              for (let f = 0; f < frames; f++) {
-                  const key = `player_${c}_${e}_${f}`;
-                  sm.cargarImagen(key, playerBase64);
-              }
-          });
-      });
-
-      // NPC (Orco)
-      sm.cargarImagen('npc_orco_idle_0', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAARElEQVRYR+2V0QoAIAiG7f9/unNoG0zXEDZ0FYJ9MKa9pAhJpD5pAA6AA6Z0KgI6kO8UfB38N4B0T8E+wPYOUA3owIBfA/YA7BPvAb8Y7AA2xU8NnIEnAAAAAElFTkSuQmCC');
-      sm.cargarImagen('npc_orco_walking_0', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAARElEQVRYR+2V0QoAIAiG7f9/unNoG0zXEDZ0FYJ9MKa9pAhJpD5pAA6AA6Z0KgI6kO8UfB38N4B0T8E+wPYOUA3owIBfA/YA7BPvAb8Y7AA2xU8NnIEnAAAAAElFTkSuQmCC');
-      sm.cargarImagen('npc_orco_attacking_0', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAARElEQVRYR+2V0QoAIAiG7f9/unNoG0zXEDZ0FYJ9MKa9pAhJpD5pAA6AA6Z0KgI6kO8UfB38N4B0T8E+wPYOUA3owIBfA/YA7BPvAb8Y7AA2xU8NnIEnAAAAAElFTkSuQmCC');
+      sm.definirSprite('food_manzana', 'food_apple', 0, 0, 32, 32);
   }
 
   regresarAlLobby() {
@@ -781,6 +767,7 @@ class Game implements IGame {
         this.asustarMonstruosCercanos(pos.f, pos.c);
         this.generarEnemigos();
         this.generarObjetos();
+        this.generarEscenarioDinamicoDemo();
     }
     this.cicloDeJuego();
   }
@@ -1144,6 +1131,7 @@ class Game implements IGame {
         cam: this.protagonista.estaCaminando,
         viva: this.protagonista.estaVivo,
         nick: this.protagonista.nombre,
+        clase: this.protagonista.clase,
         est: this.protagonista.estadoActual,
         fr: this.protagonista.frameActual
     });
@@ -1159,6 +1147,7 @@ class Game implements IGame {
                 cam: j.entidad.estaCaminando,
                 viva: j.entidad.estaVivo,
                 nick: j.entidad.nombre,
+                clase: j.entidad.clase,
                 est: j.entidad.estadoActual,
                 fr: j.entidad.frameActual
             });
@@ -1947,6 +1936,25 @@ class Game implements IGame {
     }
   }
 
+  generarEscenarioDinamicoDemo() {
+      // Demo: Colocar algunas puertas y trampas cerca del inicio
+      for (let i = 0; i < 5; i++) {
+          let f, c;
+          do {
+              f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
+              c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
+          } while (!this.mapaLaberinto[f][c].esTransitable);
+
+          if (i < 3) {
+              this.mapaLaberinto[f][c].tipoEscenario = 'puerta';
+              this.mapaLaberinto[f][c].estadoEscenario = 'cerrada';
+          } else {
+              this.mapaLaberinto[f][c].tipoEscenario = 'trampa';
+              this.mapaLaberinto[f][c].estadoEscenario = 'inactiva';
+          }
+      }
+  }
+
   verificarPortal(entidad: any) {
     const celda = this.mapaLaberinto[entidad.fila][entidad.columna];
     if (celda.esPortal) {
@@ -2172,10 +2180,12 @@ class Game implements IGame {
                                 rem.entidad.estaVivo = entData.viva;
                                 rem.entidad.estaCaminando = entData.cam;
                                 rem.entidad.nombre = entData.nick;
+                                if (entData.clase) rem.entidad.clase = entData.clase;
                                 if (entData.est) rem.entidad.estadoActual = entData.est;
                                 if (entData.fr !== undefined) rem.entidad.frameActual = entData.fr;
                             } else if (rem) {
                                 rem.entidad = new JugadorRemoto(entData.f, entData.c, entData.nick, entData.id);
+                                if (entData.clase) rem.entidad.clase = entData.clase;
                                 this.setupEntity(rem.entidad);
                             }
                         }
@@ -2214,6 +2224,7 @@ class Game implements IGame {
             const jInfo = this.network.jugadoresRemotos.get(realId)!;
             if (!jInfo.entidad) {
                 jInfo.entidad = new JugadorRemoto(0, 0, msg.nick, idSujeto);
+                if (msg.clase) jInfo.entidad.clase = msg.clase;
                 this.setupEntity(jInfo.entidad);
             }
 

@@ -3,6 +3,7 @@ import { CameraOffset, GameConfig } from '../types';
 
 export class JugadorRemoto extends EntidadRPG {
   public id: string;
+  public clase: string = 'guerrero';
   constructor(fila: number, columna: number, nombre: string, id: string) {
     super(fila, columna, nombre);
     this.id = id;
@@ -22,7 +23,7 @@ export class JugadorRemoto extends EntidadRPG {
     const escala = TAMANO_CELDA * 0.6;
 
     const spriteManager = (window as any).game?.renderer?.spriteManager;
-    const currentSprite = `player_remote_${this.estadoActual}_${this.frameActual}`;
+    const currentSprite = `player_${this.clase}_${this.estadoActual}_${this.frameActual}`;
 
     ctx.save();
 

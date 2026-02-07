@@ -212,9 +212,14 @@ export class EnemigoNPC extends EntidadRPG {
     const escala = TAMANO_CELDA * 0.4;
 
     const spriteManager = (window as any).game?.renderer?.spriteManager;
-    const spriteKey = `npc_${this.tipo.toLowerCase()}_${this.estadoActual}_${this.frameActual}`;
+    // Normalizar tipo para coincidir con SpriteConfig (esqueleto, orco...)
+    const tipoNormalizado = this.tipo.toLowerCase() === 'esqueleto' ? 'esqueleto' :
+                           this.tipo.toLowerCase() === 'orco' ? 'orco' :
+                           this.tipo.toLowerCase() === 'goblin' ? 'esqueleto' : 'orco'; // Fallbacks
 
-    if (spriteManager && (spriteManager.obtenerSprite(spriteKey) || spriteManager.obtenerSprite(`npc_${this.tipo.toLowerCase()}`))) {
+    const spriteKey = `npc_${tipoNormalizado}_${this.estadoActual}_${this.frameActual}`;
+
+    if (spriteManager && (spriteManager.obtenerSprite(spriteKey) || spriteManager.obtenerSprite(`npc_${tipoNormalizado}`))) {
         spriteManager.dibujarSprite(ctx, spriteKey, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
         return;
     }

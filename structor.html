@@ -24,10 +24,11 @@
         .btn-primary:hover { background: #0056b3; }
         .btn-secondary { background: #444; color: #fff; margin-top: 10px; }
 
-        #output { flex: 1; margin-top: 10px; background: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 10px; border-radius: 4px; border: 1px solid #333; overflow: auto; white-space: pre-wrap; }
+        #output { height: 200px; margin-top: 10px; background: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 10px; border-radius: 4px; border: 1px solid #333; overflow: auto; white-space: pre-wrap; }
 
-        .preview-area { width: 100%; height: 100px; background: #000; border: 1px dashed #555; margin-top: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        #previewCanvas { image-rendering: pixelated; }
+        .preview-area { width: 100%; height: 120px; background: #000; border: 1px dashed #555; margin-top: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+        #previewCanvas { image-rendering: pixelated; transform: scale(2); }
+        .anim-controls { width: 100%; display: flex; gap: 5px; padding: 5px; background: rgba(0,0,0,0.5); position: absolute; bottom: 0; box-sizing: border-box; }
 
         .toolbar { position: absolute; top: 10px; right: 10px; display: flex; gap: 10px; z-index: 100; }
         .tool-btn { background: rgba(30, 30, 30, 0.8); color: white; border: 1px solid #555; padding: 5px 10px; cursor: pointer; border-radius: 4px; }
@@ -56,25 +57,29 @@
 
         <div class="group">
             <label>ASIGNACIÓN LÓGICA:</label>
-            <select id="catSelect">
-                <option value="jugadores">JUGADORES</option>
-                <option value="npcs">NPCs</option>
-                <option value="escenario_estatico">ESCENARIO ESTÁTICO</option>
-                <option value="escenario_dinamico">ESCENARIO DINÁMICO</option>
-            </select>
-            <input type="text" id="claseInput" placeholder="Clase (ej. guerrero)" style="margin-top:5px;">
-            <input type="text" id="estadoInput" placeholder="Estado (ej. walking)" style="margin-top:5px;">
+            <select id="catSelect"></select>
+            <select id="claseSelect" style="margin-top:5px;"></select>
+            <select id="accionSelect" style="margin-top:5px;"></select>
+            <div id="frameInfo" style="font-size: 10px; color: #aaa; margin-top: 5px;">Frames asignados: 0</div>
         </div>
 
-        <div class="group" style="flex: 1; display: flex; flex-direction: column;">
-            <label>VISTA PREVIA:</label>
+        <div class="group" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+            <label>SIMULACIÓN DE ANIMACIÓN:</label>
             <div class="preview-area">
                 <canvas id="previewCanvas" width="64" height="64"></canvas>
+                <div class="anim-controls">
+                    <button class="tool-btn" id="btnPlayAnim" style="padding: 2px 5px; font-size: 9px;">PLAY</button>
+                    <input type="range" id="animSpeed" min="50" max="1000" value="200" style="flex: 1;">
+                    <span id="speedVal" style="font-size: 9px; width: 30px;">200ms</span>
+                </div>
             </div>
 
             <label style="margin-top: 15px;">SALIDA METADATOS:</label>
             <div id="output">{}</div>
-            <button class="btn btn-primary" id="btnExport" style="margin-top: 10px;">AÑADIR A CONFIG</button>
+            <div style="display: flex; gap: 5px;">
+                <button class="btn btn-primary" id="btnExport" style="margin-top: 10px; flex: 1;">AÑADIR FRAME</button>
+                <button class="btn btn-secondary" id="btnClearAnim" style="margin-top: 10px;">LIMPIAR ACCIÓN</button>
+            </div>
         </div>
     </div>
 

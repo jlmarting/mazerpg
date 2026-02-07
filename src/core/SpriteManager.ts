@@ -74,8 +74,9 @@ export class SpriteManager {
         let sprite = this.obtenerSprite(nombre);
 
         // Fallback para animaciones: si no existe el frame específico, buscar el base o el frame 0
-        if (!sprite && nombre.match(/_\d$/)) {
-            const baseNombre = nombre.substring(0, nombre.length - 2);
+        if (!sprite && nombre.match(/_\d+$/)) {
+            const lastUnderscore = nombre.lastIndexOf('_');
+            const baseNombre = nombre.substring(0, lastUnderscore);
             sprite = this.obtenerSprite(baseNombre) || this.obtenerSprite(`${baseNombre}_0`);
         }
 
@@ -87,5 +88,16 @@ export class SpriteManager {
             ctx.fillStyle = '#f0f';
             ctx.fillRect(x, y, w, h);
         }
+    }
+
+    /**
+     * Cuenta cuántos frames tiene una animación registrada.
+     */
+    obtenerContadorFrames(nombreBase: string): number {
+        let count = 0;
+        while (this.sprites.has(`${nombreBase}_${count}`)) {
+            count++;
+        }
+        return count;
     }
 }

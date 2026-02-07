@@ -112,12 +112,17 @@ export abstract class EntidadRPG {
     if (ahora - this.ultimaActualizacionFrame > msPorFrame) {
         this.ultimaActualizacionFrame = ahora;
 
-        // La mayoría de animaciones tienen 3 fases, excepto defender (1)
-        let maxFrames = 3;
-        if (this.estadoActual === 'defending') maxFrames = 1;
-        if (this.estadoActual === 'idle') maxFrames = 1;
+        const spriteManager = (window as any).game?.renderer?.spriteManager;
+        let maxFrames = 1;
 
-        if (this.estadoActual === 'fallen' && this.frameActual === 2) {
+        if (spriteManager) {
+            const prefix = (this as any).id !== undefined ? 'npc' : 'player';
+            const clase = (this as any).clase || (this as any).tipo?.toLowerCase() || 'guerrero';
+            const keyBase = `${prefix}_${clase}_${this.estadoActual}`;
+            maxFrames = spriteManager.obtenerContadorFrames(keyBase) || 1;
+        }
+
+        if (this.estadoActual === 'fallen' && this.frameActual === maxFrames - 1 && maxFrames > 1) {
             // Se queda en el último frame de caído
         } else {
             this.frameActual = (this.frameActual + 1) % maxFrames;

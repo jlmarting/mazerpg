@@ -40,9 +40,21 @@ Se ha implementado una aplicación independiente para facilitar el mapeo de spri
 ### Flujo de Trabajo:
 1. Abrir `structor.html` en el navegador.
 2. Cargar la hoja de sprites deseada.
-3. Seleccionar visualmente el frame o sprite.
-4. Definir a qué elemento del juego pertenece (ej: Jugadores -> Guerrero -> Walking).
-5. Copiar el JSON generado al proyecto.
+3. **Selección Visual:** El cursor por defecto es 32x32. Arrastre desde dentro para posicionar o desde fuera para redimensionar. Shift + Flechas para ajuste de precisión.
+4. **Simulación:** Use el panel de animación para ver cómo se comportan los frames asignados a una acción. Ajuste la velocidad en ms para validar la fluidez.
+5. **Asignación Lógica:** El selector utiliza el **Contrato Juego-Herramienta** para asegurar que los nombres de clase y acción coincidan con lo que el motor espera.
+6. **Exportación:** Copie el JSON del bloque de metadatos (que incluye el nombre del archivo original) a `SpriteConfig.ts`.
+
+## 4. El Contrato de Sprites (`GameSpriteContract`)
+
+Para que la herramienta sea consciente de las necesidades del motor, existe un objeto de contrato que define:
+- **Categorías:** Jugadores, NPCs, Escenario Estático/Dinámico, VFX, Items.
+- **Entidades:** Tipos específicos como Guerrero, Mago, Orco, Puerta.
+- **Acciones/Estados:** Idle, Walking, Attacking, Open, Closed.
+
+Este contrato asegura que no haya errores de tipografía al mapear recursos.
+
+## 5. Motor de Animación Dinámico
 
 ## 4. Flujo de Renderizado
 

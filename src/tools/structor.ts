@@ -2,6 +2,7 @@
 /**
  * Structor - Sprite Mapping Tool Logic
  */
+import { GameSpriteContract } from '../core/SpriteConfig';
 
 class Structor {
     private canvas: HTMLCanvasElement;
@@ -11,12 +12,18 @@ class Structor {
     private previewCanvas: HTMLCanvasElement;
     private previewCtx: CanvasRenderingContext2D;
     private image: HTMLImageElement | null = null;
+    private imageName: string = "unknown_sheet";
 
     private zoom: number = 1;
     private isDragging: boolean = false;
+    private isMovingBox: boolean = false;
     private gridVisible: boolean = true;
     private selection = { x: 0, y: 0, w: 32, h: 32 };
-    private config: any = {};
+    private config: any = { imagen: "", mapeo: {} };
+
+    private isPlaying: boolean = false;
+    private currentFrameIndex: number = 0;
+    private animInterval: any = null;
 
     constructor() {
         this.canvas = document.getElementById('spriteCanvas') as HTMLCanvasElement;
@@ -34,9 +41,12 @@ class Structor {
         document.getElementById('btnLoadDemo')?.addEventListener('click', () => this.loadDemo());
 
         const viewer = document.getElementById('viewer')!;
-        viewer.addEventListener('mousedown', (e) => this.startSelection(e));
-        window.addEventListener('mousemove', (e) => this.updateSelection(e));
-        window.addEventListener('mouseup', () => this.endSelection());
+        viewer.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        window.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        window.addEventListener('mouseup', () => this.handleMouseUp());
+
+        // Contract UI
+        this.initContractUI();
 
         // Zoom controls
         document.getElementById('btnZoomIn')?.addEventListener('click', () => this.setZoom(this.zoom * 1.2));
@@ -52,9 +62,66 @@ class Structor {
             document.getElementById(id)?.addEventListener('input', () => this.updateSelectionFromInputs());
         });
 
-        document.getElementById('btnExport')?.addEventListener('click', () => this.exportToConfig());
+        document.getElementById('btnExport')?.addEventListener('click', () => this.addFrameToConfig());
+        document.getElementById('btnClearAnim')?.addEventListener('click', () => this.clearCurrentAction());
+
+        // Animation controls
+        document.getElementById('btnPlayAnim')?.addEventListener('click', () => this.togglePlay());
+        document.getElementById('animSpeed')?.addEventListener('input', (e) => {
+            const val = (e.target as HTMLInputElement).value;
+            document.getElementById('speedVal')!.textContent = `${val}ms`;
+            if (this.isPlaying) {
+                this.stopAnim();
+                this.startAnim();
+            }
+        });
 
         window.addEventListener('keydown', (e) => this.handleKeyboard(e));
+    }
+
+    private initContractUI() {
+        const catSelect = document.getElementById('catSelect') as HTMLSelectElement;
+        const claseSelect = document.getElementById('claseSelect') as HTMLSelectElement;
+        const accionSelect = document.getElementById('accionSelect') as HTMLSelectElement;
+
+        const contract: any = GameSpriteContract.categorias;
+
+        Object.keys(contract).forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.textContent = cat.toUpperCase();
+            catSelect.appendChild(opt);
+        });
+
+        const updateClases = () => {
+            claseSelect.innerHTML = "";
+            const cat = catSelect.value;
+            contract[cat].clases.forEach((clase: string) => {
+                const opt = document.createElement('option');
+                opt.value = clase;
+                opt.textContent = clase.toUpperCase();
+                claseSelect.appendChild(opt);
+            });
+            updateAcciones();
+        };
+
+        const updateAcciones = () => {
+            accionSelect.innerHTML = "";
+            const cat = catSelect.value;
+            contract[cat].acciones.forEach((accion: string) => {
+                const opt = document.createElement('option');
+                opt.value = accion;
+                opt.textContent = accion.toUpperCase();
+                accionSelect.appendChild(opt);
+            });
+            this.updateFrameInfo();
+        };
+
+        catSelect.addEventListener('change', updateClases);
+        claseSelect.addEventListener('change', updateAcciones);
+        accionSelect.addEventListener('change', () => this.updateFrameInfo());
+
+        updateClases();
     }
 
     private handleKeyboard(e: KeyboardEvent) {
@@ -75,6 +142,8 @@ class Structor {
     private handleFile(e: any) {
         const file = e.target.files[0];
         if (!file) return;
+        this.imageName = file.name;
+        this.config.imagen = this.imageName;
         const reader = new FileReader();
         reader.onload = (event) => {
             this.loadImage(event.target?.result as string);
@@ -83,6 +152,8 @@ class Structor {
     }
 
     private loadDemo() {
+        this.imageName = "demo_sheet.png";
+        this.config.imagen = this.imageName;
         const demoSheet = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAM0lEQVRYR+3VwQkAMAgEMKv779S7hyCId8ALEn6vSREIECBAgAABAgQIECBAgMAtfOAAESofvzwAAAAASUVORK5CYII=';
         this.loadImage(demoSheet);
     }
@@ -123,36 +194,47 @@ class Structor {
         container.style.transform = `scale(${this.zoom})`;
     }
 
-    private startSelection(e: MouseEvent) {
+    private handleMouseDown(e: MouseEvent) {
         if (!this.image) return;
         const rect = this.canvas.getBoundingClientRect();
         const x = (e.clientX - rect.left) / this.zoom;
         const y = (e.clientY - rect.top) / this.zoom;
 
-        if (x >= 0 && x <= this.canvas.width && y >= 0 && y <= this.canvas.height) {
+        // Si clicamos dentro del cuadro actual, arrastramos
+        if (x >= this.selection.x && x <= this.selection.x + this.selection.w &&
+            y >= this.selection.y && y <= this.selection.y + this.selection.h) {
+            this.isMovingBox = true;
+        } else if (x >= 0 && x <= this.canvas.width && y >= 0 && y <= this.canvas.height) {
+            // Si clicamos fuera, empezamos nueva selección desde ese punto
             this.isDragging = true;
             this.selection.x = Math.floor(x);
             this.selection.y = Math.floor(y);
-            this.updateInputsFromSelection();
-            this.updateSelectionBox();
         }
     }
 
-    private updateSelection(e: MouseEvent) {
-        if (!this.isDragging || !this.image) return;
+    private handleMouseMove(e: MouseEvent) {
+        if (!this.image) return;
         const rect = this.canvas.getBoundingClientRect();
         const x = (e.clientX - rect.left) / this.zoom;
         const y = (e.clientY - rect.top) / this.zoom;
 
-        this.selection.w = Math.max(1, Math.floor(x - this.selection.x));
-        this.selection.h = Math.max(1, Math.floor(y - this.selection.y));
+        if (this.isDragging) {
+            this.selection.w = Math.max(1, Math.floor(x - this.selection.x));
+            this.selection.h = Math.max(1, Math.floor(y - this.selection.y));
+        } else if (this.isMovingBox) {
+            this.selection.x = Math.floor(x - this.selection.w / 2);
+            this.selection.y = Math.floor(y - this.selection.h / 2);
+        } else {
+            return;
+        }
 
         this.updateInputsFromSelection();
         this.updateSelectionBox();
     }
 
-    private endSelection() {
+    private handleMouseUp() {
         this.isDragging = false;
+        this.isMovingBox = false;
         this.updatePreview();
     }
 
@@ -202,22 +284,97 @@ class Structor {
         );
     }
 
-    private exportToConfig() {
+    private addFrameToConfig() {
         const cat = (document.getElementById('catSelect') as HTMLSelectElement).value;
-        const clase = (document.getElementById('claseInput') as HTMLInputElement).value || 'default';
-        const estado = (document.getElementById('estadoInput') as HTMLInputElement).value || 'idle';
+        const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
+        const accion = (document.getElementById('accionSelect') as HTMLSelectElement).value;
 
-        if (!this.config[cat]) this.config[cat] = {};
-        if (!this.config[cat][clase]) this.config[cat][clase] = {};
+        if (!this.config.mapeo[cat]) this.config.mapeo[cat] = {};
+        if (!this.config.mapeo[cat][clase]) this.config.mapeo[cat][clase] = {};
+        if (!this.config.mapeo[cat][clase][accion]) {
+            this.config.mapeo[cat][clase][accion] = { puntos: [] };
+        }
 
-        this.config[cat][clase][estado] = {
+        this.config.mapeo[cat][clase][accion].imagen = this.imageName;
+
+        this.config.mapeo[cat][clase][accion].puntos.push({
             x: this.selection.x,
             y: this.selection.y,
             w: this.selection.w,
             h: this.selection.h
-        };
+        });
 
-        document.getElementById('output')!.textContent = JSON.stringify(this.config, null, 2);
+        this.updateFrameInfo();
+        this.renderOutput();
+    }
+
+    private clearCurrentAction() {
+        const cat = (document.getElementById('catSelect') as HTMLSelectElement).value;
+        const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
+        const accion = (document.getElementById('accionSelect') as HTMLSelectElement).value;
+
+        if (this.config.mapeo[cat] && this.config.mapeo[cat][clase]) {
+            delete this.config.mapeo[cat][clase][accion];
+        }
+        this.updateFrameInfo();
+        this.renderOutput();
+    }
+
+    private updateFrameInfo() {
+        const cat = (document.getElementById('catSelect') as HTMLSelectElement).value;
+        const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
+        const accion = (document.getElementById('accionSelect') as HTMLSelectElement).value;
+
+        const puntos = this.config.mapeo[cat]?.[clase]?.[accion]?.puntos || [];
+        document.getElementById('frameInfo')!.textContent = `Frames asignados: ${puntos.length}`;
+    }
+
+    private renderOutput() {
+        const out = document.getElementById('output')!;
+        out.textContent = JSON.stringify(this.config, null, 2);
+        out.scrollTop = out.scrollHeight;
+    }
+
+    private togglePlay() {
+        if (this.isPlaying) {
+            this.stopAnim();
+        } else {
+            this.startAnim();
+        }
+    }
+
+    private startAnim() {
+        const cat = (document.getElementById('catSelect') as HTMLSelectElement).value;
+        const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
+        const accion = (document.getElementById('accionSelect') as HTMLSelectElement).value;
+        const puntos = this.config.mapeo[cat]?.[clase]?.[accion]?.puntos || [];
+
+        if (puntos.length === 0) return;
+
+        this.isPlaying = true;
+        document.getElementById('btnPlayAnim')!.textContent = "STOP";
+
+        const speed = parseInt((document.getElementById('animSpeed') as HTMLInputElement).value);
+        this.animInterval = setInterval(() => {
+            this.currentFrameIndex = (this.currentFrameIndex + 1) % puntos.length;
+            this.drawPreviewFrame(puntos[this.currentFrameIndex]);
+        }, speed);
+    }
+
+    private stopAnim() {
+        this.isPlaying = false;
+        document.getElementById('btnPlayAnim')!.textContent = "PLAY";
+        clearInterval(this.animInterval);
+        this.updatePreview(); // Volver al frame seleccionado actualmente
+    }
+
+    private drawPreviewFrame(p: any) {
+        if (!this.image) return;
+        this.previewCtx.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
+        const ratio = Math.min(this.previewCanvas.width / p.w, this.previewCanvas.height / p.h);
+        const nw = p.w * ratio;
+        const nh = p.h * ratio;
+        this.previewCtx.drawImage(this.image, p.x, p.y, p.w, p.h, (this.previewCanvas.width - nw) / 2, (this.previewCanvas.height - nh) / 2, nw, nh);
     }
 }
 

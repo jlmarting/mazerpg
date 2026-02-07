@@ -11,16 +11,50 @@ export interface ISpriteSheetConfig {
         [categoria: string]: {
             [clase: string]: {
                 [estado: string]: {
-                    fila: number;
-                    frames: number;
+                    fila?: number; // Para retrocompatibilidad o definición por rejilla
+                    frames?: number;
+                    puntos?: { x: number, y: number, w: number, h: number }[]; // Definición precisa para STRUCTOR
                 }
             }
         }
     }
 }
 
+/**
+ * CONTRATO ENTRE JUEGO Y HERRAMIENTA (Schema)
+ * Define qué categorías, entidades y acciones espera el motor.
+ */
+export const GameSpriteContract = {
+    categorias: {
+        jugadores: {
+            clases: ['guerrero', 'explorador', 'mago'],
+            acciones: ['idle', 'walking', 'attacking', 'defending', 'fallen']
+        },
+        npcs: {
+            clases: ['esqueleto', 'orco', 'goblin', 'minotauro'],
+            acciones: ['idle', 'walking', 'attacking', 'fallen']
+        },
+        escenario_estatico: {
+            clases: ['suelo', 'muro'],
+            acciones: ['normal', 'variante1', 'variante2']
+        },
+        escenario_dinamico: {
+            clases: ['puerta', 'trampa'],
+            acciones: ['abierta', 'cerrada', 'activa', 'inactiva']
+        },
+        vfx: {
+            clases: ['bola_fuego', 'hielo', 'flecha', 'remolino'],
+            acciones: ['play']
+        },
+        items: {
+            clases: ['comida', 'pico', 'portal'],
+            acciones: ['idle']
+        }
+    }
+};
+
 export const SpriteConfig: ISpriteSheetConfig = {
-    imagen: 'spritesheet_global', // Nombre base de la imagen cargada
+    imagen: 'sheet_players', // Obsolescente: STRUCTOR usa mapeo dinámico
     dimensiones: { sw: 32, sh: 32, padding: 0 },
     mapeo: {
         jugadores: {
@@ -88,34 +122,30 @@ export const SpriteConfig: ISpriteSheetConfig = {
  * basadas en la configuración centralizada.
  */
 export function inicializarSpritesheets(sm: any) {
-    // Aquí registraríamos las animaciones basándonos en SpriteConfig
     const c = SpriteConfig;
 
-    // Jugadores
-    for (const [clase, estados] of Object.entries(c.mapeo.jugadores)) {
-        for (const [estado, info] of Object.entries(estados)) {
-            sm.definirAnimacion(`player_${clase}_${estado}`, 'sheet_players', info.frames, info.fila, c.dimensiones.sw, c.dimensiones.sh, c.dimensiones.padding);
-        }
-    }
+    const procesarMapping = (mapping: any, prefijo: string, defaultImagen: string) => {
+        for (const [clase, estados] of Object.entries(mapping)) {
+            for (const [estado, infoRaw] of Object.entries(estados as any)) {
+                const info = infoRaw as any;
+                const keyBase = `${prefijo}_${clase}_${estado}`;
+                const imagen = info.imagen || defaultImagen;
 
-    // NPCs
-    for (const [clase, estados] of Object.entries(c.mapeo.npcs)) {
-        for (const [estado, info] of Object.entries(estados)) {
-            sm.definirAnimacion(`npc_${clase}_${estado}`, 'sheet_npcs', info.frames, info.fila, c.dimensiones.sw, c.dimensiones.sh, c.dimensiones.padding);
+                if (info.puntos && info.puntos.length > 0) {
+                    // Mapeo preciso desde STRUCTOR
+                    info.puntos.forEach((p: any, i: number) => {
+                        sm.definirSprite(`${keyBase}_${i}`, imagen, p.x, p.y, p.w, p.h);
+                    });
+                } else if (info.fila !== undefined) {
+                    // Mapeo tradicional por rejilla
+                    sm.definirAnimacion(keyBase, imagen, info.frames || 1, info.fila, c.dimensiones.sw, c.dimensiones.sh, c.dimensiones.padding);
+                }
+            }
         }
-    }
+    };
 
-    // Escenario Estático
-    for (const [tipo, variantes] of Object.entries(c.mapeo.escenario_estatico)) {
-        for (const [variante, info] of Object.entries(variantes)) {
-            sm.definirSprite(`static_${tipo}_${variante}`, 'sheet_static', 0, info.fila * c.dimensiones.sh, c.dimensiones.sw, c.dimensiones.sh);
-        }
-    }
-
-    // Escenario Dinámico
-    for (const [tipo, estados] of Object.entries(c.mapeo.escenario_dinamico)) {
-        for (const [estado, info] of Object.entries(estados)) {
-            sm.definirAnimacion(`dynamic_${tipo}_${estado}`, 'sheet_dynamic', info.frames, info.fila, c.dimensiones.sw, c.dimensiones.sh, c.dimensiones.padding);
-        }
-    }
+    procesarMapping(c.mapeo.jugadores, 'player', 'sheet_players');
+    procesarMapping(c.mapeo.npcs, 'npc', 'sheet_npcs');
+    procesarMapping(c.mapeo.escenario_estatico, 'static', 'sheet_static');
+    procesarMapping(c.mapeo.escenario_dinamico, 'dynamic', 'sheet_dynamic');
 }

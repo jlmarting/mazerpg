@@ -78,15 +78,10 @@ export class Jugador extends EntidadRPG {
     // Intentar obtener el SpriteManager desde el contexto o el objeto global
     const spriteManager = (window as any).game?.renderer?.spriteManager;
     const currentSprite = `player_${this.clase}_${this.estadoActual}_${this.frameActual}`;
-    if (!this.estaVivo) {
-        // ...
-    } else if (!spriteManager?.obtenerSprite(currentSprite)) {
-        // console.warn(`Jugador: Sprite no encontrado: ${currentSprite}`);
-    }
 
     ctx.save();
 
-    if (spriteManager && this.estaVivo) {
+    if (this.estaVivo && spriteManager && spriteManager.obtenerSprite(currentSprite)) {
         spriteManager.dibujarSprite(ctx, currentSprite, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
     } else if (!this.estaVivo) {
         // Dibujar Lápida

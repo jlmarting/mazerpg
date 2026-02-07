@@ -19,8 +19,6 @@ export class SpriteManager {
             img.src = url;
             img.onload = () => {
                 this.images.set(nombre, img);
-                // Por defecto, si cargamos una imagen, definimos un sprite con el mismo nombre que cubra toda la imagen
-                this.definirSprite(nombre, nombre, 0, 0, img.width || 32, img.height || 32);
                 resolve(img);
             };
             img.onerror = (err) => {
@@ -63,7 +61,19 @@ export class SpriteManager {
     }
 
     obtenerSprite(nombre: string): SpriteInfo | undefined {
-        return this.sprites.get(nombre);
+        const sprite = this.sprites.get(nombre);
+        if (!sprite) return undefined;
+
+        // Validar que el sprite esté dentro de los límites de la imagen
+        if (sprite.image) {
+            if (sprite.sx < 0 || sprite.sy < 0 ||
+                sprite.sx >= sprite.image.width ||
+                sprite.sy >= sprite.image.height) {
+                return undefined;
+            }
+        }
+
+        return sprite;
     }
 
     async esperarCarga(): Promise<void> {
@@ -80,13 +90,14 @@ export class SpriteManager {
             sprite = this.obtenerSprite(baseNombre) || this.obtenerSprite(`${baseNombre}_0`);
         }
 
-        if (sprite) {
-            ctx.drawImage(sprite.image, sprite.sx, sprite.sy, sprite.sw, sprite.sh, x, y, w, h);
-        } else {
-            // console.warn(`Sprite no encontrado: ${nombre}`);
-            // Placeholder magenta
-            ctx.fillStyle = '#f0f';
-            ctx.fillRect(x, y, w, h);
+        if (sprite && sprite.image) {
+            // Verificación básica de límites para evitar "dibujar aire" en el canvas
+            const validSX = sprite.sx >= 0 && sprite.sx < sprite.image.width;
+            const validSY = sprite.sy >= 0 && sprite.sy < sprite.image.height;
+
+            if (validSX && validSY) {
+                ctx.drawImage(sprite.image, sprite.sx, sprite.sy, sprite.sw, sprite.sh, x, y, w, h);
+            }
         }
     }
 

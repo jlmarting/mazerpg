@@ -475,8 +475,9 @@ class Game implements IGame {
       const sm = this.renderer.spriteManager;
 
       // En un entorno real, cargaríamos imágenes reales.
-      // Aquí usaremos la misma imagen base64 como "hoja de sprites" para la demo.
-      const sheetBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAM0lEQVRYR+3VwQkAMAgEMKv779S7hyCId8ALEn6vSREIECBAgAABAgQIECBAgMAtfOAAESofvzwAAAAASUVORK5CYII=';
+      // Aquí usaremos una imagen SVG base64 de 256x1024 como "hoja de sprites" para que los
+      // índices de la configuración por defecto sean válidos y no fallen los tests de límites.
+      const sheetBase64 = 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="1024"><rect width="256" height="1024" fill="#888" /><text x="5" y="15" font-family="monospace" font-size="10" fill="white">SPRITE</text></svg>');
 
       const imagesToLoad = [
           sm.cargarImagen('sheet_players', sheetBase64),

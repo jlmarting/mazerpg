@@ -32,18 +32,22 @@ Se ha implementado una aplicación independiente para facilitar el mapeo de spri
 
 ### Funcionalidades:
 - **Carga Visual:** Permite cargar cualquier imagen local como hoja de sprites.
-- **Selección Libre:** Cursor interactivo para seleccionar regiones (por defecto 32x32, pero totalmente redimensionable para Bosses o elementos grandes).
-- **Control Preciso:** Uso de teclado (flechas) para mover la selección píxel a píxel (con Shift) o por rejilla (sin Shift).
-- **Asignación Lógica:** Permite definir la Categoría, Clase y Estado del juego al que corresponde la selección.
-- **Exportación Directa:** Genera el bloque de metadatos JSON listo para ser copiado a `SpriteConfig.ts`.
+- **Selección Inteligente:** Por defecto el selector es 32x32 para facilitar el alineado con la rejilla estándar.
+- **Selección Múltiple:**
+    - `Ctrl + Click`: Agrega un nuevo frame en la posición del puntero.
+    - `Ctrl + Arrastrar`: Mueve una selección individual para ajuste fino.
+    - `Shift + Click`: Crea automáticamente una serie de frames lineales (horizontales o verticales) hasta el puntero.
+    - `Ctrl + Click Derecho`: Elimina una selección específica.
+- **Simulación Ampliada:** Modal dedicado para ver la animación en tamaño grande, permitiendo ajustar el ciclo (ms) en tiempo real para verificar la fluidez de movimientos complejos.
+- **Asignación Lógica:** Dropdowns dinámicos basados en el **Contrato Juego-Herramienta** para evitar errores de nombres.
+- **Exportación Directa:** Genera el bloque de metadatos JSON detallando cada frame (X, Y, W, H) y el archivo de imagen de origen.
 
 ### Flujo de Trabajo:
 1. Abrir `structor.html` en el navegador.
 2. Cargar la hoja de sprites deseada.
-3. **Selección Visual:** El cursor por defecto es 32x32. Arrastre desde dentro para posicionar o desde fuera para redimensionar. Shift + Flechas para ajuste de precisión.
-4. **Simulación:** Use el panel de animación para ver cómo se comportan los frames asignados a una acción. Ajuste la velocidad en ms para validar la fluidez.
-5. **Asignación Lógica:** El selector utiliza el **Contrato Juego-Herramienta** para asegurar que los nombres de clase y acción coincidan con lo que el motor espera.
-6. **Exportación:** Copie el JSON del bloque de metadatos (que incluye el nombre del archivo original) a `SpriteConfig.ts`.
+3. **Mapeo Rápido:** Use `Shift + Click` para capturar tiras enteras de animación en segundos.
+4. **Validación:** Abra la "Simulación Ampliada" para comprobar que los frames están bien alineados.
+5. **Exportación:** Copie el JSON generado a `SpriteConfig.ts`.
 
 ## 4. El Contrato de Sprites (`GameSpriteContract`)
 

@@ -38,14 +38,30 @@ Se propone la creación de una clase `SpriteManager` que:
 ## 4. Conclusión
 La migración es **altamente viable** y no requiere cambios estructurales en la lógica de juego, solo en la capa de presentación. Esto permitirá una mejora visual significativa y la posibilidad de añadir mayor variedad estética al mundo del laberinto.
 
-## 5. Implementación de Demostración
-Se ha implementado una demostración funcional en `src/main.ts` utilizando assets en base64.
+## 5. Implementación del Sistema de Sprites
+Se ha implementado un sistema completo basado en metadatos centralizados y herramientas de diseño.
 
-### Cómo añadir assets reales:
-1. Colocar las imágenes en la carpeta `public/assets/`.
-2. En `src/main.ts`, dentro de `inicializarAssets`:
-   ```typescript
-   await sm.cargarImagen('nombre_hoja', 'assets/mi_imagen.png');
-   sm.definirSprite('floor', 'nombre_hoja', x, y, ancho, alto);
-   ```
-3. El motor automáticamente utilizará el sprite definido en lugar del renderizado geométrico por defecto.
+### Configuración de Assets para Despliegue
+Para activar los sprites reales en un entorno de producción, siga estos pasos:
+
+1. **Alojar las Imágenes**: Coloque sus hojas de sprites (spritesheets) en un servidor accesible o dentro de la carpeta `public/` del proyecto.
+2. **Configurar `src/config/sprites.json`**:
+   - Edite la sección `"recursos"` con las URLs de sus imágenes.
+   - Ejemplo: `"hero": "https://mi-cdn.com/hero_sheet.png"`
+3. **Mapeo de Animaciones**:
+   - Utilice la sección `"mapeo"` para definir qué frames corresponden a cada estado (`idle`, `walking`, etc.).
+   - El motor busca automáticamente claves con el formato `{categoria}_{clase}_{estado}_{frame}`.
+4. **Modo Fallback**: Si una imagen no carga o un frame no está definido, el motor activará automáticamente el **Modo Geométrico** (monigotes), asegurando que el juego siga siendo funcional.
+
+### Herramienta de Diseño: STRUCTOR
+Para facilitar la creación del archivo de configuración, el proyecto incluye **STRUCTOR**, un editor visual de animaciones.
+
+1. **Acceso**: Ejecute el proyecto en modo desarrollo y acceda a `/structor.html`.
+2. **Carga**: Seleccione una de las hojas de sprites configuradas.
+3. **Diseño**:
+   - Haga clic para seleccionar frames (Use `Ctrl` para selección múltiple o `Shift` para rangos).
+   - Defina el nombre de la animación y la velocidad.
+4. **Exportación**: Copie el JSON generado por la herramienta y péguelo directamente en la sección `mapeo` de `src/config/sprites.json`.
+
+### Verificación de Integración
+El `SpriteManager` validará automáticamente que las coordenadas de los sprites estén dentro de los límites de la imagen cargada. Si hay errores, se registrarán en la consola y se utilizarán los fallbacks geométricos.

@@ -10,7 +10,7 @@ import { NetworkManager } from './network/NetworkManager';
 import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
-import { inicializarSpritesheets } from './core/SpriteConfig';
+import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { ExternalSpriteMetadata } from './core/ExternalMetadata';
 import { GameConfig, IGame } from './types';
 import {
@@ -473,30 +473,27 @@ class Game implements IGame {
 
   async inicializarAssets() {
       const sm = this.renderer.spriteManager;
+      const resources = SpriteConfig.recursos || {};
+      const promises: Promise<any>[] = [];
 
-      // En un entorno real, cargaríamos imágenes reales.
-      // Aquí usaremos una imagen SVG base64 de 256x1024 como "hoja de sprites" para que los
-      // índices de la configuración por defecto sean válidos y no fallen los tests de límites.
-      const sheetBase64 = 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="1024"><rect width="256" height="1024" fill="#888" /><text x="5" y="15" font-family="monospace" font-size="10" fill="white">SPRITE</text></svg>');
-
-      const imagesToLoad = [
-          sm.cargarImagen('sheet_players', sheetBase64),
-          sm.cargarImagen('sheet_npcs', sheetBase64),
-          sm.cargarImagen('sheet_static', sheetBase64),
-          sm.cargarImagen('sheet_dynamic', sheetBase64),
-          sm.cargarImagen('food_apple', sheetBase64),
-          sm.cargarImagen('tool_pickaxe', sheetBase64)
-      ];
+      for (const [nombre, url] of Object.entries(resources)) {
+          promises.push(
+              sm.cargarImagen(nombre, url).catch(() => {
+                  this.notificarErrorCarga(nombre);
+              })
+          );
+      }
 
       // Cargar imágenes de metadatos externos si existen
       if (ExternalSpriteMetadata && ExternalSpriteMetadata.imagen) {
-          // Para la demo, si es 'hero.png', usaremos el mismo placeholder base64
-          // En producción esto cargaría el archivo real del servidor.
-          const url = ExternalSpriteMetadata.imagen === 'hero.png' ? sheetBase64 : ExternalSpriteMetadata.imagen;
-          imagesToLoad.push(sm.cargarImagen(ExternalSpriteMetadata.imagen, url));
+          promises.push(
+              sm.cargarImagen(ExternalSpriteMetadata.imagen, ExternalSpriteMetadata.imagen).catch(() => {
+                  this.notificarErrorCarga(ExternalSpriteMetadata.imagen);
+              })
+          );
       }
 
-      await Promise.all(imagesToLoad);
+      await Promise.all(promises);
 
       // Inicializar todos los mapeos desde la configuración
       inicializarSpritesheets(sm);
@@ -509,6 +506,20 @@ class Game implements IGame {
       sm.definirSprite('wall_right', 'sheet_static', 28, 23 * 32, 4, 32);
       sm.definirSprite('pickaxe', 'tool_pickaxe', 0, 0, 32, 32);
       sm.definirSprite('food_manzana', 'food_apple', 0, 0, 32, 32);
+  }
+
+  notificarErrorCarga(recurso: string) {
+      this.registrarEventoLog(`⚠️ Error cargando: ${recurso}. Usando modo geométrico.`);
+
+      // Mostrar un pequeño mensaje visual discreto en la UI
+      let aviso = document.getElementById('asset-warning');
+      if (!aviso) {
+          aviso = document.createElement('div');
+          aviso.id = 'asset-warning';
+          aviso.style.cssText = 'position: fixed; bottom: 110px; right: 10px; background: rgba(255,165,0,0.7); color: #000; padding: 5px 10px; font-size: 10px; border-radius: 3px; z-index: 100; pointer-events: none; font-family: monospace;';
+          document.body.appendChild(aviso);
+      }
+      aviso.textContent = `Modo geométrico activo (Sprites faltantes)`;
   }
 
   regresarAlLobby() {

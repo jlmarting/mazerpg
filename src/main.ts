@@ -487,15 +487,6 @@ class Game implements IGame {
 
       // Inicializar todos los mapeos desde la configuración
       inicializarSpritesheets(sm);
-
-      // Compatibilidad con nombres antiguos para no romper nada mientras refactorizamos
-      sm.definirSprite('floor', 'sheet_static', 0, 25 * 32, 32, 32);
-      sm.definirSprite('wall_top', 'sheet_static', 0, 23 * 32, 32, 4);
-      sm.definirSprite('wall_bottom', 'sheet_static', 0, 23 * 32 + 28, 32, 4);
-      sm.definirSprite('wall_left', 'sheet_static', 0, 23 * 32, 4, 32);
-      sm.definirSprite('wall_right', 'sheet_static', 28, 23 * 32, 4, 32);
-      sm.definirSprite('pickaxe', 'tool_pickaxe', 0, 0, 32, 32);
-      sm.definirSprite('food_manzana', 'food_apple', 0, 0, 32, 32);
   }
 
   notificarErrorCarga(recurso: string) {

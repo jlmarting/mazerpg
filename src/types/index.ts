@@ -35,13 +35,19 @@ export interface IEntidadRPG {
     puntosExperiencia: number;
     inmunidadHasta: number;
     bubbleChat: { texto: string, expira: number } | null;
+
+    // Propiedades para renderizado
+    estadoActual: 'idle' | 'walking' | 'attacking' | 'defending' | 'fallen';
+    frameActual: number;
+    clase?: string;
+    tipo?: string;
+    color?: string;
+
     recibirDano(cantidad: number, atacante?: IEntidadRPG | null): number;
     obtenerIniciativa(): number;
     generarAtaque(): number;
     generarDefensa(): number;
-    dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto?: any): void;
-    dibujarBarraVida(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, mapaLaberinto: any[][]): void;
-    dibujarBubbleChat(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig): void;
+    actualizarEstado(): void;
 }
 
 export interface IGame {

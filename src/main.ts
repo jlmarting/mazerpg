@@ -54,6 +54,7 @@ class Game implements IGame {
   private _flowTarget: 'solo' | 'host' | 'manual' | null = null;
 
   constructor() {
+    (window as any).game = this;
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas);
     this.inicializarAssets();
@@ -62,7 +63,6 @@ class Game implements IGame {
     this.ajustarDimensiones();
     window.addEventListener('resize', () => this.ajustarDimensiones());
     this.setupEventListeners();
-    (window as any).game = this;
     this.revisarSesionGuardada();
 
     canvas.addEventListener('touchstart', (e) => {
@@ -1014,23 +1014,23 @@ class Game implements IGame {
     }
     this.renderer.dibujarNiebla(this.mapaLaberinto, offset, this.config, persistence);
 
-    this.protagonista.dibujar(this.renderer.getCtx(), offset, this.config);
-    this.protagonista.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-    this.protagonista.dibujarBubbleChat(this.renderer.getCtx(), offset, this.config);
+    // Actualizar estados de animación antes de dibujar
+    this.protagonista.actualizarEstado();
+    this.network.jugadoresRemotos.forEach(j => { if (j.entidad) j.entidad.actualizarEstado(); });
+    this.listaDeEnemigos.forEach(e => { if (e.estaVivo) e.actualizarEstado(); });
+
+    // Renderizado de Entidades
+    this.renderer.dibujarEntidad(this.protagonista, offset, this.config, this.mapaLaberinto);
 
     this.network.jugadoresRemotos.forEach(j => {
         if (j.entidad) {
-            j.entidad.dibujar(this.renderer.getCtx(), offset, this.config);
-            j.entidad.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-            j.entidad.dibujarBubbleChat(this.renderer.getCtx(), offset, this.config);
+            this.renderer.dibujarEntidad(j.entidad, offset, this.config, this.mapaLaberinto);
         }
     });
 
     this.listaDeEnemigos.forEach(e => {
         if (e.estaVivo) {
-            e.dibujar(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-            e.dibujarBarraVida(this.renderer.getCtx(), offset, this.config, this.mapaLaberinto);
-            e.dibujarBubbleChat(this.renderer.getCtx(), offset, this.config);
+            this.renderer.dibujarEntidad(e, offset, this.config, this.mapaLaberinto);
         }
     });
 

@@ -1,5 +1,5 @@
 import { EntidadRPG } from './EntidadRPG';
-import { CameraOffset, GameConfig, IGame } from '../types';
+import { IGame } from '../types';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
@@ -66,103 +66,6 @@ export class Jugador extends EntidadRPG {
     this.vidaActual = this.vidaMaxima;
   }
 
-  dibujar(ctx: CanvasRenderingContext2D, offset: CameraOffset, config: GameConfig, _mapaLaberinto?: any) {
-    this.actualizarEstado();
-
-    const { colOffset, filaOffset } = offset;
-    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
-    const x = (this.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
-    const y = (this.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
-    const escala = TAMANO_CELDA * 0.6;
-
-    // Intentar obtener el SpriteManager desde el contexto o el objeto global
-    const spriteManager = (window as any).game?.renderer?.spriteManager;
-    const currentSprite = `player_${this.clase}_${this.estadoActual}_${this.frameActual}`;
-
-    ctx.save();
-
-    if (this.estaVivo && spriteManager && spriteManager.obtenerSprite(currentSprite)) {
-        spriteManager.dibujarSprite(ctx, currentSprite, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
-    } else if (!this.estaVivo) {
-        // Dibujar Lápida
-        ctx.fillStyle = '#888';
-        ctx.strokeStyle = '#444';
-        ctx.lineWidth = 2;
-
-        // Base de la lápida
-        const w = TAMANO_CELDA * 0.7;
-        const h = TAMANO_CELDA * 0.8;
-        ctx.beginPath();
-        ctx.moveTo(x - w/2, y + h/2);
-        ctx.lineTo(x - w/2, y - h/4);
-        ctx.arc(x, y - h/4, w/2, Math.PI, 0);
-        ctx.lineTo(x + w/2, y + h/2);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Inscripción "RIP"
-        ctx.fillStyle = '#444';
-        ctx.font = 'bold 8px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('RIP', x, y + 2);
-    } else {
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = 3;
-        ctx.lineCap = 'round';
-
-        // Cabeza
-        ctx.beginPath();
-        ctx.arc(x, y - escala / 3, escala / 6, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Cuerpo
-        ctx.beginPath();
-        ctx.moveTo(x, y - escala / 6);
-        ctx.lineTo(x, y + escala / 6);
-        ctx.stroke();
-
-        // Animación de piernas
-        let desfasePierna = this.estaCaminando ? Math.sin(Date.now() / 100) * (escala / 4) : 0;
-
-        // Pierna izquierda
-        ctx.beginPath();
-        ctx.moveTo(x, y + escala / 6);
-        ctx.lineTo(x - escala / 6 + desfasePierna, y + escala / 2);
-        ctx.stroke();
-
-        // Pierna derecha
-        ctx.beginPath();
-        ctx.moveTo(x, y + escala / 6);
-        ctx.lineTo(x + escala / 6 - desfasePierna, y + escala / 2);
-        ctx.stroke();
-
-        // Brazos
-        ctx.beginPath();
-        ctx.moveTo(x - escala / 4, y);
-        ctx.lineTo(x + escala / 4, y);
-        ctx.stroke();
-
-        // Glow
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = this.color;
-        ctx.stroke();
-
-        // Inmunidad Glow
-        if (Date.now() < this.inmunidadHasta) {
-            ctx.beginPath();
-            ctx.arc(x, y, TAMANO_CELDA / 2, 0, Math.PI * 2);
-            ctx.strokeStyle = '#00ffff';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = '#00ffff';
-            ctx.stroke();
-        }
-    }
-
-    ctx.restore();
-  }
 
   recibirDano(cantidad: number, atacante?: EntidadRPG | null): number {
     if (Date.now() < this.inmunidadHasta) {

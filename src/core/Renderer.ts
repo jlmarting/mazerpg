@@ -1,24 +1,33 @@
 import { Celda } from '../world/Celda';
-import { CameraOffset, GameConfig } from '../types';
+import { CameraOffset, GameConfig, IEntidadRPG } from '../types';
 import { SpriteManager } from './SpriteManager';
 
+/**
+ * Clase responsable de toda la lógica de renderizado del juego.
+ * Centraliza el dibujo del laberinto, entidades, efectos y UI.
+ */
 export class Renderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   public spriteManager: SpriteManager;
 
   constructor(canvas: HTMLCanvasElement) {
-    console.log("Renderer constructor iniciado");
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.spriteManager = new SpriteManager();
-    console.log("Renderer constructor finalizado");
   }
 
+  /**
+   * Limpia el canvas para el siguiente frame.
+   */
   limpiar() {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
+  /**
+   * Aplica la transformación de zoom al contexto de dibujo.
+   * @param config Configuración con el nivel de zoom y márgenes de UI.
+   */
   aplicarZoom(config: GameConfig) {
     const z = config.zoom;
     const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
@@ -38,10 +47,16 @@ export class Renderer {
     this.ctx.translate(-mazeWidth / 2, -(ALTO_UI_TOP + mazeHeight / 2));
   }
 
+  /**
+   * Restaura el contexto de dibujo eliminando el zoom aplicado.
+   */
   finalizarZoom() {
     this.ctx.restore();
   }
 
+  /**
+   * Calcula el desplazamiento de la cámara para centrarla en el protagonista.
+   */
   obtenerOffsetCamara(protagonista: any, config: GameConfig): CameraOffset {
     if (!protagonista) return { colOffset: 0, filaOffset: 0 };
 
@@ -56,6 +71,9 @@ export class Renderer {
     return { colOffset, filaOffset };
   }
 
+  /**
+   * Dibuja el suelo, muros y objetos estáticos del laberinto.
+   */
   dibujarLaberinto(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
@@ -218,6 +236,9 @@ export class Renderer {
     }
   }
 
+  /**
+   * Dibuja la capa de niebla de guerra basada en el tiempo transcurrido desde el último avistamiento.
+   */
   dibujarNiebla(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig, persistenceOverride?: number) {
     if (config.vistaDebugActivada) return;
     const { colOffset, filaOffset } = offset;
@@ -255,6 +276,259 @@ export class Renderer {
     }
   }
 
+  /**
+   * Dibuja una entidad RPG (jugador, NPC, etc.) en el canvas.
+   * @param entidad La entidad a dibujar.
+   * @param offset El desplazamiento de la cámara.
+   * @param config Configuración general del juego.
+   * @param mapaLaberinto Referencia al mapa para cálculos de visibilidad.
+   */
+  dibujarEntidad(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig, mapaLaberinto?: Celda[][]) {
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, TIEMPO_DESVANECIMIENTO_NIEBLA, vistaDebugActivada } = config;
+
+    // Culling: No dibujar si está fuera de la vista
+    if (entidad.fila < filaOffset - 1 || entidad.fila >= filaOffset + CELDAS_VISIBLES_Y + 1 ||
+        entidad.columna < colOffset - 1 || entidad.columna >= colOffset + CELDAS_VISIBLES_X + 1) return;
+
+    // Niebla de guerra: Verificar si la casilla es visible
+    if (!vistaDebugActivada && mapaLaberinto) {
+        const celdaActual = mapaLaberinto[entidad.fila]?.[entidad.columna];
+        if (celdaActual) {
+            const tiempoDesdeVisto = Date.now() - celdaActual.ultimoAvistamiento;
+            if (celdaActual.ultimoAvistamiento === 0 || tiempoDesdeVisto > TIEMPO_DESVANECIMIENTO_NIEBLA) {
+                return;
+            }
+        }
+    }
+
+    const x = (entidad.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = (entidad.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+
+    this.ctx.save();
+
+    const esNPC = entidad.tipo !== undefined;
+    const prefix = esNPC ? 'npc' : 'player';
+    const clase = entidad.clase || entidad.tipo?.toLowerCase() || 'guerrero';
+    const keyBase = `${prefix}_${clase}_${entidad.estadoActual}`;
+    const spriteKey = `${keyBase}_${entidad.frameActual}`;
+
+    // 1. Intentar dibujar Sprite
+    if (entidad.estaVivo && (this.spriteManager.obtenerSprite(spriteKey) || this.spriteManager.obtenerSprite(keyBase))) {
+        this.spriteManager.dibujarSprite(this.ctx, spriteKey, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
+    }
+    // 2. Si ha caído, dibujar tumba o estado fallen
+    else if (!entidad.estaVivo) {
+        this.dibujarTumba(x, y, TAMANO_CELDA);
+    }
+    // 3. Fallback a figuras geométricas (Stick figures / Bloques)
+    else {
+        if (esNPC) {
+            this.dibujarNPCFallback(entidad, x, y, TAMANO_CELDA);
+        } else {
+            this.dibujarJugadorFallback(entidad, x, y, TAMANO_CELDA);
+        }
+    }
+
+    this.ctx.restore();
+
+    // Dibujar elementos adicionales
+    this.dibujarBarraVida(entidad, offset, config, mapaLaberinto);
+    this.dibujarBubbleChat(entidad, offset, config);
+
+    // Dibujar etiqueta de nombre para otros jugadores
+    if (!esNPC && prefix === 'player') {
+        this.dibujarEtiquetaNombre(entidad, x, y, TAMANO_CELDA);
+    }
+  }
+
+  /**
+   * Dibuja una etiqueta con el nombre de la entidad (principalmente para jugadores remotos).
+   */
+  private dibujarEtiquetaNombre(entidad: IEntidadRPG, x: number, y: number, tamanoCelda: number) {
+      const escala = tamanoCelda * 0.6;
+      this.ctx.save();
+      this.ctx.fillStyle = entidad.estaVivo ? (entidad.color || '#fff') : '#555';
+      this.ctx.font = 'bold 10px monospace';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(entidad.nombre, x, y - escala);
+      this.ctx.restore();
+  }
+
+  /**
+   * Dibuja una lápida en la posición indicada.
+   */
+  private dibujarTumba(x: number, y: number, tamanoCelda: number) {
+    this.ctx.fillStyle = '#888';
+    this.ctx.strokeStyle = '#444';
+    this.ctx.lineWidth = 2;
+
+    const w = tamanoCelda * 0.7;
+    const h = tamanoCelda * 0.8;
+    this.ctx.beginPath();
+    this.ctx.moveTo(x - w/2, y + h/2);
+    this.ctx.lineTo(x - w/2, y - h/4);
+    this.ctx.arc(x, y - h/4, w/2, Math.PI, 0);
+    this.ctx.lineTo(x + w/2, y + h/2);
+    this.ctx.closePath();
+    this.ctx.fill();
+    this.ctx.stroke();
+
+    this.ctx.fillStyle = '#444';
+    this.ctx.font = 'bold 8px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText('RIP', x, y + 2);
+  }
+
+  /**
+   * Dibuja un monigote representativo del jugador cuando no hay sprites disponibles.
+   */
+  private dibujarJugadorFallback(entidad: IEntidadRPG, x: number, y: number, tamanoCelda: number) {
+    const escala = tamanoCelda * 0.6;
+    const color = entidad.color || '#007bff';
+
+    this.ctx.strokeStyle = color;
+    this.ctx.lineWidth = 3;
+    this.ctx.lineCap = 'round';
+
+    // Cabeza
+    this.ctx.beginPath();
+    this.ctx.arc(x, y - escala / 3, escala / 6, 0, Math.PI * 2);
+    this.ctx.stroke();
+
+    // Cuerpo
+    this.ctx.beginPath();
+    this.ctx.moveTo(x, y - escala / 6);
+    this.ctx.lineTo(x, y + escala / 6);
+    this.ctx.stroke();
+
+    // Animación de piernas
+    let desfasePierna = entidad.estaCaminando ? Math.sin(Date.now() / 100) * (escala / 4) : 0;
+    this.ctx.beginPath();
+    this.ctx.moveTo(x, y + escala / 6);
+    this.ctx.lineTo(x - escala / 6 + desfasePierna, y + escala / 2);
+    this.ctx.moveTo(x, y + escala / 6);
+    this.ctx.lineTo(x + escala / 6 - desfasePierna, y + escala / 2);
+    this.ctx.stroke();
+
+    // Brazos
+    this.ctx.beginPath();
+    this.ctx.moveTo(x - escala / 4, y);
+    this.ctx.lineTo(x + escala / 4, y);
+    this.ctx.stroke();
+
+    // Glow de inmunidad
+    if (Date.now() < entidad.inmunidadHasta) {
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, tamanoCelda / 2, 0, Math.PI * 2);
+        this.ctx.strokeStyle = '#00ffff';
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+    }
+  }
+
+  /**
+   * Dibuja una figura geométrica representativa del NPC.
+   */
+  private dibujarNPCFallback(entidad: IEntidadRPG, x: number, y: number, tamanoCelda: number) {
+    const escala = tamanoCelda * 0.4;
+    const tipo = entidad.tipo;
+
+    this.ctx.strokeStyle = '#000';
+    this.ctx.lineWidth = 1;
+
+    if (tipo === "Esqueleto") {
+      this.ctx.fillStyle = '#EEE';
+      this.ctx.beginPath();
+      this.ctx.arc(x, y - escala/2, escala, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.stroke();
+    } else if (tipo === "Orco") {
+      this.ctx.fillStyle = '#2F4F4F';
+      this.ctx.fillRect(x - escala, y - escala, escala * 2, escala * 2);
+      this.ctx.strokeRect(x - escala, y - escala, escala * 2, escala * 2);
+    } else if (tipo === "Goblin") {
+      this.ctx.fillStyle = '#32CD32';
+      this.ctx.beginPath();
+      this.ctx.ellipse(x, y + 2, escala, escala * 1.2, 0, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.stroke();
+    } else {
+      this.ctx.fillStyle = '#5C4033';
+      this.ctx.fillRect(x - escala, y - escala/2, escala * 2, escala * 1.5);
+      this.ctx.strokeRect(x - escala, y - escala/2, escala * 2, escala * 1.5);
+    }
+  }
+
+  /**
+   * Dibuja la barra de vida sobre una entidad.
+   */
+  dibujarBarraVida(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig, mapaLaberinto?: Celda[][]) {
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP, vistaDebugActivada, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
+
+    // Niebla de guerra para barra de vida
+    if (!vistaDebugActivada && mapaLaberinto) {
+        const celdaActual = mapaLaberinto[entidad.fila]?.[entidad.columna];
+        if (celdaActual) {
+            const tiempoDesdeVisto = Date.now() - celdaActual.ultimoAvistamiento;
+            if (celdaActual.ultimoAvistamiento === 0 || tiempoDesdeVisto > TIEMPO_DESVANECIMIENTO_NIEBLA) {
+                return;
+            }
+        }
+    }
+
+    const x = (entidad.columna - colOffset) * TAMANO_CELDA + 2;
+    const y = (entidad.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2;
+    const anchoBarra = TAMANO_CELDA - 4;
+    const altoBarra = 4;
+
+    const pct = entidad.vidaActual / entidad.vidaMaxima;
+    const hue = pct * 120;
+
+    this.ctx.fillStyle = "#333";
+    this.ctx.fillRect(x, y, anchoBarra, altoBarra);
+    this.ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+    this.ctx.fillRect(x, y, anchoBarra * pct, altoBarra);
+  }
+
+  /**
+   * Dibuja el globo de chat de una entidad si tiene uno activo.
+   */
+  dibujarBubbleChat(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig) {
+    if (!entidad.bubbleChat || Date.now() > entidad.bubbleChat.expira) {
+        return;
+    }
+
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
+    const x = (entidad.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = (entidad.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP - 10;
+
+    this.ctx.save();
+    this.ctx.font = '14px Arial';
+    const metrics = this.ctx.measureText(entidad.bubbleChat.texto);
+    const padding = 6;
+    const w = metrics.width + padding * 2;
+    const h = 20;
+
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    this.ctx.strokeStyle = '#000';
+    this.ctx.beginPath();
+    // polyfill roundRect if needed or use simple rect
+    this.ctx.rect(x - w / 2, y - h, w, h);
+    this.ctx.fill();
+    this.ctx.stroke();
+
+    this.ctx.fillStyle = '#000';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText(entidad.bubbleChat.texto, x, y - 3);
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja la interfaz de usuario superpuesta (HUD).
+   */
   dibujarUI(game: any) {
     const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = game.config;
 
@@ -307,6 +581,9 @@ export class Renderer {
     }
   }
 
+  /**
+   * Dibuja un proyectil (flecha o bola de fuego) en tránsito.
+   */
   dibujarProyectil(p: any, offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
@@ -348,6 +625,9 @@ export class Renderer {
     this.ctx.restore();
   }
 
+  /**
+   * Dibuja el efecto visual de congelación en un área.
+   */
   dibujarFreeze(f: any, offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
@@ -375,6 +655,9 @@ export class Renderer {
     this.ctx.restore();
   }
 
+  /**
+   * Dibuja el efecto visual de torbellino (remolino).
+   */
   dibujarWhirlwind(w: any, offset: CameraOffset, config: GameConfig) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
@@ -407,6 +690,9 @@ export class Renderer {
     this.ctx.restore();
   }
 
+  /**
+   * Dibuja el efecto visual del radar y los ecos detectados.
+   */
   dibujarRadar(r: any, offset: CameraOffset, config: GameConfig, localId?: string) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
@@ -462,6 +748,9 @@ export class Renderer {
     this.ctx.restore();
   }
 
+  /**
+   * Dibuja indicadores visuales en los bordes para facilitar el movimiento táctil.
+   */
   dibujarMarcadoresMovimiento(config: GameConfig) {
     const { ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
     const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;

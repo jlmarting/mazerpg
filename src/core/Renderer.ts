@@ -112,9 +112,11 @@ export class Renderer {
           this.ctx.lineWidth = 2;
 
           if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
-            const spriteMuro = 'static_muro_normal';
+            const spriteMuro = 'static_muro_superior';
             if (this.spriteManager.obtenerSprite(spriteMuro)) {
                 this.spriteManager.dibujarSprite(this.ctx, spriteMuro, x, y, TAMANO_CELDA, 4);
+            } else if (this.spriteManager.obtenerSprite('static_muro_normal')) {
+                this.spriteManager.dibujarSprite(this.ctx, 'static_muro_normal', x, y, TAMANO_CELDA, 4);
             } else if (this.spriteManager.obtenerSprite('wall_top')) {
                 this.spriteManager.dibujarSprite(this.ctx, 'wall_top', x, y, TAMANO_CELDA, 4);
             } else {
@@ -125,7 +127,9 @@ export class Renderer {
             }
           }
           if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) {
-            if (this.spriteManager.obtenerSprite('wall_bottom')) {
+            if (this.spriteManager.obtenerSprite('static_muro_inferior')) {
+                this.spriteManager.dibujarSprite(this.ctx, 'static_muro_inferior', x, y + TAMANO_CELDA - 4, TAMANO_CELDA, 4);
+            } else if (this.spriteManager.obtenerSprite('wall_bottom')) {
                 this.spriteManager.dibujarSprite(this.ctx, 'wall_bottom', x, y + TAMANO_CELDA - 4, TAMANO_CELDA, 4);
             } else {
                 this.ctx.beginPath();
@@ -135,7 +139,9 @@ export class Renderer {
             }
           }
           if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) {
-            if (this.spriteManager.obtenerSprite('wall_left')) {
+            if (this.spriteManager.obtenerSprite('static_muro_izquierdo')) {
+                this.spriteManager.dibujarSprite(this.ctx, 'static_muro_izquierdo', x, y, 4, TAMANO_CELDA);
+            } else if (this.spriteManager.obtenerSprite('wall_left')) {
                 this.spriteManager.dibujarSprite(this.ctx, 'wall_left', x, y, 4, TAMANO_CELDA);
             } else {
                 this.ctx.beginPath();
@@ -145,7 +151,9 @@ export class Renderer {
             }
           }
           if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) {
-            if (this.spriteManager.obtenerSprite('wall_right')) {
+            if (this.spriteManager.obtenerSprite('static_muro_derecho')) {
+                this.spriteManager.dibujarSprite(this.ctx, 'static_muro_derecho', x + TAMANO_CELDA - 4, y, 4, TAMANO_CELDA);
+            } else if (this.spriteManager.obtenerSprite('wall_right')) {
                 this.spriteManager.dibujarSprite(this.ctx, 'wall_right', x + TAMANO_CELDA - 4, y, 4, TAMANO_CELDA);
             } else {
                 this.ctx.beginPath();

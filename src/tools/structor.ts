@@ -2,7 +2,7 @@
 /**
  * Structor - Sprite Mapping Tool Logic
  */
-import { GameSpriteContract } from '../core/SpriteConfig';
+import { GameSpriteContract, SpriteConfig } from '../core/SpriteConfig';
 
 class Structor {
     private canvas: HTMLCanvasElement;
@@ -46,6 +46,7 @@ class Structor {
     }
 
     private setupEventListeners() {
+        this.initSheetSelector();
         document.getElementById('fileInput')?.addEventListener('change', (e) => this.handleFile(e));
         document.getElementById('btnLoadDemo')?.addEventListener('click', () => this.loadDemo());
 
@@ -101,6 +102,26 @@ class Structor {
         });
 
         window.addEventListener('keydown', (e) => this.handleKeyboard(e));
+    }
+
+    private initSheetSelector() {
+        const sheetSelect = document.getElementById('sheetSelect') as HTMLSelectElement;
+        const recursos = SpriteConfig.recursos || {};
+
+        Object.keys(recursos).forEach(key => {
+            const opt = document.createElement('option');
+            opt.value = key;
+            opt.textContent = `${key} (${recursos[key]})`;
+            sheetSelect.appendChild(opt);
+        });
+
+        sheetSelect.addEventListener('change', () => {
+            const key = sheetSelect.value;
+            if (key && recursos[key]) {
+                this.imageName = key;
+                this.loadImage(recursos[key]);
+            }
+        });
     }
 
     private initContractUI() {

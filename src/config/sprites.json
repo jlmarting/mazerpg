@@ -57,8 +57,17 @@
             }
         },
         "escenario_estatico": {
-            "muro": { "normal": { "puntos": [{ "x": 0, "y": 736, "w": 32, "h": 32 }], "imagen": "sheet_static" } },
-            "suelo": { "cesped": { "puntos": [{ "x": 0, "y": 800, "w": 32, "h": 32 }], "imagen": "sheet_static" } }
+            "muro": {
+                "normal": { "puntos": [{ "x": 0, "y": 736, "w": 32, "h": 32 }], "imagen": "sheet_static" },
+                "superior": { "puntos": [{ "x": 0, "y": 736, "w": 32, "h": 4 }], "imagen": "sheet_static" },
+                "inferior": { "puntos": [{ "x": 0, "y": 764, "w": 32, "h": 4 }], "imagen": "sheet_static" },
+                "izquierdo": { "puntos": [{ "x": 0, "y": 736, "w": 4, "h": 32 }], "imagen": "sheet_static" },
+                "derecho": { "puntos": [{ "x": 28, "y": 736, "w": 4, "h": 32 }], "imagen": "sheet_static" }
+            },
+            "suelo": {
+                "normal": { "puntos": [{ "x": 0, "y": 800, "w": 32, "h": 32 }], "imagen": "sheet_static" },
+                "cesped": { "puntos": [{ "x": 0, "y": 800, "w": 32, "h": 32 }], "imagen": "sheet_static" }
+            }
         },
         "escenario_dinamico": {
             "puerta": {
@@ -78,10 +87,7 @@
         },
         "compat": {
             "floor": { "idle": { "puntos": [{ "x": 0, "y": 800, "w": 32, "h": 32 }], "imagen": "sheet_static" } },
-            "wall_top": { "idle": { "puntos": [{ "x": 0, "y": 736, "w": 32, "h": 4 }], "imagen": "sheet_static" } },
-            "wall_bottom": { "idle": { "puntos": [{ "x": 0, "y": 764, "w": 32, "h": 4 }], "imagen": "sheet_static" } },
-            "wall_left": { "idle": { "puntos": [{ "x": 0, "y": 736, "w": 4, "h": 32 }], "imagen": "sheet_static" } },
-            "wall_right": { "idle": { "puntos": [{ "x": 28, "y": 736, "w": 4, "h": 32 }], "imagen": "sheet_static" } }
+            "wall_top": { "idle": { "puntos": [{ "x": 0, "y": 736, "w": 32, "h": 4 }], "imagen": "sheet_static" } }
         }
     }
 }

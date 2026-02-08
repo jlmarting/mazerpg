@@ -38,7 +38,7 @@ export const GameSpriteContract = {
         },
         escenario_estatico: {
             clases: ['suelo', 'muro'],
-            acciones: ['normal', 'variante1', 'variante2']
+            acciones: ['normal', 'cesped', 'baldosa', 'roca', 'arena', 'agua', 'puente', 'superior', 'inferior', 'izquierdo', 'derecho']
         },
         escenario_dinamico: {
             clases: ['puerta', 'trampa'],
@@ -49,7 +49,7 @@ export const GameSpriteContract = {
             acciones: ['play']
         },
         food: {
-            clases: ['manzana', 'platano', 'kiwi', 'brocoli', 'pollo', 'chuleta', 'pescado'],
+            clases: ['manzana', 'plátano', 'kiwi', 'brócoli', 'muslo_de_pollo', 'chuleta', 'pescado'],
             acciones: ['idle']
         },
         items: {

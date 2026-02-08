@@ -11,7 +11,6 @@ import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
-import { ExternalSpriteMetadata } from './core/ExternalMetadata';
 import { GameConfig, IGame } from './types';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
@@ -480,15 +479,6 @@ class Game implements IGame {
           promises.push(
               sm.cargarImagen(nombre, url).catch(() => {
                   this.notificarErrorCarga(nombre);
-              })
-          );
-      }
-
-      // Cargar imágenes de metadatos externos si existen
-      if (ExternalSpriteMetadata && ExternalSpriteMetadata.imagen) {
-          promises.push(
-              sm.cargarImagen(ExternalSpriteMetadata.imagen, ExternalSpriteMetadata.imagen).catch(() => {
-                  this.notificarErrorCarga(ExternalSpriteMetadata.imagen);
               })
           );
       }

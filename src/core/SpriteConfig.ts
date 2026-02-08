@@ -58,11 +58,9 @@ export const GameSpriteContract = {
     }
 };
 
-import { ExternalSpriteMetadata } from './ExternalMetadata';
-
 /**
  * Utilidad para generar las claves de los sprites en el SpriteManager
- * basadas en la configuración centralizada y metadatos externos.
+ * basadas en la configuración centralizada.
  */
 export function inicializarSpritesheets(sm: any) {
     const c = SpriteConfig;
@@ -90,20 +88,11 @@ export function inicializarSpritesheets(sm: any) {
         }
     };
 
-    // 1. Cargar Mapeos por defecto del Motor
+    // Cargar todos los mapeos definidos en el JSON centralizado
     procesarMapping(c.mapeo.jugadores, 'player', 'sheet_players');
     procesarMapping(c.mapeo.npcs, 'npc', 'sheet_npcs');
     procesarMapping(c.mapeo.escenario_estatico, 'static', 'sheet_static');
     procesarMapping(c.mapeo.escenario_dinamico, 'dynamic', 'sheet_dynamic');
-
-    // 2. Sobrescribir con Metadatos Externos (STRUCTOR)
-    if (ExternalSpriteMetadata && ExternalSpriteMetadata.mapeo) {
-        const ext = ExternalSpriteMetadata.mapeo;
-        procesarMapping(ext.jugadores, 'player', ExternalSpriteMetadata.imagen);
-        procesarMapping(ext.npcs, 'npc', ExternalSpriteMetadata.imagen);
-        procesarMapping(ext.escenario_estatico, 'static', ExternalSpriteMetadata.imagen);
-        procesarMapping(ext.escenario_dinamico, 'dynamic', ExternalSpriteMetadata.imagen);
-        procesarMapping(ext.vfx, 'vfx', ExternalSpriteMetadata.imagen);
-        procesarMapping(ext.items, 'item', ExternalSpriteMetadata.imagen);
-    }
+    procesarMapping((c.mapeo as any).vfx, 'vfx', 'sheet_vfx');
+    procesarMapping((c.mapeo as any).items, 'item', 'sheet_items');
 }

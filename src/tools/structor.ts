@@ -26,7 +26,7 @@ class Structor {
     private selections: { x: number, y: number, w: number, h: number }[] = [{ x: 0, y: 0, w: 32, h: 32 }];
     private activeIndex: number = 0;
 
-    private config: any = { imagen: "", mapeo: {} };
+    private mapeo: any = {};
 
     private isPlaying: boolean = false;
     private currentFrameIndex: number = 0;
@@ -170,7 +170,6 @@ class Structor {
         const file = e.target.files[0];
         if (!file) return;
         this.imageName = file.name;
-        this.config.imagen = this.imageName;
         const reader = new FileReader();
         reader.onload = (event) => {
             this.loadImage(event.target?.result as string);
@@ -180,7 +179,6 @@ class Structor {
 
     private loadDemo() {
         this.imageName = "demo_sheet.png";
-        this.config.imagen = this.imageName;
         const demoSheet = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAM0lEQVRYR+3VwQkAMAgEMKv779S7hyCId8ALEn6vSREIECBAgAABAgQIECBAgMAtfOAAESofvzwAAAAASUVORK5CYII=';
         this.loadImage(demoSheet);
     }
@@ -415,17 +413,19 @@ class Structor {
         const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
         const accion = (document.getElementById('accionSelect') as HTMLSelectElement).value;
 
-        if (!this.config.mapeo[cat]) this.config.mapeo[cat] = {};
-        if (!this.config.mapeo[cat][clase]) this.config.mapeo[cat][clase] = {};
-        if (!this.config.mapeo[cat][clase][accion]) {
-            this.config.mapeo[cat][clase][accion] = { puntos: [] };
+        if (!this.mapeo[cat]) this.mapeo[cat] = {};
+        if (!this.mapeo[cat][clase]) this.mapeo[cat][clase] = {};
+        if (!this.mapeo[cat][clase][accion]) {
+            this.mapeo[cat][clase][accion] = { puntos: [] };
         }
 
-        this.config.mapeo[cat][clase][accion].imagen = this.imageName;
+        // Usar solo el nombre del archivo (sin extensión si se prefiere, pero el motor usa el key de recursos)
+        // Recomendamos que el nombre coincida con el key de 'recursos' en sprites.json
+        this.mapeo[cat][clase][accion].imagen = this.imageName;
 
         // Agregar todas las selecciones actuales como frames
         this.selections.forEach(sel => {
-            this.config.mapeo[cat][clase][accion].puntos.push({
+            this.mapeo[cat][clase][accion].puntos.push({
                 x: sel.x,
                 y: sel.y,
                 w: sel.w,
@@ -442,8 +442,8 @@ class Structor {
         const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
         const accion = (document.getElementById('accionSelect') as HTMLSelectElement).value;
 
-        if (this.config.mapeo[cat] && this.config.mapeo[cat][clase]) {
-            delete this.config.mapeo[cat][clase][accion];
+        if (this.mapeo[cat] && this.mapeo[cat][clase]) {
+            delete this.mapeo[cat][clase][accion];
         }
         this.updateFrameInfo();
         this.renderOutput();
@@ -454,13 +454,14 @@ class Structor {
         const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
         const accion = (document.getElementById('accionSelect') as HTMLSelectElement).value;
 
-        const puntos = this.config.mapeo[cat]?.[clase]?.[accion]?.puntos || [];
+        const puntos = this.mapeo[cat]?.[clase]?.[accion]?.puntos || [];
         document.getElementById('frameInfo')!.textContent = `Frames asignados: ${puntos.length}`;
     }
 
     private renderOutput() {
         const out = document.getElementById('output')!;
-        out.textContent = JSON.stringify(this.config, null, 2);
+        // Exportamos solo el mapeo para facilitar el pegado en el manifiesto centralizado
+        out.textContent = JSON.stringify(this.mapeo, null, 2);
         out.scrollTop = out.scrollHeight;
     }
 
@@ -476,7 +477,7 @@ class Structor {
         const cat = (document.getElementById('catSelect') as HTMLSelectElement).value;
         const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
         const accion = (document.getElementById('accionSelect') as HTMLSelectElement).value;
-        const puntos = this.config.mapeo[cat]?.[clase]?.[accion]?.puntos || [];
+        const puntos = this.mapeo[cat]?.[clase]?.[accion]?.puntos || [];
 
         if (puntos.length === 0) return;
 

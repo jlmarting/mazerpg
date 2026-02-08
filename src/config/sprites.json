@@ -5,7 +5,8 @@
         "sheet_static": "sprites/static.png",
         "sheet_dynamic": "sprites/dynamic.png",
         "food_apple": "sprites/apple.png",
-        "tool_pickaxe": "sprites/pickaxe.png"
+        "tool_pickaxe": "sprites/pickaxe.png",
+        "hero_custom": "sprites/hero_custom.png"
     },
     "dimensiones": {
         "sw": 32,
@@ -17,7 +18,17 @@
             "guerrero": {
                 "idle": { "fila": 0, "frames": 1 },
                 "walking": { "fila": 1, "frames": 3 },
-                "attacking": { "fila": 2, "frames": 3 },
+                "attacking": {
+                    "puntos": [
+                        { "x": 226, "y": 107, "w": 40, "h": 32 },
+                        { "x": 156, "y": 105, "w": 40, "h": 32 },
+                        { "x": 70, "y": 105, "w": 40, "h": 32 },
+                        { "x": 190, "y": 105, "w": 40, "h": 32 },
+                        { "x": 34, "y": 103, "w": 40, "h": 32 },
+                        { "x": 109, "y": 104, "w": 40, "h": 32 }
+                    ],
+                    "imagen": "hero_custom"
+                },
                 "defending": { "fila": 3, "frames": 1 },
                 "fallen": { "fila": 4, "frames": 3 }
             },

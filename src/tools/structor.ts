@@ -26,7 +26,7 @@ class Structor {
     private selections: { x: number, y: number, w: number, h: number }[] = [{ x: 0, y: 0, w: 32, h: 32 }];
     private activeIndex: number = 0;
 
-    private mapeo: any = {};
+    private mapeo: any = JSON.parse(JSON.stringify(SpriteConfig.mapeo || {}));
 
     private isPlaying: boolean = false;
     private currentFrameIndex: number = 0;
@@ -74,6 +74,11 @@ class Structor {
         });
 
         document.getElementById('btnExport')?.addEventListener('click', () => this.addFrameToConfig());
+        document.getElementById('btnResetCanvas')?.addEventListener('click', () => {
+            this.selections = [{ x: 0, y: 0, w: 32, h: 32 }];
+            this.activeIndex = 0;
+            this.updateUI();
+        });
         document.getElementById('btnClearAnim')?.addEventListener('click', () => this.clearCurrentAction());
 
         // Animation controls
@@ -164,9 +169,48 @@ class Structor {
 
         catSelect.addEventListener('change', updateClases);
         claseSelect.addEventListener('change', updateAcciones);
-        accionSelect.addEventListener('change', () => this.updateFrameInfo());
+        accionSelect.addEventListener('change', () => this.loadMappingToUI());
 
         updateClases();
+    }
+
+    private loadMappingToUI() {
+        const cat = (document.getElementById('catSelect') as HTMLSelectElement).value;
+        const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
+        const accion = (document.getElementById('accionSelect') as HTMLSelectElement).value;
+
+        const mapping = this.mapeo[cat]?.[clase]?.[accion];
+
+        if (mapping) {
+            // Sincronizar hoja de sprites si es necesario
+            if (mapping.imagen && mapping.imagen !== this.imageName) {
+                const sheetSelect = document.getElementById('sheetSelect') as HTMLSelectElement;
+                if (sheetSelect.value !== mapping.imagen) {
+                    sheetSelect.value = mapping.imagen;
+                    const recursos = SpriteConfig.recursos || {};
+                    if (recursos[mapping.imagen]) {
+                        this.imageName = mapping.imagen;
+                        this.loadImage(recursos[mapping.imagen]);
+                    }
+                }
+            }
+
+            if (mapping.puntos && mapping.puntos.length > 0) {
+                this.selections = JSON.parse(JSON.stringify(mapping.puntos));
+                this.activeIndex = 0;
+            } else {
+                this.selections = [{ x: 0, y: 0, w: 32, h: 32 }];
+                this.activeIndex = 0;
+            }
+        } else {
+            // Mantener selección actual pero no hay mapeo previo
+            // Opcional: resetear a un cuadrado por defecto
+            // this.selections = [{ x: 0, y: 0, w: 32, h: 32 }];
+            // this.activeIndex = 0;
+        }
+
+        this.updateUI();
+        this.renderOutput();
     }
 
     private handleKeyboard(e: KeyboardEvent) {
@@ -436,26 +480,27 @@ class Structor {
 
         if (!this.mapeo[cat]) this.mapeo[cat] = {};
         if (!this.mapeo[cat][clase]) this.mapeo[cat][clase] = {};
-        if (!this.mapeo[cat][clase][accion]) {
-            this.mapeo[cat][clase][accion] = { puntos: [] };
-        }
 
-        // Usar solo el nombre del archivo (sin extensión si se prefiere, pero el motor usa el key de recursos)
-        // Recomendamos que el nombre coincida con el key de 'recursos' en sprites.json
-        this.mapeo[cat][clase][accion].imagen = this.imageName;
-
-        // Agregar todas las selecciones actuales como frames
-        this.selections.forEach(sel => {
-            this.mapeo[cat][clase][accion].puntos.push({
-                x: sel.x,
-                y: sel.y,
-                w: sel.w,
-                h: sel.h
-            });
-        });
+        // Reemplazamos la secuencia completa con las selecciones actuales
+        this.mapeo[cat][clase][accion] = {
+            imagen: this.imageName,
+            puntos: JSON.parse(JSON.stringify(this.selections))
+        };
 
         this.updateFrameInfo();
         this.renderOutput();
+
+        // Feedback visual
+        const btn = document.getElementById('btnExport');
+        if (btn) {
+            const originalText = btn.textContent;
+            btn.textContent = "¡GUARDADO!";
+            btn.style.background = "#28a745";
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = "";
+            }, 1000);
+        }
     }
 
     private clearCurrentAction() {
@@ -466,7 +511,11 @@ class Structor {
         if (this.mapeo[cat] && this.mapeo[cat][clase]) {
             delete this.mapeo[cat][clase][accion];
         }
-        this.updateFrameInfo();
+
+        this.selections = [{ x: 0, y: 0, w: 32, h: 32 }];
+        this.activeIndex = 0;
+
+        this.updateUI();
         this.renderOutput();
     }
 

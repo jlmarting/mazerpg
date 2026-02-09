@@ -43,6 +43,7 @@ class Structor {
         this.largePreviewCtx = this.largePreviewCanvas.getContext('2d')!;
 
         this.setupEventListeners();
+        this.renderOutput();
     }
 
     private setupEventListeners() {
@@ -80,6 +81,8 @@ class Structor {
             this.updateUI();
         });
         document.getElementById('btnClearAnim')?.addEventListener('click', () => this.clearCurrentAction());
+
+        document.getElementById('output')?.addEventListener('input', (e) => this.handleOutputChange(e));
 
         // Animation controls
         document.getElementById('btnPlayAnim')?.addEventListener('click', () => this.togglePlay());
@@ -529,10 +532,21 @@ class Structor {
     }
 
     private renderOutput() {
-        const out = document.getElementById('output')!;
+        const out = document.getElementById('output') as HTMLTextAreaElement;
+        if (!out) return;
         // Exportamos solo el mapeo para facilitar el pegado en el manifiesto centralizado
-        out.textContent = JSON.stringify(this.mapeo, null, 2);
-        out.scrollTop = out.scrollHeight;
+        out.value = JSON.stringify(this.mapeo, null, 2);
+    }
+
+    private handleOutputChange(e: any) {
+        try {
+            const val = e.target.value;
+            const newMapeo = JSON.parse(val);
+            this.mapeo = newMapeo;
+            this.loadMappingToUI();
+        } catch (err) {
+            // JSON inválido, no hacemos nada hasta que sea válido
+        }
     }
 
     private togglePlay() {

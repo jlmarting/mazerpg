@@ -26,7 +26,7 @@
         .btn-primary:hover { background: #0056b3; }
         .btn-secondary { background: #444; color: #fff; margin-top: 10px; }
 
-        #output { height: 200px; margin-top: 10px; background: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 10px; border-radius: 4px; border: 1px solid #333; overflow: auto; white-space: pre-wrap; }
+        #output { height: 200px; margin-top: 10px; background: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 10px; border-radius: 4px; border: 1px solid #333; overflow: auto; white-space: pre; width: 100%; box-sizing: border-box; resize: vertical; }
 
         .preview-area { width: 100%; height: 120px; background: #000; border: 1px dashed #555; margin-top: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; position: relative; }
         #previewCanvas { image-rendering: pixelated; transform: scale(2); }
@@ -81,8 +81,8 @@
                 </div>
             </div>
 
-            <label style="margin-top: 15px;">SALIDA METADATOS (Copiar y pegar en sprites.json):</label>
-            <div id="output">{}</div>
+            <label style="margin-top: 15px;">SALIDA METADATOS (Editar o Pegar JSON):</label>
+            <textarea id="output" spellcheck="false">{}</textarea>
             <div style="display: flex; gap: 5px;">
                 <button class="btn btn-primary" id="btnExport" style="margin-top: 10px; flex: 1;">GUARDAR ACCIÓN</button>
             </div>

@@ -3,6 +3,54 @@
  * Structor - Sprite Mapping Tool Logic
  */
 import { GameSpriteContract, SpriteConfig } from '../core/SpriteConfig';
+import { Celda } from '../world/Celda';
+import { Renderer } from '../core/Renderer';
+import { IEntidadRPG, GameConfig, CameraOffset } from '../types';
+
+class DummyEntity implements IEntidadRPG {
+    fila: number;
+    columna: number;
+    nombre: string;
+    vidaActual: number = 100;
+    vidaMaxima: number = 100;
+    estaVivo: boolean = true;
+    estaCaminando: boolean = false;
+    enCombateCon: IEntidadRPG | null = null;
+    puntosExperiencia: number = 0;
+    inmunidadHasta: number = 0;
+    bubbleChat: null = null;
+    estadoActual: 'idle' | 'walking' | 'attacking' | 'defending' | 'fallen' = 'idle';
+    frameActual: number = 0;
+    clase: string = 'guerrero';
+    tipo?: string;
+
+    private ultimaActualizacionFrame: number = 0;
+    private parent: Structor;
+
+    constructor(f: number, c: number, parent: Structor) {
+        this.fila = f;
+        this.columna = c;
+        this.nombre = "Tester";
+        this.parent = parent;
+    }
+
+    recibirDano(cantidad: number) { return cantidad; }
+    obtenerIniciativa() { return 0; }
+    generarAtaque() { return 0; }
+    generarDefensa() { return 0; }
+
+    actualizarEstado() {
+        const ahora = Date.now();
+        if (ahora - this.ultimaActualizacionFrame > 200) {
+            this.ultimaActualizacionFrame = ahora;
+            const cat = (this as any).tipo !== undefined ? 'npcs' : 'jugadores';
+            const mapping = this.parent.getMapeoActual();
+            const puntos = mapping?.[cat]?.[this.clase]?.[this.estadoActual]?.puntos || [];
+            const maxFrames = puntos.length || 1;
+            this.frameActual = (this.frameActual + 1) % maxFrames;
+        }
+    }
+}
 
 class Structor {
     private canvas: HTMLCanvasElement;
@@ -28,6 +76,15 @@ class Structor {
 
     private mapeo: any = JSON.parse(JSON.stringify(SpriteConfig.mapeo || {}));
 
+    // Simulación
+    private simCanvas: HTMLCanvasElement | null = null;
+    private simRenderer: Renderer | null = null;
+    private simMap: Celda[][] = [];
+    private simEntity: DummyEntity | null = null;
+    private simActive: boolean = false;
+    private simLoopId: number | null = null;
+    private simKeys: Set<string> = new Set();
+
     private isPlaying: boolean = false;
     private currentFrameIndex: number = 0;
     private animInterval: any = null;
@@ -42,9 +99,17 @@ class Structor {
         this.largePreviewCanvas = document.getElementById('largePreviewCanvas') as HTMLCanvasElement;
         this.largePreviewCtx = this.largePreviewCanvas.getContext('2d')!;
 
+        this.simCanvas = document.getElementById('simCanvas') as HTMLCanvasElement;
+        if (this.simCanvas) {
+            this.simRenderer = new Renderer(this.simCanvas);
+            this.initSimRoom();
+        }
+
         this.setupEventListeners();
         this.renderOutput();
     }
+
+    public getMapeoActual() { return this.mapeo; }
 
     private setupEventListeners() {
         this.initSheetSelector();
@@ -86,6 +151,24 @@ class Structor {
         document.getElementById('output')?.addEventListener('input', (e) => this.handleOutputChange(e));
 
         document.getElementById('btnClone')?.addEventListener('click', () => this.cloneActions());
+
+        document.getElementById('btnToggleLive')?.addEventListener('click', () => this.startSimulation());
+        document.getElementById('btnCloseSim')?.addEventListener('click', () => this.stopSimulation());
+
+        window.addEventListener('keydown', (e) => {
+            if (this.simActive) {
+                this.simKeys.add(e.key);
+                if (e.key === ' ') {
+                    this.simEntity!.estadoActual = 'attacking';
+                    this.simEntity!.frameActual = 0;
+                    setTimeout(() => { if (this.simActive) this.simEntity!.estadoActual = 'idle'; }, 500);
+                }
+                e.preventDefault();
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            if (this.simActive) this.simKeys.delete(e.key);
+        });
 
         // Animation controls
         document.getElementById('btnPlayAnim')?.addEventListener('click', () => this.togglePlay());
@@ -698,6 +781,175 @@ class Structor {
         const nw = sel.w * ratio;
         const nh = sel.h * ratio;
         this.largePreviewCtx.drawImage(this.image, sel.x, sel.y, sel.w, sel.h, (this.largePreviewCanvas.width - nw) / 2, (this.largePreviewCanvas.height - nh) / 2, nw, nh);
+    }
+
+    // --- Lógica de Simulación ---
+
+    private initSimRoom() {
+        this.simMap = [];
+        for (let f = 0; f < 10; f++) {
+            this.simMap[f] = [];
+            for (let c = 0; c < 12; c++) {
+                const celda = new Celda(f, c);
+                celda.esTransitable = (f > 0 && f < 9 && c > 0 && c < 11);
+                celda.muros = {
+                    superior: f === 0,
+                    inferior: f === 9,
+                    izquierdo: c === 0,
+                    derecho: c === 11
+                };
+                celda.ultimoAvistamiento = Date.now() + 1000000; // Siempre visible
+                this.simMap[f][c] = celda;
+            }
+        }
+        this.simEntity = new DummyEntity(5, 6, this);
+    }
+
+    private startSimulation() {
+        const modal = document.getElementById('simRoomModal')!;
+        modal.style.display = 'flex';
+        this.simActive = true;
+
+        // Sincronizar el spriteManager de Structor con el del simRenderer
+        // De esta forma si Structor cargó una imagen local, el simRenderer la verá.
+        // Pero el simRenderer usa su propio cache, así que mejor inyectamos las definiciones.
+        // En nuestro caso, SpriteManager es una clase que tiene un cache estático o similar?
+        // No, es instancia. Vamos a copiar las definiciones y el cache.
+
+        this.updateSimEntityFromUI();
+        this.simLoop();
+    }
+
+    private updateSimEntityFromUI() {
+        if (!this.simEntity) return;
+        const cat = (document.getElementById('catSelect') as HTMLSelectElement).value;
+        const clase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
+
+        this.simEntity.clase = clase;
+        if (cat === 'npcs') {
+            this.simEntity.tipo = clase; // DummyEntity usa tipo para saber si es NPC
+        } else {
+            this.simEntity.tipo = undefined;
+        }
+    }
+
+    private stopSimulation() {
+        document.getElementById('simRoomModal')!.style.display = 'none';
+        this.simActive = false;
+        if (this.simLoopId) cancelAnimationFrame(this.simLoopId);
+        this.simKeys.clear();
+    }
+
+    private simLoop() {
+        if (!this.simActive) return;
+
+        this.updateSim();
+        this.drawSim();
+
+        this.simLoopId = requestAnimationFrame(() => this.simLoop());
+    }
+
+    private updateSim() {
+        const ent = this.simEntity!;
+        if (ent.estadoActual === 'attacking') {
+            ent.actualizarEstado();
+            return;
+        }
+
+        let df = 0, dc = 0;
+        if (this.simKeys.has('ArrowUp')) df = -1;
+        if (this.simKeys.has('ArrowDown')) df = 1;
+        if (this.simKeys.has('ArrowLeft')) dc = -1;
+        if (this.simKeys.has('ArrowRight')) dc = 1;
+
+        if (df !== 0 || dc !== 0) {
+            const nf = ent.fila + df * 0.1;
+            const nc = ent.columna + dc * 0.1;
+
+            // Colisión simple
+            const gridF = Math.round(nf);
+            const gridC = Math.round(nc);
+            if (this.simMap[gridF]?.[gridC]?.esTransitable) {
+                ent.fila = nf;
+                ent.columna = nc;
+                ent.estaCaminando = true;
+            } else {
+                ent.estaCaminando = false;
+            }
+        } else {
+            ent.estaCaminando = false;
+        }
+
+        ent.actualizarEstado();
+    }
+
+    private drawSim() {
+        const r = this.simRenderer!;
+        r.limpiar();
+
+        const config: GameConfig = {
+            NUMERO_FILAS: 10,
+            NUMERO_COLUMNAS: 12,
+            TAMANO_CELDA: 32,
+            ALTO_UI_TOP: 0,
+            ALTO_UI_BOTTOM: 0,
+            RADIO_VISION: 20,
+            TIEMPO_DESVANECIMIENTO_NIEBLA: 0,
+            CELDAS_VISIBLES_X: 12,
+            CELDAS_VISIBLES_Y: 10,
+            vistaDebugActivada: true,
+            dificultad: 'dificil',
+            zoom: 1,
+            targetZoom: 1,
+            autoZoom: false,
+            tickRate: 16
+        };
+
+        const offset: CameraOffset = { colOffset: 0, filaOffset: 0 };
+
+        // Asegurar que el SpriteManager de la simulación tenga los datos actuales de STRUCTOR
+        // Inyectamos el mapeo actual en el spriteManager del renderer
+        const sm = r.spriteManager;
+
+        // 1. Cargar recursos si no están
+        const recursos = SpriteConfig.recursos || {};
+        for (const [name, url] of Object.entries(recursos)) {
+             if (!sm.obtenerSprite(name)) {
+                 // Esto es asíncrono, pero en la simulación irá cargando.
+                 sm.cargarImagen(name, url as string);
+             }
+        }
+
+        // 2. Definir sprites basados en el MAPEADO ACTUAL de STRUCTOR (que puede ser diferente de sprites.json)
+        // Usamos una versión simplificada de inicializarSpritesheets pero con this.mapeo
+        this.sincronizarSpritesSim(sm);
+
+        r.dibujarLaberinto(this.simMap, offset, config);
+        r.dibujarEntidad(this.simEntity!, offset, config, this.simMap);
+    }
+
+    private sincronizarSpritesSim(sm: any) {
+        const procesar = (mapping: any, prefijo: string) => {
+            if (!mapping) return;
+            for (const [clase, estados] of Object.entries(mapping)) {
+                for (const [estado, infoRaw] of Object.entries(estados as any)) {
+                    const info = infoRaw as any;
+                    const keyBase = `${prefijo}_${clase}_${estado}`;
+                    const imagen = info.imagen;
+                    if (info.puntos) {
+                        info.puntos.forEach((p: any, i: number) => {
+                            sm.definirSprite(`${keyBase}_${i}`, imagen, p.x, p.y, p.w, p.h);
+                        });
+                        sm.definirSprite(keyBase, imagen, info.puntos[0].x, info.puntos[0].y, info.puntos[0].w, info.puntos[0].h);
+                    }
+                }
+            }
+        };
+
+        procesar(this.mapeo.jugadores, 'player');
+        procesar(this.mapeo.npcs, 'npc');
+        procesar(this.mapeo.escenario_estatico, 'static');
+        procesar(this.mapeo.escenario_dinamico, 'dynamic');
     }
 }
 

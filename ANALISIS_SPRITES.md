@@ -54,14 +54,20 @@ Para activar los sprites reales en un entorno de producción, siga estos pasos:
 4. **Modo Fallback**: Si una imagen no carga o un frame no está definido, el motor activará automáticamente el **Modo Geométrico** (monigotes), asegurando que el juego siga siendo funcional.
 
 ### Herramienta de Diseño: STRUCTOR
-Para facilitar la creación del archivo de configuración, el proyecto incluye **STRUCTOR**, un editor visual de animaciones.
+Para facilitar la creación del archivo de configuración, el proyecto incluye **STRUCTOR**, un editor visual de animaciones y simulador de sprites.
 
 1. **Acceso**: Ejecute el proyecto en modo desarrollo y acceda a `/structor.html`.
-2. **Carga**: Seleccione una de las hojas de sprites configuradas.
-3. **Diseño**:
-   - Haga clic para seleccionar frames (Use `Ctrl` para selección múltiple o `Shift` para rangos).
-   - Defina el nombre de la animación y la velocidad.
-4. **Exportación**: Copie el JSON generado por la herramienta y péguelo directamente en la sección `mapeo` de `src/config/sprites.json`.
+2. **Carga y Sincronización**:
+   - Seleccione una hoja de sprites desde el menú desplegable (recursos del servidor).
+   - Edite el JSON directamente en el área de texto para ver cambios instantáneos o use el selector visual para actualizar el JSON.
+3. **Diseño y Productividad**:
+   - Haga clic para seleccionar frames.
+   - Use la **Herramienta de Clonación** para copiar conjuntos completos de animaciones entre clases (ej: de Guerrero a Explorador).
+4. **Sala de Simulación Interactiva**:
+   - Haga clic en el botón de simulación para probar los sprites en un entorno controlado de 12x10.
+   - Use las **teclas de flechas** para mover al personaje y **Espacio** para atacar.
+   - Valide colisiones y la fluidez de las animaciones antes de integrarlas al juego principal.
+5. **Exportación**: El JSON generado se puede pegar directamente en la sección `mapeo` de `src/config/sprites.json`.
 
 ### Verificación de Integración
 El `SpriteManager` validará automáticamente que las coordenadas de los sprites estén dentro de los límites de la imagen cargada. Si hay errores, se registrarán en la consola y se utilizarán los fallbacks geométricos.

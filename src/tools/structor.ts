@@ -59,6 +59,7 @@ class Structor {
 
         // Contract UI
         this.initContractUI();
+        this.initCloneUI();
 
         // Zoom controls
         document.getElementById('btnZoomIn')?.addEventListener('click', () => this.setZoom(this.zoom * 1.2));
@@ -83,6 +84,8 @@ class Structor {
         document.getElementById('btnClearAnim')?.addEventListener('click', () => this.clearCurrentAction());
 
         document.getElementById('output')?.addEventListener('input', (e) => this.handleOutputChange(e));
+
+        document.getElementById('btnClone')?.addEventListener('click', () => this.cloneActions());
 
         // Animation controls
         document.getElementById('btnPlayAnim')?.addEventListener('click', () => this.togglePlay());
@@ -130,6 +133,34 @@ class Structor {
                 this.loadImage(recursos[key]);
             }
         });
+    }
+
+    private initCloneUI() {
+        const catSelect = document.getElementById('cloneCatSelect') as HTMLSelectElement;
+        const claseSelect = document.getElementById('cloneClaseSelect') as HTMLSelectElement;
+
+        const contract: any = GameSpriteContract.categorias;
+
+        Object.keys(contract).forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.textContent = `DE: ${cat.toUpperCase()}`;
+            catSelect.appendChild(opt);
+        });
+
+        const updateClases = () => {
+            claseSelect.innerHTML = "";
+            const cat = catSelect.value;
+            contract[cat].clases.forEach((clase: string) => {
+                const opt = document.createElement('option');
+                opt.value = clase;
+                opt.textContent = clase.toUpperCase();
+                claseSelect.appendChild(opt);
+            });
+        };
+
+        catSelect.addEventListener('change', updateClases);
+        updateClases();
     }
 
     private initContractUI() {
@@ -536,6 +567,47 @@ class Structor {
         if (!out) return;
         // Exportamos solo el mapeo para facilitar el pegado en el manifiesto centralizado
         out.value = JSON.stringify(this.mapeo, null, 2);
+    }
+
+    private cloneActions() {
+        const targetCat = (document.getElementById('catSelect') as HTMLSelectElement).value;
+        const targetClase = (document.getElementById('claseSelect') as HTMLSelectElement).value;
+
+        const sourceCat = (document.getElementById('cloneCatSelect') as HTMLSelectElement).value;
+        const sourceClase = (document.getElementById('cloneClaseSelect') as HTMLSelectElement).value;
+
+        if (targetCat === sourceCat && targetClase === sourceClase) {
+            alert("El origen y el destino no pueden ser iguales.");
+            return;
+        }
+
+        const sourceMappings = this.mapeo[sourceCat]?.[sourceClase];
+        if (!sourceMappings || Object.keys(sourceMappings).length === 0) {
+            alert("La clase de origen no tiene acciones mapeadas.");
+            return;
+        }
+
+        if (!confirm(`¿Seguro que quieres clonar las acciones de [${sourceClase}] a [${targetClase}]? Se sobrescribirán las acciones existentes que coincidan en nombre.`)) {
+            return;
+        }
+
+        if (!this.mapeo[targetCat]) this.mapeo[targetCat] = {};
+        if (!this.mapeo[targetCat][targetClase]) this.mapeo[targetCat][targetClase] = {};
+
+        // El contrato nos dice qué acciones son válidas para el destino
+        const targetAcciones = (GameSpriteContract.categorias as any)[targetCat].acciones;
+
+        let copias = 0;
+        targetAcciones.forEach((accion: string) => {
+            if (sourceMappings[accion]) {
+                this.mapeo[targetCat][targetClase][accion] = JSON.parse(JSON.stringify(sourceMappings[accion]));
+                copias++;
+            }
+        });
+
+        this.loadMappingToUI();
+        this.renderOutput();
+        alert(`Clonado completado: ${copias} acciones copiadas.`);
     }
 
     private handleOutputChange(e: any) {

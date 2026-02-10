@@ -66,11 +66,20 @@
         </div>
 
         <div class="group">
-            <label>ASIGNACIÓN LÓGICA:</label>
+            <label>ASIGNACIÓN LÓGICA (OBJETIVO):</label>
             <select id="catSelect"></select>
             <select id="claseSelect" style="margin-top:5px;"></select>
             <select id="accionSelect" style="margin-top:5px;"></select>
             <div id="frameInfo" style="font-size: 10px; color: #aaa; margin-top: 5px;">Frames asignados: 0</div>
+        </div>
+
+        <div class="group">
+            <label>HERRAMIENTA DE CLONADO:</label>
+            <div style="display: flex; gap: 5px;">
+                <select id="cloneCatSelect" style="flex: 1; font-size: 10px;"></select>
+                <select id="cloneClaseSelect" style="flex: 1; font-size: 10px;"></select>
+            </div>
+            <button class="btn btn-secondary" id="btnClone" style="width: 100%; font-size: 11px; background: #555;">CLONAR ACCIONES DESDE ORIGEN</button>
         </div>
 
         <div class="group" style="display: flex; flex-direction: column;">

@@ -11,6 +11,14 @@
         #sidebar::-webkit-scrollbar-track { background: #1e1e1e; }
         #sidebar::-webkit-scrollbar-thumb { background-color: #333; border-radius: 10px; }
         #sidebar::-webkit-scrollbar-thumb:hover { background-color: #007bff; }
+
+        /* Panel de JSON Desplegable */
+        #jsonPanel { position: absolute; top: 0; left: 350px; width: 0; height: 100vh; background: #181818; z-index: 150; transition: width 0.3s ease; overflow: visible; display: flex; flex-direction: column; box-sizing: border-box; }
+        #jsonPanel.open { width: 400px; border-right: 1px solid #333; box-shadow: 10px 0 20px rgba(0,0,0,0.5); }
+        #jsonPanelToggle { position: absolute; top: 20px; left: 0; width: 30px; height: 80px; background: #007bff; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 0 8px 8px 0; font-size: 10px; font-weight: bold; writing-mode: vertical-rl; text-orientation: mixed; box-shadow: 5px 0 10px rgba(0,0,0,0.3); z-index: 160; }
+        #jsonPanelContent { display: none; width: 400px; height: 100vh; flex-direction: column; padding: 15px; box-sizing: border-box; overflow: hidden; }
+        #jsonPanel.open #jsonPanelContent { display: flex; }
+
         #viewer { flex: 1; position: relative; overflow: auto; background: #000; display: flex; align-items: flex-start; justify-content: flex-start; cursor: crosshair; height: 100vh; }
 
         h1 { font-size: 18px; color: #007bff; margin: 0 0 15px 0; flex-shrink: 0; }
@@ -97,14 +105,26 @@
                 </div>
             </div>
 
-            <label style="margin-top: 15px;">SALIDA METADATOS (Editar o Pegar JSON):</label>
-            <textarea id="output" spellcheck="false">{}</textarea>
             <div style="display: flex; gap: 5px;">
                 <button class="btn btn-primary" id="btnExport" style="margin-top: 10px; flex: 1;">GUARDAR ACCIÓN</button>
             </div>
             <div style="display: flex; gap: 5px;">
                 <button class="btn btn-secondary" id="btnResetCanvas" style="margin-top: 5px; flex: 1; font-size: 10px;">LIMPIAR CANVAS</button>
                 <button class="btn btn-secondary" id="btnClearAnim" style="margin-top: 5px; flex: 1; font-size: 10px; background: #822;">ELIMINAR MAPEO</button>
+            </div>
+        </div>
+
+        <!-- El Panel JSON ahora vive aquí pero se posiciona absolutamente -->
+        <div id="jsonPanel">
+            <div id="jsonPanelToggle">METADATOS JSON</div>
+            <div id="jsonPanelContent">
+                <label style="color: #007bff; font-weight: bold; margin-bottom: 10px; display: block;">MAPEO DE SPRITES (JSON)</label>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button class="btn btn-primary" id="btnCopyJson" style="flex: 1; font-size: 11px;">COPIAR AL PORTAPAPELES</button>
+                    <button class="btn btn-secondary" id="btnPasteJson" style="flex: 1; font-size: 11px; margin-top:0;">PEGAR JSON</button>
+                </div>
+                <textarea id="output" spellcheck="false" style="flex: 1; height: auto; min-height: 0; margin-top: 0;"></textarea>
+                <p style="font-size: 10px; color: #666; margin-top: 10px;">Los cambios manuales en este JSON se reflejan inmediatamente en el editor y la simulación.</p>
             </div>
         </div>
     </div>

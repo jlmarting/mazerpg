@@ -80,6 +80,17 @@ export class SpriteManager {
         await Promise.all(this.loadingPromises);
     }
 
+    /**
+     * Permite inyectar una imagen ya cargada (útil para herramientas de edición o DataURLs).
+     */
+    inyectarImagen(nombre: string, img: HTMLImageElement) {
+        this.images.set(nombre, img);
+    }
+
+    tieneImagen(nombre: string): boolean {
+        return this.images.has(nombre);
+    }
+
     dibujarSprite(ctx: CanvasRenderingContext2D, nombre: string, x: number, y: number, w: number, h: number) {
         let sprite = this.obtenerSprite(nombre);
 

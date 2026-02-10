@@ -150,6 +150,36 @@ class Structor {
 
         document.getElementById('output')?.addEventListener('input', (e) => this.handleOutputChange(e));
 
+        document.getElementById('jsonPanelToggle')?.addEventListener('click', () => {
+            const panel = document.getElementById('jsonPanel')!;
+            panel.classList.toggle('open');
+        });
+
+        document.getElementById('btnCopyJson')?.addEventListener('click', () => {
+            const out = document.getElementById('output') as HTMLTextAreaElement;
+            navigator.clipboard.writeText(out.value).then(() => {
+                const btn = document.getElementById('btnCopyJson')!;
+                const old = btn.textContent;
+                btn.textContent = "¡COPIADO!";
+                setTimeout(() => btn.textContent = old, 1000);
+            });
+        });
+
+        document.getElementById('btnPasteJson')?.addEventListener('click', () => {
+            navigator.clipboard.readText().then(text => {
+                const out = document.getElementById('output') as HTMLTextAreaElement;
+                out.value = text;
+                this.handleOutputChange({ target: out });
+
+                const btn = document.getElementById('btnPasteJson')!;
+                const old = btn.textContent;
+                btn.textContent = "¡PEGADO!";
+                setTimeout(() => btn.textContent = old, 1000);
+            }).catch(err => {
+                alert("Error al pegar. Asegúrate de dar permisos de portapapeles o pega manualmente en el área de texto.");
+            });
+        });
+
         document.getElementById('btnClone')?.addEventListener('click', () => this.cloneActions());
 
         document.getElementById('btnToggleLive')?.addEventListener('click', () => this.startSimulation());
@@ -885,6 +915,7 @@ class Structor {
 
     private drawSim() {
         const r = this.simRenderer!;
+        if (!r) return;
         r.limpiar();
 
         const config: GameConfig = {
@@ -911,11 +942,19 @@ class Structor {
         // Inyectamos el mapeo actual en el spriteManager del renderer
         const sm = r.spriteManager;
 
-        // 1. Cargar recursos si no están
+        // 1. Inyectar imagen actual del editor (con nombre forzado para evitar fallos de mapeo desactualizado)
+        if (this.image) {
+            sm.inyectarImagen(this.imageName, this.image);
+            // También inyectamos como 'editor_current' por si queremos forzarlo
+            sm.inyectarImagen('editor_current', this.image);
+        }
+
+        // 2. Cargar recursos del servidor
         const recursos = SpriteConfig.recursos || {};
         for (const [name, url] of Object.entries(recursos)) {
-             if (!sm.obtenerSprite(name)) {
-                 // Esto es asíncrono, pero en la simulación irá cargando.
+             if (!sm.tieneImagen(name) && !(sm as any)._loading?.has(name)) {
+                 if (!(sm as any)._loading) (sm as any)._loading = new Set();
+                 (sm as any)._loading.add(name);
                  sm.cargarImagen(name, url as string);
              }
         }
@@ -935,7 +974,12 @@ class Structor {
                 for (const [estado, infoRaw] of Object.entries(estados as any)) {
                     const info = infoRaw as any;
                     const keyBase = `${prefijo}_${clase}_${estado}`;
-                    const imagen = info.imagen;
+                    // Priorizamos la imagen de la info, pero si no está cargada y tenemos una en el editor, usamos esa como fallback
+                    let imagen = info.imagen;
+                    if (!sm.tieneImagen(imagen) && this.image) {
+                        imagen = this.imageName;
+                    }
+
                     if (info.puntos) {
                         info.puntos.forEach((p: any, i: number) => {
                             sm.definirSprite(`${keyBase}_${i}`, imagen, p.x, p.y, p.w, p.h);

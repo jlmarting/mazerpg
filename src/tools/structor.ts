@@ -62,6 +62,11 @@ class Structor {
     private largePreviewCanvas: HTMLCanvasElement;
     private largePreviewCtx: CanvasRenderingContext2D;
 
+    private prevFrameCanvas: HTMLCanvasElement;
+    private prevFrameCtx: CanvasRenderingContext2D;
+    private currFrameCanvas: HTMLCanvasElement;
+    private currFrameCtx: CanvasRenderingContext2D;
+
     private image: HTMLImageElement | null = null;
     private imageName: string = "unknown_sheet";
 
@@ -98,6 +103,11 @@ class Structor {
         this.previewCtx = this.previewCanvas.getContext('2d')!;
         this.largePreviewCanvas = document.getElementById('largePreviewCanvas') as HTMLCanvasElement;
         this.largePreviewCtx = this.largePreviewCanvas.getContext('2d')!;
+
+        this.prevFrameCanvas = document.getElementById('prevFrameCanvas') as HTMLCanvasElement;
+        this.prevFrameCtx = this.prevFrameCanvas.getContext('2d')!;
+        this.currFrameCanvas = document.getElementById('currFrameCanvas') as HTMLCanvasElement;
+        this.currFrameCtx = this.currFrameCanvas.getContext('2d')!;
 
         this.simCanvas = document.getElementById('simCanvas') as HTMLCanvasElement;
         if (this.simCanvas) {
@@ -155,6 +165,14 @@ class Structor {
             panel.classList.toggle('open');
         });
 
+        document.getElementById('comparisonToggle')?.addEventListener('click', () => {
+            const panel = document.getElementById('comparisonPanel')!;
+            panel.classList.toggle('open');
+            if (panel.classList.contains('open')) {
+                this.updateComparison();
+            }
+        });
+
         document.getElementById('btnCopyJson')?.addEventListener('click', () => {
             const out = document.getElementById('output') as HTMLTextAreaElement;
             navigator.clipboard.writeText(out.value).then(() => {
@@ -175,7 +193,7 @@ class Structor {
                 const old = btn.textContent;
                 btn.textContent = "¡PEGADO!";
                 setTimeout(() => btn.textContent = old, 1000);
-            }).catch(err => {
+            }).catch(() => {
                 alert("Error al pegar. Asegúrate de dar permisos de portapapeles o pega manualmente en el área de texto.");
             });
         });
@@ -618,6 +636,56 @@ class Structor {
         if (this.largePreviewModalVisible()) {
             this.updateLargePreview();
         }
+
+        this.updateComparison();
+    }
+
+    private updateComparison() {
+        if (!this.image) return;
+
+        // Primer frame de la secuencia actual
+        const first = this.selections[0];
+        this.drawToComparison(this.prevFrameCtx, this.prevFrameCanvas, first);
+
+        // Frame actual seleccionado
+        const current = this.selections[this.activeIndex];
+        this.drawToComparison(this.currFrameCtx, this.currFrameCanvas, current);
+    }
+
+    private drawToComparison(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, sel: any) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!sel) return;
+
+        const ratio = Math.min(canvas.width / sel.w, canvas.height / sel.h);
+        const nw = sel.w * ratio;
+        const nh = sel.h * ratio;
+
+        ctx.drawImage(
+            this.image!,
+            sel.x, sel.y, sel.w, sel.h,
+            (canvas.width - nw) / 2, (canvas.height - nh) / 2, nw, nh
+        );
+
+        // Rejilla azul tenue
+        ctx.strokeStyle = 'rgba(0, 123, 255, 0.4)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        // Líneas verticales cada 16px de "píxel de juego" si el zoom es 4x (32*4=128)
+        // O simplemente cada 32px del canvas para una grilla visual simple.
+        for (let x = 0; x <= canvas.width; x += 32) {
+            ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
+        }
+        for (let y = 0; y <= canvas.height; y += 32) {
+            ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
+        }
+        ctx.stroke();
+
+        // Cruz central para ajuste de eje
+        ctx.strokeStyle = 'rgba(0, 123, 255, 0.6)';
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, 0); ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.moveTo(0, canvas.height / 2); ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
     }
 
     private addFrameToConfig() {

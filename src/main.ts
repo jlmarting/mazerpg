@@ -2162,8 +2162,14 @@ class Game implements IGame {
                         }
                     } else {
                         if (entData.id === this.network.idLocal) {
-                            this.protagonista.fila = entData.f;
-                            this.protagonista.columna = entData.c;
+                            // Snap-back corregido: solo corregir si la discrepancia es significativa
+                            // o si el Host insiste en una posición diferente durante un tiempo.
+                            // Por ahora usamos un umbral de 1.1 tiles para permitir predicción local.
+                            const dist = Math.sqrt(Math.pow(this.protagonista.fila - entData.f, 2) + Math.pow(this.protagonista.columna - entData.c, 2));
+                            if (dist > 1.1) {
+                                this.protagonista.fila = entData.f;
+                                this.protagonista.columna = entData.c;
+                            }
                             this.protagonista.vidaActual = entData.v;
                             this.protagonista.vidaMaxima = entData.vm;
                             this.protagonista.estaVivo = entData.viva;
@@ -2246,8 +2252,11 @@ class Game implements IGame {
             }
             break;
         case 'mapa':
-            deserializarMapa(this.mapaLaberinto, msg.datos);
+            const dims = deserializarMapa(this.mapaLaberinto, msg.datos);
+            this.config.NUMERO_FILAS = dims.filas;
+            this.config.NUMERO_COLUMNAS = dims.columnas;
             if (msg.dificultad) this.config.dificultad = msg.dificultad;
+            this.ajustarDimensiones();
             break;
         case 'enemigos':
             this.listaDeEnemigos = msg.lista.map((d: any) => {

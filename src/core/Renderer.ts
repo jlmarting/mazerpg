@@ -296,12 +296,14 @@ export class Renderer {
     const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, TIEMPO_DESVANECIMIENTO_NIEBLA, vistaDebugActivada } = config;
 
     // Culling: No dibujar si está fuera de la vista
-    if (entidad.fila < filaOffset - 1 || entidad.fila >= filaOffset + CELDAS_VISIBLES_Y + 1 ||
-        entidad.columna < colOffset - 1 || entidad.columna >= colOffset + CELDAS_VISIBLES_X + 1) return;
+    if (entidad.visualFila < filaOffset - 1 || entidad.visualFila >= filaOffset + CELDAS_VISIBLES_Y + 1 ||
+        entidad.visualColumna < colOffset - 1 || entidad.visualColumna >= colOffset + CELDAS_VISIBLES_X + 1) return;
 
     // Niebla de guerra: Verificar si la casilla es visible
     if (!vistaDebugActivada && mapaLaberinto) {
-        const celdaActual = mapaLaberinto[entidad.fila]?.[entidad.columna];
+        const gridF = Math.round(entidad.visualFila);
+        const gridC = Math.round(entidad.visualColumna);
+        const celdaActual = mapaLaberinto[gridF]?.[gridC];
         if (celdaActual) {
             const tiempoDesdeVisto = Date.now() - celdaActual.ultimoAvistamiento;
             if (celdaActual.ultimoAvistamiento === 0 || tiempoDesdeVisto > TIEMPO_DESVANECIMIENTO_NIEBLA) {
@@ -310,8 +312,8 @@ export class Renderer {
         }
     }
 
-    const x = (entidad.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
-    const y = (entidad.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+    const x = (entidad.visualColumna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = (entidad.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
 
     this.ctx.save();
 
@@ -341,8 +343,8 @@ export class Renderer {
     this.ctx.restore();
 
     // Dibujar elementos adicionales
-    this.dibujarBarraVida(entidad, offset, config, mapaLaberinto);
-    this.dibujarBubbleChat(entidad, offset, config);
+    this.dibujarBarraVida(entidad, offset, config, mapaLaberinto, x, y);
+    this.dibujarBubbleChat(entidad, offset, config, x, y);
 
     // Dibujar etiqueta de nombre para otros jugadores
     if (!esNPC && prefix === 'player') {
@@ -471,13 +473,15 @@ export class Renderer {
   /**
    * Dibuja la barra de vida sobre una entidad.
    */
-  dibujarBarraVida(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig, mapaLaberinto?: Celda[][]) {
+  dibujarBarraVida(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig, mapaLaberinto?: Celda[][], preCalcX?: number, preCalcY?: number) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, vistaDebugActivada, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
 
     // Niebla de guerra para barra de vida
     if (!vistaDebugActivada && mapaLaberinto) {
-        const celdaActual = mapaLaberinto[entidad.fila]?.[entidad.columna];
+        const gridF = Math.round(entidad.visualFila);
+        const gridC = Math.round(entidad.visualColumna);
+        const celdaActual = mapaLaberinto[gridF]?.[gridC];
         if (celdaActual) {
             const tiempoDesdeVisto = Date.now() - celdaActual.ultimoAvistamiento;
             if (celdaActual.ultimoAvistamiento === 0 || tiempoDesdeVisto > TIEMPO_DESVANECIMIENTO_NIEBLA) {
@@ -486,8 +490,8 @@ export class Renderer {
         }
     }
 
-    const x = (entidad.columna - colOffset) * TAMANO_CELDA + 2;
-    const y = (entidad.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2;
+    const x = preCalcX ? preCalcX - TAMANO_CELDA / 2 + 2 : (entidad.visualColumna - colOffset) * TAMANO_CELDA + 2;
+    const y = preCalcY ? preCalcY - TAMANO_CELDA / 2 + 2 : (entidad.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2;
     const anchoBarra = TAMANO_CELDA - 4;
     const altoBarra = 4;
 
@@ -503,15 +507,15 @@ export class Renderer {
   /**
    * Dibuja el globo de chat de una entidad si tiene uno activo.
    */
-  dibujarBubbleChat(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig) {
+  dibujarBubbleChat(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig, preCalcX?: number, preCalcY?: number) {
     if (!entidad.bubbleChat || Date.now() > entidad.bubbleChat.expira) {
         return;
     }
 
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
-    const x = (entidad.columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
-    const y = (entidad.fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP - 10;
+    const x = preCalcX || (entidad.visualColumna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = preCalcY ? preCalcY - TAMANO_CELDA / 2 - 10 : (entidad.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP - 10;
 
     this.ctx.save();
     this.ctx.font = '14px Arial';

@@ -1,13 +1,19 @@
 import { Celda } from './Celda';
-import { NUMERO_FILAS, NUMERO_COLUMNAS } from './constants';
 
 /**
  * Serializa el mapa en una cadena compacta para evitar límites de WebRTC.
  */
 export function serializarMapa(mapaLaberinto: Celda[][]): string {
   let resultado = "";
-  for (let f = 0; f < NUMERO_FILAS; f++) {
-    for (let c = 0; c < NUMERO_COLUMNAS; c++) {
+  const filas = mapaLaberinto.length;
+  const columnas = filas > 0 ? mapaLaberinto[0].length : 0;
+
+  // Incluimos dimensiones al inicio para que el receptor sepa qué esperar
+  resultado += filas.toString(36).padStart(3, '0');
+  resultado += columnas.toString(36).padStart(3, '0');
+
+  for (let f = 0; f < filas; f++) {
+    for (let c = 0; c < columnas; c++) {
       const celda = mapaLaberinto[f][c];
       let valor = 0;
       if (celda.muros.superior) valor |= 1;
@@ -23,12 +29,24 @@ export function serializarMapa(mapaLaberinto: Celda[][]): string {
 
 /**
  * Deserializa el mapa desde una cadena compacta.
+ * Retorna las dimensiones detectadas en el stream.
  */
-export function deserializarMapa(mapaLaberinto: Celda[][], datos: string) {
+export function deserializarMapa(mapaLaberinto: Celda[][], datos: string): { filas: number, columnas: number } {
   let i = 0;
-  for (let f = 0; f < NUMERO_FILAS; f++) {
-    for (let c = 0; c < NUMERO_COLUMNAS; c++) {
+  const filas = parseInt(datos.substring(i, i + 3), 36); i += 3;
+  const columnas = parseInt(datos.substring(i, i + 3), 36); i += 3;
+
+  // Redimensionar el mapa si es necesario (asumiendo que mapaLaberinto ya es una matriz de Celdas)
+  // En nuestro motor, Game.initMap crea la matriz, así que aquí solo la rellenamos.
+  // Si las dimensiones no coinciden, tendríamos un problema.
+  // Pero Game.mapaLaberinto se inicializa con NUMERO_FILAS/COLUMNAS.
+
+  for (let f = 0; f < filas; f++) {
+    for (let c = 0; c < columnas; c++) {
       const valor = parseInt(datos[i++], 36);
+      if (!mapaLaberinto[f]) mapaLaberinto[f] = [];
+      if (!mapaLaberinto[f][c]) mapaLaberinto[f][c] = new Celda(f, c);
+
       const celda = mapaLaberinto[f][c];
       celda.muros.superior = !!(valor & 1);
       celda.muros.derecho = !!(valor & 2);
@@ -37,4 +55,5 @@ export function deserializarMapa(mapaLaberinto: Celda[][], datos: string) {
       celda.esTransitable = !!(valor & 16);
     }
   }
+  return { filas, columnas };
 }

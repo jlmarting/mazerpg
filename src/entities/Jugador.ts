@@ -90,6 +90,14 @@ export class Jugador extends EntidadRPG {
             (game as any).colaAcciones.push({ id: game.network.idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
         } else {
             game.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
+
+            // Predicción local para feedback inmediato
+            const sigF = this.fila + deltaFila;
+            const sigC = this.columna + deltaColumna;
+            if (game.mapaLaberinto[sigF]?.[sigC]?.esTransitable) {
+                this.fila = sigF;
+                this.columna = sigC;
+            }
         }
         this.estaCaminando = true;
         return true;

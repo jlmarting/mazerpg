@@ -26,6 +26,8 @@ export interface CameraOffset {
 export interface IEntidadRPG {
     fila: number;
     columna: number;
+    visualFila: number;
+    visualColumna: number;
     nombre: string;
     vidaActual: number;
     vidaMaxima: number;

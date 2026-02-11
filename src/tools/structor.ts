@@ -10,6 +10,8 @@ import { IEntidadRPG, GameConfig, CameraOffset } from '../types';
 class DummyEntity implements IEntidadRPG {
     fila: number;
     columna: number;
+    visualFila: number;
+    visualColumna: number;
     nombre: string;
     vidaActual: number = 100;
     vidaMaxima: number = 100;
@@ -30,6 +32,8 @@ class DummyEntity implements IEntidadRPG {
     constructor(f: number, c: number, parent: Structor) {
         this.fila = f;
         this.columna = c;
+        this.visualFila = f;
+        this.visualColumna = c;
         this.nombre = "Tester";
         this.parent = parent;
     }
@@ -1018,6 +1022,8 @@ class Structor {
             if (this.simMap[gridF]?.[gridC]?.esTransitable) {
                 ent.fila = nf;
                 ent.columna = nc;
+                ent.visualFila = nf;
+                ent.visualColumna = nc;
                 ent.estaCaminando = true;
             } else {
                 ent.estaCaminando = false;

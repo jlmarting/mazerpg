@@ -7,6 +7,8 @@ import { IEntidadRPG } from '../types';
 export abstract class EntidadRPG implements IEntidadRPG {
   fila: number;
   columna: number;
+  visualFila: number;
+  visualColumna: number;
   nombre: string;
   fuerza: number;
   agilidad: number;
@@ -33,6 +35,8 @@ export abstract class EntidadRPG implements IEntidadRPG {
   constructor(fila: number, columna: number, nombre: string) {
     this.fila = fila;
     this.columna = columna;
+    this.visualFila = fila;
+    this.visualColumna = columna;
     this.nombre = nombre;
 
     this.fuerza = Math.floor(Math.random() * 10) + 1;
@@ -101,6 +105,11 @@ export abstract class EntidadRPG implements IEntidadRPG {
    */
   actualizarEstado() {
     const ahora = Date.now();
+
+    // Interpolación de posición visual para suavizado
+    const suavizado = 0.15;
+    this.visualFila += (this.fila - this.visualFila) * suavizado;
+    this.visualColumna += (this.columna - this.visualColumna) * suavizado;
 
     // Volver a idle si el estado temporal expiró
     if (this.estadoExpira > 0 && ahora > this.estadoExpira) {

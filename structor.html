@@ -40,20 +40,29 @@
 
         #output { height: 150px; min-height: 100px; margin-top: 10px; background: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 10px; border-radius: 4px; border: 1px solid #333; overflow: auto; white-space: pre; width: 100%; box-sizing: border-box; resize: vertical; flex-shrink: 0; }
 
-        .preview-area { width: 100%; height: 120px; min-height: 100px; background: #000; border: 1px dashed #555; margin-top: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; position: relative; flex-shrink: 0; }
-        #previewCanvas { image-rendering: pixelated; transform: scale(2); }
+        .preview-area { width: 100%; height: 160px; min-height: 140px; background: #000; border: 1px dashed #555; margin-top: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; position: relative; flex-shrink: 0; }
+        #previewCanvas { image-rendering: pixelated; }
         .anim-controls { width: 100%; display: flex; gap: 5px; padding: 5px; background: rgba(0,0,0,0.5); position: absolute; bottom: 0; box-sizing: border-box; }
 
         .toolbar { position: absolute; top: 10px; right: 10px; display: flex; gap: 10px; z-index: 100; }
         .tool-btn { background: rgba(30, 30, 30, 0.8); color: white; border: 1px solid #555; padding: 5px 10px; cursor: pointer; border-radius: 4px; }
         #gridOverlay { position: absolute; top: 0; left: 0; pointer-events: none; opacity: 0.3; }
 
-        /* Panel de Comparación Inferior */
+        /* Panel Inferior (Ajuste y Simulación) */
         #comparisonPanel { position: absolute; bottom: 0; left: 0; width: 100%; height: 0; background: #181818; z-index: 200; transition: height 0.3s ease; display: flex; flex-direction: column; box-sizing: border-box; }
-        #comparisonPanel.open { height: 200px; border-top: 1px solid #333; box-shadow: 0 -10px 20px rgba(0,0,0,0.5); }
-        #comparisonToggle { position: absolute; top: -30px; right: 20px; width: 150px; height: 30px; background: #007bff; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 8px 8px 0 0; font-size: 11px; font-weight: bold; box-shadow: 0 -5px 10px rgba(0,0,0,0.3); }
-        #comparisonContent { display: none; flex-direction: row; align-items: center; justify-content: center; gap: 40px; padding: 20px; height: 100%; box-sizing: border-box; }
+        #comparisonPanel.open { height: 380px; border-top: 1px solid #333; box-shadow: 0 -10px 20px rgba(0,0,0,0.5); }
+        #comparisonToggle { position: absolute; top: -30px; right: 20px; width: 200px; height: 30px; background: #007bff; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 8px 8px 0 0; font-size: 11px; font-weight: bold; box-shadow: 0 -5px 10px rgba(0,0,0,0.3); }
+        #comparisonContent { display: none; flex-direction: column; height: 100%; box-sizing: border-box; }
         #comparisonPanel.open #comparisonContent { display: flex; }
+
+        .tabs { display: flex; background: #222; border-bottom: 1px solid #333; }
+        .tab-btn { padding: 10px 20px; cursor: pointer; border: none; background: transparent; color: #888; font-weight: bold; font-size: 12px; }
+        .tab-btn.active { color: #007bff; border-bottom: 2px solid #007bff; background: #2d2d2d; }
+        .tab-content { flex: 1; display: none; overflow: hidden; }
+        .tab-content.active { display: flex; }
+
+        #ajusteTab { flex-direction: row; align-items: center; justify-content: center; gap: 40px; padding: 20px; }
+        #simulacionTab { flex-direction: column; align-items: center; justify-content: center; padding: 10px; background: #111; position: relative; }
         .comp-box { display: flex; flex-direction: column; align-items: center; gap: 10px; }
         .comp-box label { font-size: 10px; color: #007bff; font-weight: bold; }
         .comp-box canvas { background: #000; border: 1px solid #444; image-rendering: pixelated; }
@@ -89,6 +98,8 @@
             <select id="claseSelect" style="margin-top:5px;"></select>
             <select id="accionSelect" style="margin-top:5px;"></select>
             <div id="frameInfo" style="font-size: 10px; color: #aaa; margin-top: 5px;">Frames asignados: 0</div>
+
+            <button class="btn btn-primary" id="btnExport" style="margin-top: 10px; width: 100%;">GUARDAR ACCIÓN</button>
         </div>
 
         <div class="group">
@@ -106,7 +117,7 @@
                 <button class="tool-btn" id="btnToggleLive" style="background: #e67e22; color: white; font-size: 9px; padding: 2px 8px;">MODO PRUEBA (LIVE)</button>
             </div>
             <div class="preview-area">
-                <canvas id="previewCanvas" width="64" height="64"></canvas>
+                <canvas id="previewCanvas" width="128" height="128"></canvas>
                 <div class="anim-controls">
                     <button class="tool-btn" id="btnPlayAnim" style="padding: 2px 5px; font-size: 9px;">PLAY</button>
                     <button class="tool-btn" id="btnOpenLargePreview" style="padding: 2px 5px; font-size: 9px;">GRANDE</button>
@@ -115,9 +126,6 @@
                 </div>
             </div>
 
-            <div style="display: flex; gap: 5px;">
-                <button class="btn btn-primary" id="btnExport" style="margin-top: 10px; flex: 1;">GUARDAR ACCIÓN</button>
-            </div>
             <div style="display: flex; gap: 5px;">
                 <button class="btn btn-secondary" id="btnResetCanvas" style="margin-top: 5px; flex: 1; font-size: 10px;">LIMPIAR CANVAS</button>
                 <button class="btn btn-secondary" id="btnClearAnim" style="margin-top: 5px; flex: 1; font-size: 10px; background: #822;">ELIMINAR MAPEO</button>
@@ -152,17 +160,33 @@
             <div id="selectionBoxesContainer"></div>
         </div>
 
-        <!-- Panel de Comparación -->
+        <!-- Panel de Comparación y Simulación -->
         <div id="comparisonPanel">
-            <div id="comparisonToggle">AJUSTE DE SPRITES</div>
+            <div id="comparisonToggle">HERRAMIENTAS DE AJUSTE</div>
             <div id="comparisonContent">
-                <div class="comp-box">
-                    <label>PRIMER SELECCIONADO</label>
-                    <canvas id="prevFrameCanvas" width="128" height="128"></canvas>
+                <div class="tabs">
+                    <div class="tab-btn active" data-tab="ajusteTab">AJUSTE DE SPRITES</div>
+                    <div class="tab-btn" data-tab="simulacionTab">SIMULACIÓN (12x10)</div>
                 </div>
-                <div class="comp-box">
-                    <label>SELECCIÓN ACTUAL</label>
-                    <canvas id="currFrameCanvas" width="128" height="128"></canvas>
+
+                <div id="ajusteTab" class="tab-content active">
+                    <div class="comp-box">
+                        <label>FOTOGRAMA ANTERIOR</label>
+                        <canvas id="prevFrameCanvas" width="128" height="128"></canvas>
+                    </div>
+                    <div class="comp-box">
+                        <label>SELECCIÓN ACTUAL</label>
+                        <canvas id="currFrameCanvas" width="128" height="128"></canvas>
+                    </div>
+                </div>
+
+                <div id="simulacionTab" class="tab-content">
+                    <div style="background: #000; border: 1px solid #333; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+                        <canvas id="simCanvas" width="384" height="320" style="image-rendering: pixelated; display: block;"></canvas>
+                    </div>
+                    <div style="color: #888; font-size: 11px; text-align: center; font-family: monospace; margin-top: 10px;">
+                        Usa las <b>FLECHAS</b> para moverte | <b>ESPACIO</b> para atacar
+                    </div>
                 </div>
             </div>
         </div>
@@ -184,20 +208,6 @@
         </div>
     </div>
 
-    <!-- Modal de Sala de Simulación -->
-    <div id="simRoomModal" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 2000;">
-        <div style="background: #1a1a1a; border: 2px solid #e67e22; padding: 20px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 15px; position: relative; max-width: 90vw;">
-            <h2 style="color: #e67e22; margin: 0; font-size: 18px;">SALA DE SIMULACIÓN (12x10)</h2>
-            <div style="background: #000; border: 1px solid #333; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
-                <canvas id="simCanvas" width="384" height="320" style="image-rendering: pixelated; display: block;"></canvas>
-            </div>
-            <div style="color: #888; font-size: 11px; text-align: center; font-family: monospace;">
-                Usa las <b>FLECHAS</b> para moverte | <b>ESPACIO</b> para atacar<br>
-                Prueba colisiones y estados en tiempo real.
-            </div>
-            <button class="btn btn-primary" id="btnCloseSim" style="width: 100%; background: #e67e22;">VOLVER AL EDITOR</button>
-        </div>
-    </div>
 
     <script type="module" src="/src/tools/structor.ts"></script>
 </body>

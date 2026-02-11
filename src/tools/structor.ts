@@ -170,7 +170,32 @@ class Structor {
             panel.classList.toggle('open');
             if (panel.classList.contains('open')) {
                 this.updateComparison();
+                // Si la simulación está activa en la pestaña, asegurar loop
+                const activeTab = document.querySelector('.tab-btn.active')?.getAttribute('data-tab');
+                if (activeTab === 'simulacionTab') {
+                    this.startSimulation();
+                }
+            } else {
+                this.stopSimulation();
             }
+        });
+
+        // Tabs logic
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+                btn.classList.add('active');
+                const tabId = btn.getAttribute('data-tab')!;
+                document.getElementById(tabId)!.classList.add('active');
+
+                if (tabId === 'simulacionTab') {
+                    this.startSimulation();
+                } else {
+                    this.stopSimulation();
+                }
+            });
         });
 
         document.getElementById('btnCopyJson')?.addEventListener('click', () => {
@@ -201,7 +226,6 @@ class Structor {
         document.getElementById('btnClone')?.addEventListener('click', () => this.cloneActions());
 
         document.getElementById('btnToggleLive')?.addEventListener('click', () => this.startSimulation());
-        document.getElementById('btnCloseSim')?.addEventListener('click', () => this.stopSimulation());
 
         window.addEventListener('keydown', (e) => {
             if (this.simActive) {
@@ -643,9 +667,11 @@ class Structor {
     private updateComparison() {
         if (!this.image) return;
 
-        // Primer frame de la secuencia actual
-        const first = this.selections[0];
-        this.drawToComparison(this.prevFrameCtx, this.prevFrameCanvas, first);
+        // Fotograma ANTERIOR de la secuencia actual
+        // Si estamos en el frame N, mostramos el N-1. Si es el 0, mostramos el último o el 0 mismo.
+        const prevIndex = this.activeIndex > 0 ? this.activeIndex - 1 : 0;
+        const prev = this.selections[prevIndex];
+        this.drawToComparison(this.prevFrameCtx, this.prevFrameCanvas, prev);
 
         // Frame actual seleccionado
         const current = this.selections[this.activeIndex];
@@ -746,8 +772,12 @@ class Structor {
     private renderOutput() {
         const out = document.getElementById('output') as HTMLTextAreaElement;
         if (!out) return;
-        // Exportamos solo el mapeo para facilitar el pegado en el manifiesto centralizado
-        out.value = JSON.stringify(this.mapeo, null, 2);
+        // Exportamos el objeto completo (recursos + mapeo) para facilitar copy-paste al fichero final
+        const fullConfig = {
+            recursos: SpriteConfig.recursos,
+            mapeo: this.mapeo
+        };
+        out.value = JSON.stringify(fullConfig, null, 2);
     }
 
     private cloneActions() {
@@ -794,8 +824,12 @@ class Structor {
     private handleOutputChange(e: any) {
         try {
             const val = e.target.value;
-            const newMapeo = JSON.parse(val);
-            this.mapeo = newMapeo;
+            const config = JSON.parse(val);
+            if (config.mapeo) {
+                this.mapeo = config.mapeo;
+            } else {
+                this.mapeo = config; // Fallback por si pegan solo el fragmento de mapeo
+            }
             this.loadMappingToUI();
         } catch (err) {
             // JSON inválido, no hacemos nada hasta que sea válido
@@ -904,8 +938,20 @@ class Structor {
     }
 
     private startSimulation() {
-        const modal = document.getElementById('simRoomModal')!;
-        modal.style.display = 'flex';
+        if (this.simActive) return; // Ya en marcha
+
+        const panel = document.getElementById('comparisonPanel')!;
+        if (!panel.classList.contains('open')) {
+             panel.classList.add('open');
+        }
+
+        // Activar pestaña de simulación si no lo está
+        const simTabBtn = document.querySelector('[data-tab="simulacionTab"]') as HTMLElement;
+        if (!simTabBtn.classList.contains('active')) {
+            simTabBtn.click();
+            return; // El click disparará de nuevo startSimulation
+        }
+
         this.simActive = true;
 
         // Sincronizar el spriteManager de Structor con el del simRenderer
@@ -932,9 +978,11 @@ class Structor {
     }
 
     private stopSimulation() {
-        document.getElementById('simRoomModal')!.style.display = 'none';
         this.simActive = false;
-        if (this.simLoopId) cancelAnimationFrame(this.simLoopId);
+        if (this.simLoopId) {
+            cancelAnimationFrame(this.simLoopId);
+            this.simLoopId = null;
+        }
         this.simKeys.clear();
     }
 

@@ -87,188 +87,152 @@
       },
       "explorador": {
         "idle": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 160,
+              "x": 98,
+              "y": 56,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         },
         "walking": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 192,
+              "x": 39,
+              "y": 14,
               "w": 32,
               "h": 32
             },
             {
-              "x": 32,
-              "y": 192,
-              "w": 32,
-              "h": 32
-            },
-            {
-              "x": 64,
-              "y": 192,
+              "x": 69,
+              "y": 57,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         },
         "attacking": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 224,
+              "x": 194,
+              "y": 105,
               "w": 32,
               "h": 32
             },
             {
-              "x": 32,
-              "y": 224,
+              "x": 228,
+              "y": 105,
               "w": 32,
               "h": 32
             },
             {
-              "x": 64,
-              "y": 224,
+              "x": 41,
+              "y": 105,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         },
         "defending": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 256,
+              "x": 193,
+              "y": 106,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         },
         "fallen": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 288,
-              "w": 32,
-              "h": 32
-            },
-            {
-              "x": 32,
-              "y": 288,
-              "w": 32,
-              "h": 32
-            },
-            {
-              "x": 64,
-              "y": 288,
+              "x": 124,
+              "y": 150,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         }
       },
       "mago": {
         "idle": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 320,
+              "x": 98,
+              "y": 56,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         },
         "walking": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 352,
+              "x": 39,
+              "y": 14,
               "w": 32,
               "h": 32
             },
             {
-              "x": 32,
-              "y": 352,
-              "w": 32,
-              "h": 32
-            },
-            {
-              "x": 64,
-              "y": 352,
+              "x": 69,
+              "y": 57,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         },
         "attacking": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 384,
+              "x": 194,
+              "y": 105,
               "w": 32,
               "h": 32
             },
             {
-              "x": 32,
-              "y": 384,
+              "x": 228,
+              "y": 105,
               "w": 32,
               "h": 32
             },
             {
-              "x": 64,
-              "y": 384,
+              "x": 41,
+              "y": 105,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         },
         "defending": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 416,
+              "x": 193,
+              "y": 106,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         },
         "fallen": {
+          "imagen": "sheet_players",
           "puntos": [
             {
-              "x": 0,
-              "y": 448,
-              "w": 32,
-              "h": 32
-            },
-            {
-              "x": 32,
-              "y": 448,
-              "w": 32,
-              "h": 32
-            },
-            {
-              "x": 64,
-              "y": 448,
+              "x": 124,
+              "y": 150,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_players"
+          ]
         }
       }
     },

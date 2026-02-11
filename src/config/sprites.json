@@ -1,93 +1,629 @@
 {
-    "recursos": {
-        "sheet_players": "sprites/players.png",
-        "sheet_npcs": "sprites/npcs.png",
-        "sheet_static": "sprites/static.png",
-        "sheet_dynamic": "sprites/dynamic.png",
-        "food_apple": "sprites/apple.png",
-        "tool_pickaxe": "sprites/pickaxe.png",
-        "hero_custom": "sprites/hero_custom.png"
-    },
-    "mapeo": {
-        "jugadores": {
-            "guerrero": {
-                "idle": { "puntos": [{ "x": 0, "y": 0, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "walking": { "puntos": [{ "x": 0, "y": 32, "w": 32, "h": 32 }, { "x": 32, "y": 32, "w": 32, "h": 32 }, { "x": 64, "y": 32, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "attacking": {
-                    "puntos": [
-                        { "x": 226, "y": 107, "w": 40, "h": 32 },
-                        { "x": 156, "y": 105, "w": 40, "h": 32 },
-                        { "x": 70, "y": 105, "w": 40, "h": 32 },
-                        { "x": 190, "y": 105, "w": 40, "h": 32 },
-                        { "x": 34, "y": 103, "w": 40, "h": 32 },
-                        { "x": 109, "y": 104, "w": 40, "h": 32 }
-                    ],
-                    "imagen": "hero_custom"
-                },
-                "defending": { "puntos": [{ "x": 0, "y": 96, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "fallen": { "puntos": [{ "x": 0, "y": 128, "w": 32, "h": 32 }, { "x": 32, "y": 128, "w": 32, "h": 32 }, { "x": 64, "y": 128, "w": 32, "h": 32 }], "imagen": "sheet_players" }
-            },
-            "explorador": {
-                "idle": { "puntos": [{ "x": 0, "y": 160, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "walking": { "puntos": [{ "x": 0, "y": 192, "w": 32, "h": 32 }, { "x": 32, "y": 192, "w": 32, "h": 32 }, { "x": 64, "y": 192, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "attacking": { "puntos": [{ "x": 0, "y": 224, "w": 32, "h": 32 }, { "x": 32, "y": 224, "w": 32, "h": 32 }, { "x": 64, "y": 224, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "defending": { "puntos": [{ "x": 0, "y": 256, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "fallen": { "puntos": [{ "x": 0, "y": 288, "w": 32, "h": 32 }, { "x": 32, "y": 288, "w": 32, "h": 32 }, { "x": 64, "y": 288, "w": 32, "h": 32 }], "imagen": "sheet_players" }
-            },
-            "mago": {
-                "idle": { "puntos": [{ "x": 0, "y": 320, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "walking": { "puntos": [{ "x": 0, "y": 352, "w": 32, "h": 32 }, { "x": 32, "y": 352, "w": 32, "h": 32 }, { "x": 64, "y": 352, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "attacking": { "puntos": [{ "x": 0, "y": 384, "w": 32, "h": 32 }, { "x": 32, "y": 384, "w": 32, "h": 32 }, { "x": 64, "y": 384, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "defending": { "puntos": [{ "x": 0, "y": 416, "w": 32, "h": 32 }], "imagen": "sheet_players" },
-                "fallen": { "puntos": [{ "x": 0, "y": 448, "w": 32, "h": 32 }, { "x": 32, "y": 448, "w": 32, "h": 32 }, { "x": 64, "y": 448, "w": 32, "h": 32 }], "imagen": "sheet_players" }
+  "recursos": {
+    "sheet_players": "sprites/hero.png",
+    "sheet_npcs": "sprites/npcs.png",
+    "sheet_static": "sprites/null.png",
+    "sheet_dynamic": "sprites/null.png",
+    "food_apple": "sprites/null.png",
+    "tool_pickaxe": "sprites/null.png",
+    "hero_custom": "sprites/hero_custom.png"
+  },
+  "mapeo": {
+    "jugadores": {
+      "guerrero": {
+        "idle": {
+          "imagen": "sheet_players",
+          "puntos": [
+            {
+              "x": 98,
+              "y": 56,
+              "w": 32,
+              "h": 32
             }
+          ]
         },
-        "npcs": {
-            "esqueleto": {
-                "idle": { "puntos": [{ "x": 0, "y": 480, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
-                "walking": { "puntos": [{ "x": 0, "y": 512, "w": 32, "h": 32 }, { "x": 32, "y": 512, "w": 32, "h": 32 }, { "x": 64, "y": 512, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
-                "attacking": { "puntos": [{ "x": 0, "y": 544, "w": 32, "h": 32 }, { "x": 32, "y": 544, "w": 32, "h": 32 }, { "x": 64, "y": 544, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
-                "fallen": { "puntos": [{ "x": 0, "y": 576, "w": 32, "h": 32 }, { "x": 32, "y": 576, "w": 32, "h": 32 }, { "x": 64, "y": 576, "w": 32, "h": 32 }], "imagen": "sheet_npcs" }
+        "walking": {
+          "imagen": "sheet_players",
+          "puntos": [
+            {
+              "x": 39,
+              "y": 14,
+              "w": 32,
+              "h": 32
             },
-            "orco": {
-                "idle": { "puntos": [{ "x": 0, "y": 608, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
-                "walking": { "puntos": [{ "x": 0, "y": 640, "w": 32, "h": 32 }, { "x": 32, "y": 640, "w": 32, "h": 32 }, { "x": 64, "y": 640, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
-                "attacking": { "puntos": [{ "x": 0, "y": 672, "w": 32, "h": 32 }, { "x": 32, "y": 672, "w": 32, "h": 32 }, { "x": 64, "y": 672, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
-                "fallen": { "puntos": [{ "x": 0, "y": 704, "w": 32, "h": 32 }, { "x": 32, "y": 704, "w": 32, "h": 32 }, { "x": 64, "y": 704, "w": 32, "h": 32 }], "imagen": "sheet_npcs" }
+            {
+              "x": 69,
+              "y": 57,
+              "w": 32,
+              "h": 32
             }
+          ]
         },
-        "escenario_estatico": {
-            "muro": {
-                "normal": { "puntos": [{ "x": 0, "y": 736, "w": 32, "h": 32 }], "imagen": "sheet_static" },
-                "superior": { "puntos": [{ "x": 0, "y": 736, "w": 32, "h": 4 }], "imagen": "sheet_static" },
-                "inferior": { "puntos": [{ "x": 0, "y": 764, "w": 32, "h": 4 }], "imagen": "sheet_static" },
-                "izquierdo": { "puntos": [{ "x": 0, "y": 736, "w": 4, "h": 32 }], "imagen": "sheet_static" },
-                "derecho": { "puntos": [{ "x": 28, "y": 736, "w": 4, "h": 32 }], "imagen": "sheet_static" }
+        "attacking": {
+          "imagen": "sheet_players",
+          "puntos": [
+            {
+              "x": 194,
+              "y": 105,
+              "w": 32,
+              "h": 32
             },
-            "suelo": {
-                "normal": { "puntos": [{ "x": 0, "y": 800, "w": 32, "h": 32 }], "imagen": "sheet_static" },
-                "cesped": { "puntos": [{ "x": 0, "y": 800, "w": 32, "h": 32 }], "imagen": "sheet_static" }
-            }
-        },
-        "escenario_dinamico": {
-            "puerta": {
-                "cerrada": { "puntos": [{ "x": 0, "y": 864, "w": 32, "h": 32 }], "imagen": "sheet_dynamic" },
-                "abierta": { "puntos": [{ "x": 0, "y": 896, "w": 32, "h": 32 }], "imagen": "sheet_dynamic" }
+            {
+              "x": 228,
+              "y": 105,
+              "w": 32,
+              "h": 32
             },
-            "trampa": {
-                "inactiva": { "puntos": [{ "x": 0, "y": 928, "w": 32, "h": 32 }], "imagen": "sheet_dynamic" },
-                "activa": { "puntos": [{ "x": 0, "y": 960, "w": 32, "h": 32 }, { "x": 32, "y": 960, "w": 32, "h": 32 }, { "x": 64, "y": 960, "w": 32, "h": 32 }], "imagen": "sheet_dynamic" }
+            {
+              "x": 41,
+              "y": 105,
+              "w": 32,
+              "h": 32
             }
+          ]
         },
-        "food": {
-            "manzana": { "idle": { "puntos": [{ "x": 0, "y": 0, "w": 32, "h": 32 }], "imagen": "food_apple" } }
+        "defending": {
+          "imagen": "sheet_players",
+          "puntos": [
+            {
+              "x": 193,
+              "y": 106,
+              "w": 32,
+              "h": 32
+            }
+          ]
         },
-        "items": {
-            "pickaxe": { "idle": { "puntos": [{ "x": 0, "y": 0, "w": 32, "h": 32 }], "imagen": "tool_pickaxe" } }
-        },
-        "compat": {
-            "floor": { "idle": { "puntos": [{ "x": 0, "y": 800, "w": 32, "h": 32 }], "imagen": "sheet_static" } },
-            "wall_top": { "idle": { "puntos": [{ "x": 0, "y": 736, "w": 32, "h": 4 }], "imagen": "sheet_static" } }
+        "fallen": {
+          "imagen": "sheet_players",
+          "puntos": [
+            {
+              "x": 124,
+              "y": 150,
+              "w": 32,
+              "h": 32
+            }
+          ]
         }
+      },
+      "explorador": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 160,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        },
+        "walking": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 192,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 192,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 192,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        },
+        "attacking": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 224,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 224,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 224,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        },
+        "defending": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 256,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        },
+        "fallen": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 288,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 288,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 288,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        }
+      },
+      "mago": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 320,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        },
+        "walking": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 352,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 352,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 352,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        },
+        "attacking": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 384,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 384,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 384,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        },
+        "defending": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 416,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        },
+        "fallen": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 448,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 448,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 448,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_players"
+        }
+      }
+    },
+    "npcs": {
+      "esqueleto": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 480,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_npcs"
+        },
+        "walking": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 512,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 512,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 512,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_npcs"
+        },
+        "attacking": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 544,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 544,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 544,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_npcs"
+        },
+        "fallen": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 576,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 576,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 576,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_npcs"
+        }
+      },
+      "orco": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 608,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_npcs"
+        },
+        "walking": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 640,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 640,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 640,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_npcs"
+        },
+        "attacking": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 672,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 672,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 672,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_npcs"
+        },
+        "fallen": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 704,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 704,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 704,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_npcs"
+        }
+      }
+    },
+    "escenario_estatico": {
+      "muro": {
+        "normal": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 736,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_static"
+        }
+      },
+      "suelo": {
+        "cesped": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 800,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_static"
+        }
+      }
+    },
+    "escenario_dinamico": {
+      "puerta": {
+        "cerrada": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 864,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_dynamic"
+        },
+        "abierta": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 896,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_dynamic"
+        }
+      },
+      "trampa": {
+        "inactiva": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 928,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_dynamic"
+        },
+        "activa": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 960,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 32,
+              "y": 960,
+              "w": 32,
+              "h": 32
+            },
+            {
+              "x": 64,
+              "y": 960,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_dynamic"
+        }
+      }
+    },
+    "food": {
+      "manzana": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "food_apple"
+        }
+      }
+    },
+    "items": {
+      "pickaxe": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "tool_pickaxe"
+        }
+      }
+    },
+    "compat": {
+      "floor": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 800,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_static"
+        }
+      },
+      "wall_top": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 736,
+              "w": 32,
+              "h": 4
+            }
+          ],
+          "imagen": "sheet_static"
+        }
+      },
+      "wall_bottom": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 764,
+              "w": 32,
+              "h": 4
+            }
+          ],
+          "imagen": "sheet_static"
+        }
+      },
+      "wall_left": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 736,
+              "w": 4,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_static"
+        }
+      },
+      "wall_right": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 28,
+              "y": 736,
+              "w": 4,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_static"
+        }
+      }
     }
+  }
 }

@@ -1974,6 +1974,8 @@ class Game implements IGame {
             const dest = todosLosPortales[Math.floor(Math.random() * todosLosPortales.length)];
             entidad.fila = dest.f;
             entidad.columna = dest.c;
+            entidad.visualFila = dest.f;
+            entidad.visualColumna = dest.c;
             this.registrarEventoLog(`${entidad.nombre} ha atravesado un portal.`);
             if (entidad === this.protagonista) {
                 this.ui.crearTextoFlotanteEnCelda(dest.f, dest.c, "¡PORTAL!", "#0000ff", this);
@@ -2162,14 +2164,11 @@ class Game implements IGame {
                         }
                     } else {
                         if (entData.id === this.network.idLocal) {
-                            // Snap-back corregido: solo corregir si la discrepancia es significativa
-                            // o si el Host insiste en una posición diferente durante un tiempo.
-                            // Por ahora usamos un umbral de 1.1 tiles para permitir predicción local.
-                            const dist = Math.sqrt(Math.pow(this.protagonista.fila - entData.f, 2) + Math.pow(this.protagonista.columna - entData.c, 2));
-                            if (dist > 1.1) {
-                                this.protagonista.fila = entData.f;
-                                this.protagonista.columna = entData.c;
-                            }
+                            // Sincronizar posición lógica con la del Host (verdad absoluta)
+                            // El suavizado se encarga de que visualmente no haya saltos bruscos
+                            this.protagonista.fila = entData.f;
+                            this.protagonista.columna = entData.c;
+
                             this.protagonista.vidaActual = entData.v;
                             this.protagonista.vidaMaxima = entData.vm;
                             this.protagonista.estaVivo = entData.viva;
@@ -2315,6 +2314,8 @@ class Game implements IGame {
             if (msg.id === this.network.idLocal) {
                 this.protagonista.fila = msg.f;
                 this.protagonista.columna = msg.c;
+                this.protagonista.visualFila = msg.f;
+                this.protagonista.visualColumna = msg.c;
                 this.registrarEventoLog("¡Has sido llamado a la guardia!");
             }
             break;
@@ -2392,6 +2393,8 @@ class Game implements IGame {
         case 'spawn':
             this.protagonista.fila = msg.f;
             this.protagonista.columna = msg.c;
+            this.protagonista.visualFila = msg.f;
+            this.protagonista.visualColumna = msg.c;
             this.asustarMonstruosCercanos(msg.f, msg.c);
             break;
         case 'fireball_spawn':

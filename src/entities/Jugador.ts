@@ -94,7 +94,18 @@ export class Jugador extends EntidadRPG {
             // Predicción local para feedback inmediato
             const sigF = this.fila + deltaFila;
             const sigC = this.columna + deltaColumna;
-            if (game.mapaLaberinto[sigF]?.[sigC]?.esTransitable) {
+
+            // Solo predecir movimiento si no hay colisiones obvias con muros o NPCs
+            const celdaActual = game.mapaLaberinto[this.fila]?.[this.columna];
+            let muroBloquea = false;
+            if (deltaFila === -1 && celdaActual?.muros?.superior) muroBloquea = true;
+            if (deltaFila === 1 && celdaActual?.muros?.inferior) muroBloquea = true;
+            if (deltaColumna === -1 && celdaActual?.muros?.izquierdo) muroBloquea = true;
+            if (deltaColumna === 1 && celdaActual?.muros?.derecho) muroBloquea = true;
+
+            const npcEnCasilla = game.listaDeEnemigos.some(e => e.estaVivo && e.fila === sigF && e.columna === sigC);
+
+            if (!muroBloquea && !npcEnCasilla && game.mapaLaberinto[sigF]?.[sigC]?.esTransitable) {
                 this.fila = sigF;
                 this.columna = sigC;
             }

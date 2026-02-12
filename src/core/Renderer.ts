@@ -65,8 +65,9 @@ export class Renderer {
     const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;
 
     // Calculamos el offset para que el protagonista esté exactamente en el centro del viewport
-    const colOffset = protagonista.columna - (mazeWidth / TAMANO_CELDA / 2) + 0.5;
-    const filaOffset = protagonista.fila - (mazeHeight / TAMANO_CELDA / 2) + 0.5;
+    // Usamos las coordenadas visuales para un seguimiento suave
+    const colOffset = protagonista.visualColumna - (mazeWidth / TAMANO_CELDA / 2) + 0.5;
+    const filaOffset = protagonista.visualFila - (mazeHeight / TAMANO_CELDA / 2) + 0.5;
 
     return { colOffset, filaOffset };
   }

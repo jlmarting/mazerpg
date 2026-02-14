@@ -455,15 +455,15 @@
           "imagen": "sheet_static"
         },
         "cesped": {
+          "imagen": "sheet_static",
           "puntos": [
             {
-              "x": 0,
-              "y": 800,
+              "x": 61,
+              "y": 61,
               "w": 32,
               "h": 32
             }
-          ],
-          "imagen": "sheet_static"
+          ]
         },
         "baldosa": {
           "imagen": "sheet_static",

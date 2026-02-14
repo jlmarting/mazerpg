@@ -124,7 +124,6 @@ export abstract class EntidadRPG implements IEntidadRPG {
     }
 
     // Actualizar frames (ej. cada 200ms)
-    //TODO: este valor debería de ser considerado a partir del host.
     const msPorFrame = 200;
     if (ahora - this.ultimaActualizacionFrame > msPorFrame) {
         this.ultimaActualizacionFrame = ahora;

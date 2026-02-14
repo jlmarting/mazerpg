@@ -610,30 +610,41 @@ export class Renderer {
     this.ctx.save();
     if (p.esFlecha) {
         // Dibujar Flecha
-        const angle = Math.atan2(p.targetY - p.y, p.targetX - p.x);
-        this.ctx.translate(screenX, screenY);
-        this.ctx.rotate(angle);
-        this.ctx.strokeStyle = '#555';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.moveTo(-10, 0);
-        this.ctx.lineTo(10, 0);
-        this.ctx.stroke();
-        this.ctx.fillStyle = '#aaa';
-        this.ctx.beginPath();
-        this.ctx.moveTo(10, 0);
-        this.ctx.lineTo(5, -3);
-        this.ctx.lineTo(5, 3);
-        this.ctx.fill();
+        if (this.spriteManager.obtenerSprite('vfx_flecha_play')) {
+            const angle = Math.atan2(p.targetY - p.y, p.targetX - p.x);
+            this.ctx.translate(screenX, screenY);
+            this.ctx.rotate(angle);
+            this.spriteManager.dibujarSprite(this.ctx, 'vfx_flecha_play', -TAMANO_CELDA/2, -TAMANO_CELDA/2, TAMANO_CELDA, TAMANO_CELDA);
+        } else {
+            const angle = Math.atan2(p.targetY - p.y, p.targetX - p.x);
+            this.ctx.translate(screenX, screenY);
+            this.ctx.rotate(angle);
+            this.ctx.strokeStyle = '#555';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.moveTo(-10, 0);
+            this.ctx.lineTo(10, 0);
+            this.ctx.stroke();
+            this.ctx.fillStyle = '#aaa';
+            this.ctx.beginPath();
+            this.ctx.moveTo(10, 0);
+            this.ctx.lineTo(5, -3);
+            this.ctx.lineTo(5, 3);
+            this.ctx.fill();
+        }
     } else {
         // Dibujar Bola de Fuego
-        this.ctx.fillStyle = p.color;
-        this.ctx.beginPath();
-        this.ctx.arc(screenX, screenY, 5, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.shadowBlur = 10;
-        this.ctx.shadowColor = p.color;
-        this.ctx.fill();
+        if (this.spriteManager.obtenerSprite('vfx_bola_fuego_play')) {
+            this.spriteManager.dibujarSprite(this.ctx, 'vfx_bola_fuego_play', screenX - 10, screenY - 10, 20, 20);
+        } else {
+            this.ctx.fillStyle = p.color;
+            this.ctx.beginPath();
+            this.ctx.arc(screenX, screenY, 5, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.shadowBlur = 10;
+            this.ctx.shadowColor = p.color;
+            this.ctx.fill();
+        }
     }
     this.ctx.restore();
   }
@@ -652,16 +663,26 @@ export class Renderer {
     if (alfa <= 0) return;
 
     this.ctx.save();
-    this.ctx.fillStyle = `rgba(135, 206, 250, ${alfa})`; // LightSkyBlue
-
     const r = f.radio;
+    const hasSprite = this.spriteManager.obtenerSprite('vfx_hielo_play');
+
+    if (hasSprite) {
+        this.ctx.globalAlpha = alfa;
+    } else {
+        this.ctx.fillStyle = `rgba(135, 206, 250, ${alfa})`; // LightSkyBlue
+    }
+
     for (let fila = Math.max(0, Math.floor(f.y - r)); fila <= Math.min(NUMERO_FILAS - 1, Math.ceil(f.y + r)); fila++) {
         for (let col = Math.max(0, Math.floor(f.x - r)); col <= Math.min(NUMERO_COLUMNAS - 1, Math.ceil(f.x + r)); col++) {
             const dist = Math.sqrt(Math.pow(fila - f.y, 2) + Math.pow(col - f.x, 2));
             if (dist <= r) {
                 const sx = (col - colOffset) * TAMANO_CELDA;
                 const sy = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
-                this.ctx.fillRect(sx, sy, TAMANO_CELDA, TAMANO_CELDA);
+                if (hasSprite) {
+                    this.spriteManager.dibujarSprite(this.ctx, 'vfx_hielo_play', sx, sy, TAMANO_CELDA, TAMANO_CELDA);
+                } else {
+                    this.ctx.fillRect(sx, sy, TAMANO_CELDA, TAMANO_CELDA);
+                }
             }
         }
     }
@@ -686,20 +707,27 @@ export class Renderer {
     if (alfa <= 0) return;
 
     this.ctx.save();
-    this.ctx.strokeStyle = `rgba(255, 255, 255, ${alfa})`;
-    this.ctx.lineWidth = 3;
-    this.ctx.beginPath();
-    // Dibujamos un arco que progresa
-    const startAngle = 0;
-    const endAngle = progreso * Math.PI * 4; // Dos vueltas rápidas
-    this.ctx.arc(screenX, screenY, TAMANO_CELDA * 0.8, startAngle, endAngle);
-    this.ctx.stroke();
+    if (this.spriteManager.obtenerSprite('vfx_remolino_play')) {
+        this.ctx.globalAlpha = alfa;
+        // Rotación animada
+        this.ctx.translate(screenX, screenY);
+        this.ctx.rotate(progreso * Math.PI * 8);
+        this.spriteManager.dibujarSprite(this.ctx, 'vfx_remolino_play', -TAMANO_CELDA, -TAMANO_CELDA, TAMANO_CELDA * 2, TAMANO_CELDA * 2);
+    } else {
+        this.ctx.strokeStyle = `rgba(255, 255, 255, ${alfa})`;
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        // Dibujamos un arco que progresa
+        const startAngle = 0;
+        const endAngle = progreso * Math.PI * 4; // Dos vueltas rápidas
+        this.ctx.arc(screenX, screenY, TAMANO_CELDA * 0.8, startAngle, endAngle);
+        this.ctx.stroke();
 
-    // Añadir rastro de partículas o destello
-    this.ctx.shadowBlur = 15;
-    this.ctx.shadowColor = '#fff';
-    this.ctx.stroke();
-
+        // Añadir rastro de partículas o destello
+        this.ctx.shadowBlur = 15;
+        this.ctx.shadowColor = '#fff';
+        this.ctx.stroke();
+    }
     this.ctx.restore();
   }
 

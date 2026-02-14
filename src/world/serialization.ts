@@ -36,15 +36,18 @@ export function deserializarMapa(mapaLaberinto: Celda[][], datos: string): { fil
   const filas = parseInt(datos.substring(i, i + 3), 36); i += 3;
   const columnas = parseInt(datos.substring(i, i + 3), 36); i += 3;
 
-  // Redimensionar el mapa si es necesario (asumiendo que mapaLaberinto ya es una matriz de Celdas)
-  // En nuestro motor, Game.initMap crea la matriz, así que aquí solo la rellenamos.
-  // Si las dimensiones no coinciden, tendríamos un problema.
-  // Pero Game.mapaLaberinto se inicializa con NUMERO_FILAS/COLUMNAS.
+  // Redimensionar el mapa si es necesario
+  if (mapaLaberinto.length !== filas) {
+    mapaLaberinto.length = filas;
+  }
 
   for (let f = 0; f < filas; f++) {
     for (let c = 0; c < columnas; c++) {
       const valor = parseInt(datos[i++], 36);
       if (!mapaLaberinto[f]) mapaLaberinto[f] = [];
+      if (mapaLaberinto[f].length !== columnas) {
+          mapaLaberinto[f].length = columnas;
+      }
       if (!mapaLaberinto[f][c]) mapaLaberinto[f][c] = new Celda(f, c);
 
       const celda = mapaLaberinto[f][c];

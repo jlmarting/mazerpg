@@ -47,13 +47,13 @@ Se ha implementado una aplicación independiente para facilitar el mapeo de spri
 2. Cargar la hoja de sprites deseada.
 3. **Mapeo Rápido:** Use `Shift + Click` para capturar tiras enteras de animación en segundos.
 4. **Validación:** Abra la "Simulación Ampliada" para comprobar que los frames están bien alineados.
-6. **Exportación:** Copie el JSON del bloque de metadatos (que incluye el nombre del archivo original) a `src/core/ExternalMetadata.ts`.
+6. **Exportación:** Copie el JSON del bloque de metadatos (que incluye el nombre del archivo original) a `src/config/sprites.json`.
 
 ## 4. Integración de Metadatos Externos
 
 El motor del juego está preparado para cargar automáticamente las definiciones generadas por **STRUCTOR**. El proceso de integración sigue estos pasos:
 
-1. **Persistencia:** Los datos exportados se guardan en `src/core/ExternalMetadata.ts`. Este archivo actúa como el puente entre la herramienta de diseño y el código fuente.
+1. **Persistencia:** Los datos exportados se guardan en `src/config/sprites.json`. Este archivo actúa como el puente entre la herramienta de diseño y el código fuente.
 2. **Priorización:** Durante la inicialización, el `SpriteManager` registra primero los mapeos internos por defecto y luego aplica los externos. Esto permite que una definición precisa (coordenadas X, Y, W, H) sobrescriba cualquier definición genérica (basada en rejilla).
 3. **Carga Dinámica de Imágenes:** El motor analiza el campo `imagen` de los metadatos externos y asegura que el recurso se descargue antes de iniciar el renderizado, permitiendo el uso de múltiples hojas de sprites sin modificar el cargador central.
 4. **Animaciones de Longitud Variable:** A diferencia del sistema estático inicial, el motor ahora cuenta dinámicamente cuántos frames se han mapeado para una acción específica (ej. el Guerrero puede tener 3 frames de ataque por defecto, pero 6 frames si se definen externamente) y ajusta el ciclo de animación automáticamente.
@@ -67,15 +67,21 @@ Para que la herramienta sea consciente de las necesidades del motor, existe un o
 
 Este contrato asegura que no haya errores de tipografía al mapear recursos.
 
-## 5. Motor de Animación Dinámico
+## 6. Motor de Animación Dinámico
 
-## 4. Flujo de Renderizado
+Se ha implementado un motor de animación desacoplado en la clase `EntidadRPG`.
+- **Estados Lógicos:** Cada entidad mantiene un `estadoActual` (idle, walking, attacking, etc.).
+- **Ciclo de Frames:** El `frameActual` se incrementa automáticamente basándose en el tiempo transcurrido.
+- **Detección Dinámica:** El motor consulta al `SpriteManager` cuántos frames hay registrados para la clave base actual.
+- **Suavizado:** Se utilizan `visualFila` y `visualColumna` para interpolar la posición visual, eliminando saltos bruscos.
 
-1. **Inicialización:** El `SpriteManager` carga las hojas y, mediante `inicializarSpritesheets()`, genera las claves únicas (ej. `player_mago_walking_0`).
+## 7. Flujo de Renderizado
+
+1. **Inicialización:** El `SpriteManager` carga las hojas y genera las claves únicas.
 2. **Lógica de Estado:** La entidad actualiza su `estadoActual` y `frameActual` basándose en el tiempo y las acciones del juego.
-3. **Dibujado:** El `Renderer` solicita al `SpriteManager` el sprite por su clave compuesta. Si Diseño añade un nuevo movimiento, solo hay que añadir la fila en la configuración.
+3. **Dibujado:** El `Renderer` solicita al `SpriteManager` el sprite por su clave compuesta.
 
-## 5. Escalabilidad
+## 8. Escalabilidad
 
 Este sistema permite:
 - **Personalización:** Añadir capas de "equipo" o "skins" simplemente cargando una hoja de armadura y superponiéndola en el renderizado usando el mismo sistema de índices.

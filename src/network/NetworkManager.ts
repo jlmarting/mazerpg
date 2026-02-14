@@ -1,12 +1,5 @@
 import { IGame } from '../types';
 
-
-// TODO: Este módulo se ha vuelto un poco "catch-all" para todo lo relacionado con multiplayer, 
-// pero dado que el multiplayer es una parte tan central del juego, tiene sentido que el NetworkManager 
-// también maneje la lógica de conexión y mensajes. 
-// Sin embargo, si el código sigue creciendo, podríamos considerar dividirlo en submódulos 
-// (ej. ConnectionManager, MessageHandler, etc.) para mantenerlo organizado.  
-
 export interface RemotePlayer {
     pc: RTCPeerConnection;
     dc: RTCDataChannel;
@@ -25,8 +18,6 @@ export class NetworkManager {
 
   constructor() {}
 
-
-  //TODO: el objeto del mensaje debería de estar tipado (como todo en este proyecto...)
   enviarMensaje(objeto: any, exceptId: string | null = null) {
     const data = JSON.stringify(objeto);
     this.jugadoresRemotos.forEach((j, id) => {

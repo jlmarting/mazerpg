@@ -14,7 +14,6 @@ export class Jugador extends EntidadRPG {
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
     this.generarStats();
-    this.setEstado('idle');
   }
 
   generarStats(nuevaClase?: string) {

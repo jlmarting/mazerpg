@@ -976,6 +976,7 @@ class Game implements IGame {
     this.protagonista.fila = pos.f;
     this.protagonista.columna = pos.c;
     this.asustarMonstruosCercanos(pos.f, pos.c);
+    this.protagonista.estadoActual = 'idle';
     this.protagonista.vidaActual = this.protagonista.vidaMaxima;
     this.protagonista.estaVivo = true;
     this.protagonista.enCombateCon = null;

@@ -29,6 +29,9 @@ export interface IEntidadRPG {
     visualFila: number;
     visualColumna: number;
     nombre: string;
+    fuerza: number;
+    agilidad: number;
+    inteligencia: number;
     vidaActual: number;
     vidaMaxima: number;
     estaVivo: boolean;

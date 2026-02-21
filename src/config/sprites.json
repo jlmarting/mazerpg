@@ -54,6 +54,18 @@
                 "walking": { "puntos": [{ "x": 0, "y": 640, "w": 32, "h": 32 }, { "x": 32, "y": 640, "w": 32, "h": 32 }, { "x": 64, "y": 640, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
                 "attacking": { "puntos": [{ "x": 0, "y": 672, "w": 32, "h": 32 }, { "x": 32, "y": 672, "w": 32, "h": 32 }, { "x": 64, "y": 672, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
                 "fallen": { "puntos": [{ "x": 0, "y": 704, "w": 32, "h": 32 }, { "x": 32, "y": 704, "w": 32, "h": 32 }, { "x": 64, "y": 704, "w": 32, "h": 32 }], "imagen": "sheet_npcs" }
+            },
+            "goblin": {
+                "idle": { "puntos": [{ "x": 96, "y": 480, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
+                "walking": { "puntos": [{ "x": 96, "y": 512, "w": 32, "h": 32 }, { "x": 128, "y": 512, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
+                "attacking": { "puntos": [{ "x": 96, "y": 544, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
+                "fallen": { "puntos": [{ "x": 96, "y": 576, "w": 32, "h": 32 }], "imagen": "sheet_npcs" }
+            },
+            "minotauro": {
+                "idle": { "puntos": [{ "x": 96, "y": 608, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
+                "walking": { "puntos": [{ "x": 96, "y": 640, "w": 32, "h": 32 }, { "x": 128, "y": 640, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
+                "attacking": { "puntos": [{ "x": 96, "y": 672, "w": 32, "h": 32 }], "imagen": "sheet_npcs" },
+                "fallen": { "puntos": [{ "x": 96, "y": 704, "w": 32, "h": 32 }], "imagen": "sheet_npcs" }
             }
         },
         "escenario_estatico": {

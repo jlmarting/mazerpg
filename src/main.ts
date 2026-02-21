@@ -2164,10 +2164,14 @@ class Game implements IGame {
                         }
                     } else {
                         if (entData.id === this.network.idLocal) {
-                            // Sincronizar posición lógica con la del Host (verdad absoluta)
-                            // El suavizado se encarga de que visualmente no haya saltos bruscos
-                            this.protagonista.fila = entData.f;
-                            this.protagonista.columna = entData.c;
+                            // Snap-back corregido: solo corregir si la discrepancia es significativa
+                            // o si el Host insiste en una posición diferente durante un tiempo.
+                            // Por ahora usamos un umbral de 1.1 tiles para permitir predicción local.
+                            const dist = Math.sqrt(Math.pow(this.protagonista.fila - entData.f, 2) + Math.pow(this.protagonista.columna - entData.c, 2));
+                            if (dist > 1.1) {
+                                this.protagonista.fila = entData.f;
+                                this.protagonista.columna = entData.c;
+                            }
 
                             this.protagonista.vidaActual = entData.v;
                             this.protagonista.vidaMaxima = entData.vm;
@@ -2234,19 +2238,50 @@ class Game implements IGame {
             if (!jInfo.entidad) {
                 jInfo.entidad = new JugadorRemoto(0, 0, msg.nick, idSujeto);
                 if (msg.clase) jInfo.entidad.clase = msg.clase;
+                if (msg.stats) {
+                    jInfo.entidad.fuerza = msg.stats.fue;
+                    jInfo.entidad.agilidad = msg.stats.agi;
+                    jInfo.entidad.inteligencia = msg.stats.int;
+                    jInfo.entidad.vidaMaxima = Math.floor(10 * ((jInfo.entidad.fuerza * 2 + jInfo.entidad.agilidad) / 3));
+                    jInfo.entidad.vidaActual = jInfo.entidad.vidaMaxima;
+                }
                 this.setupEntity(jInfo.entidad);
             }
 
             if (this.esHost) {
+                // Notificar a otros y responder al nuevo con nuestro handshake
                 this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
+
+                // Forzar envío de nuestro handshake al que acaba de llegar (por si su canal abrió después que el nuestro)
+                const hostStats = { fue: this.protagonista.fuerza, agi: this.protagonista.agilidad, int: this.protagonista.inteligencia };
+                const target = this.network.jugadoresRemotos.get(idEmisor);
+                if (target && target.dc && target.dc.readyState === "open") {
+                    target.dc.send(JSON.stringify({
+                        tipo: 'handshake',
+                        nick: this.protagonista.nombre,
+                        id: this.network.idLocal,
+                        clase: this.protagonista.clase,
+                        stats: hostStats
+                    }));
+                }
             } else {
-                this.network.enviarMensaje({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.network.idLocal });
+                const stats = { fue: this.protagonista.fuerza, agi: this.protagonista.agilidad, int: this.protagonista.inteligencia };
+                this.network.enviarMensaje({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.network.idLocal, stats });
             }
             break;
         case 'handshake_ack':
             if (this.esHost) {
                 const jInfoAck = this.network.jugadoresRemotos.get(idSujeto);
-                if (jInfoAck && jInfoAck.entidad) jInfoAck.entidad.nombre = msg.nick;
+                if (jInfoAck && jInfoAck.entidad) {
+                    jInfoAck.entidad.nombre = msg.nick;
+                    if (msg.stats) {
+                        jInfoAck.entidad.fuerza = msg.stats.fue;
+                        jInfoAck.entidad.agilidad = msg.stats.agi;
+                        jInfoAck.entidad.inteligencia = msg.stats.int;
+                        jInfoAck.entidad.vidaMaxima = Math.floor(10 * ((jInfoAck.entidad.fuerza * 2 + jInfoAck.entidad.agilidad) / 3));
+                        jInfoAck.entidad.vidaActual = jInfoAck.entidad.vidaMaxima;
+                    }
+                }
                 this.enviarMapaAlInvitado(idSujeto);
             }
             break;

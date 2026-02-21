@@ -13,6 +13,9 @@ class DummyEntity implements IEntidadRPG {
     visualFila: number;
     visualColumna: number;
     nombre: string;
+    fuerza: number = 10;
+    agilidad: number = 10;
+    inteligencia: number = 10;
     vidaActual: number = 100;
     vidaMaxima: number = 100;
     estaVivo: boolean = true;

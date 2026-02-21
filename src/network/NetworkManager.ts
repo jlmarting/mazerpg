@@ -35,7 +35,8 @@ export class NetworkManager {
       this.multiplayerActivo = true;
       const nick = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
       const clase = game.protagonista.clase;
-      this.enviarMensaje({ tipo: 'handshake', nick, id: this.idLocal, clase });
+      const stats = { fue: game.protagonista.fuerza, agi: game.protagonista.agilidad, int: game.protagonista.inteligencia };
+      this.enviarMensaje({ tipo: 'handshake', nick, id: this.idLocal, clase, stats });
 
       if (this.esHost) {
         game.registrarEventoLog(`Jugador conectado (${idEmisor})`);

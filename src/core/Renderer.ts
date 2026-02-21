@@ -330,7 +330,7 @@ export class Renderer {
     }
     // 2. Si ha caído, dibujar tumba o estado fallen
     else if (!entidad.estaVivo) {
-        this.dibujarTumba(x, y, TAMANO_CELDA);
+        this.dibujarTumba(x, y, TAMANO_CELDA);                
     }
     // 3. Fallback a figuras geométricas (Stick figures / Bloques)
     else {

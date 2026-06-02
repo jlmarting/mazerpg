@@ -7,6 +7,8 @@ import { Renderer } from './core/Renderer';
 import { UIManager } from './ui/UIManager';
 import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
+import { NetworkManagerHttp } from './network/NetworkManagerHttp';
+import { SignalingClient, crearSignalingClient, getSignalingUrl } from './network/SignalingClient';
 import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
@@ -18,6 +20,12 @@ import {
     TIEMPO_DESVANECIMIENTO_NIEBLA
 } from './world/constants';
 
+declare global {
+    interface Window {
+        SIGNALING_SERVER_URL: string;
+    }
+}
+
 class Game implements IGame {
   public mapaLaberinto: Celda[][] = [];
   public protagonista: Jugador = new Jugador();
@@ -27,6 +35,9 @@ class Game implements IGame {
   public ui: UIManager = new UIManager();
   public firebase: FirebaseManager = new FirebaseManager();
   public network: NetworkManager = new NetworkManager();
+  public signaling: SignalingClient | null = null;
+  public networkHttp: NetworkManagerHttp | null = null;
+  private modoMultijugador: 'firebase' | 'http' | 'manual' = 'firebase';
   public config: GameConfig = {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
@@ -51,6 +62,11 @@ class Game implements IGame {
   public freezes: any[] = [];
   public ultimoTick: number = 0;
   public colaAcciones: any[] = [];
+  private heartbeatInterval: number | null = null;
+  private npcSyncInterval: number | null = null;
+  private guestPollingInterval: number | null = null;
+  private firebaseHeartbeatInterval: number | null = null;
+  private firebaseNpcSyncInterval: number | null = null;
   private _flowTarget: 'solo' | 'host' | 'manual' | null = null;
 
   constructor() {
@@ -64,6 +80,7 @@ class Game implements IGame {
     window.addEventListener('resize', () => this.ajustarDimensiones());
     this.setupEventListeners();
     this.revisarSesionGuardada();
+    this.verificarUrlParams();
 
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -93,10 +110,31 @@ class Game implements IGame {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    // CELDAS_VISIBLES se usa para el rango de dibujado.
-    // Lo calculamos para zoom 1 y añadimos margen para asegurar cobertura total al centrar.
     this.config.CELDAS_VISIBLES_X = Math.ceil(canvas.width / this.config.TAMANO_CELDA) + 4;
     this.config.CELDAS_VISIBLES_Y = Math.ceil((canvas.height - this.config.ALTO_UI_TOP - this.config.ALTO_UI_BOTTOM) / this.config.TAMANO_CELDA) + 4;
+  }
+
+  private verificarUrlParams() {
+    // Primero verificar si viene de la URL como parámetro
+    const params = new URLSearchParams(window.location.search);
+    const partidaIdFromUrl = params.get('id');
+    
+    // Si no hay en URL, verificar si fue inyectado por el servidor
+    const partidaIdFromServer = (window as any).PARTIDA_ID;
+    
+    const partidaId = partidaIdFromUrl || partidaIdFromServer;
+    
+    if (partidaId) {
+      console.log('Partida ID:', partidaId, '(from:', partidaIdFromUrl ? 'URL' : 'server', ')');
+      this._partidaIdDesdeUrl = partidaId;
+      this.registrarEventoLog(`Partida detectada: ${partidaId}`);
+    }
+  }
+
+  private _partidaIdDesdeUrl: string | null = null;
+
+  get partidaIdDesdeUrl(): string | null {
+    return this._partidaIdDesdeUrl;
   }
 
   setupEventListeners() {
@@ -141,7 +179,16 @@ class Game implements IGame {
       document.getElementById('lobbyManual')!.style.display = 'flex';
     });
 
-    document.getElementById('btnRefrescar')?.addEventListener('click', () => this.listarPartidasFirestore());
+    document.getElementById('btnServidorFirebase')?.addEventListener('click', () => this.cambiarModoServidor('firebase'));
+    document.getElementById('btnServidorHttp')?.addEventListener('click', () => this.cambiarModoServidor('http'));
+
+    document.getElementById('btnRefrescar')?.addEventListener('click', () => {
+      if (this.modoMultijugador === 'http') {
+        this.listarPartidasHttp();
+      } else {
+        this.listarPartidasFirestore();
+      }
+    });
     document.getElementById('btnReanudar')?.addEventListener('click', () => this.reanudarPartida());
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
@@ -171,7 +218,11 @@ class Game implements IGame {
             if (this._flowTarget === 'solo') {
                 this.empezarSolo();
             } else if (this._flowTarget === 'host') {
-                this.iniciarComoHostFirebase();
+                if (this.modoMultijugador === 'http') {
+                    this.iniciarComoHostHttp();
+                } else {
+                    this.iniciarComoHostFirebase();
+                }
             } else if (this._flowTarget === 'manual') {
                 this.iniciarComoHostManual();
             }
@@ -301,10 +352,125 @@ class Game implements IGame {
   iniciarComoHostFirebase() {
     this.esHost = true;
     this.network.esHost = true;
+    this.modoMultijugador = 'firebase';
     (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
     const hc = document.getElementById('hostControls');
     if (hc) hc.style.display = 'flex';
     this.crearPartidaFirestore();
+  }
+
+  iniciarComoHostHttp() {
+    this.esHost = true;
+    this.modoMultijugador = 'http';
+    this.signaling = crearSignalingClient();
+    this.networkHttp = new NetworkManagerHttp();
+    this.networkHttp.setSignaling(this.signaling);
+    (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
+    const hc = document.getElementById('hostControls');
+    if (hc) hc.style.display = 'flex';
+    this.crearPartidaHttp();
+  }
+
+  async crearPartidaHttp() {
+    const nombrePartida = `Partida de ${this.protagonista.nombre}`;
+    const resultado = await this.signaling!.crearPartida('', this.networkHttp!.idLocal, this.protagonista.nombre, nombrePartida);
+    
+    if (!resultado) {
+        this.registrarEventoLog("Error: No se pudo crear la partida en el servidor HTTP.");
+        return;
+    }
+
+    const partidaId = resultado.id;
+    this.networkHttp!.idPartidaActual = partidaId;
+    this.networkHttp!.esHost = true;
+    this.networkHttp!.multiplayerActivo = true;
+    this.guardarSesion('host', partidaId);
+
+    const roomDisp = document.getElementById('roomDisplay');
+    const roomIdVal = document.getElementById('roomIdVal');
+    if (roomDisp && roomIdVal) {
+        roomDisp.style.display = 'block';
+        roomIdVal.textContent = partidaId;
+    }
+
+    this.ui.registrarLogConexion(`Partida creada: ${resultado.id} (HTTP Server)`);
+    this.ui.registrarLogConexion(`Servidor: ${getSignalingUrl()}`);
+    this.ui.ocultarLobby();
+    this.iniciarMotorJuego();
+    this.configurarIntervalosHostHttp();
+  }
+
+  async unirseAPartidaHttp(id: string) {
+    if (!this.signaling) {
+      this.iniciarModoHttp();
+    }
+    this.networkHttp!.idPartidaActual = id;
+    this.networkHttp!.esHost = false;
+    this.networkHttp!.multiplayerActivo = true;
+    this.guardarSesion('guest', id);
+    this.esHost = false;
+    
+    const roomDisp = document.getElementById('roomDisplay');
+    const roomIdVal = document.getElementById('roomIdVal');
+    if (roomDisp && roomIdVal) {
+        roomDisp.style.display = 'block';
+        roomIdVal.textContent = id;
+    }
+    
+    this.registrarEventoLog(`Registrando en la partida ${id}...`);
+    
+    // Registrar guest en el servidor
+    await this.signaling!.registrarGuest(id, this.networkHttp!.idLocal, this.protagonista.nombre);
+    
+    this.registrarEventoLog(`Esperando que el Host te acepte...`);
+    await this.networkHttp!.setupWebRTCGuest(id, this);
+    
+    // NO iniciar motor aquí - esperar a que el canal P2P se abra
+    // El Guest recibirá el mapa del Host via P2P
+  }
+
+  configurarIntervalosHostHttp() {
+    this.detenerIntervalosHttp();
+    this.heartbeatInterval = window.setInterval(() => {
+        if (this.esHost && this.networkHttp?.idPartidaActual) {
+            this.signaling!.updateHeartbeat(this.networkHttp.idPartidaActual, this.networkHttp.jugadoresRemotos.size + 1);
+        }
+    }, 10000);
+
+    this.npcSyncInterval = window.setInterval(() => {
+        if (this.esHost && this.networkHttp?.multiplayerActivo) {
+            const listaNpcs = this.listaDeEnemigos.map(e => ({
+                id: (e as any).id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
+            }));
+            this.networkHttp.enviarMensaje({ tipo: 'npc_sync_all', lista: listaNpcs });
+
+            const objetos: any[] = [];
+            for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
+                for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+                    const celda = this.mapaLaberinto[f][c];
+                    if (celda.alimento || celda.burbuja || celda.tienePico || celda.esPortal) {
+                        objetos.push({ f, c, a: celda.alimento, b: celda.burbuja, p: celda.tienePico, pr: celda.esPortal });
+                    }
+                }
+            }
+            this.networkHttp.enviarMensaje({ tipo: 'objetos', lista: objetos, is_update: true });
+        }
+    }, 5000);
+  }
+
+  private detenerIntervalosHttp() {
+    if (this.heartbeatInterval !== null) {
+      window.clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.npcSyncInterval !== null) {
+      window.clearInterval(this.npcSyncInterval);
+      this.npcSyncInterval = null;
+    }
+    if (this.guestPollingInterval !== null) {
+      window.clearInterval(this.guestPollingInterval);
+      this.guestPollingInterval = null;
+    }
   }
 
   async crearPartidaFirestore() {
@@ -334,10 +500,22 @@ class Game implements IGame {
 
   async listarPartidasFirestore() {
     const partidas = await this.firebase.getPartidasActivas();
+    this.mostrarPartidasEnUI(partidas, 'firebase');
+  }
+
+  async listarPartidasHttp() {
+    if (!this.signaling) {
+      this.signaling = crearSignalingClient();
+    }
+    const partidas = await this.signaling.getPartidasActivas();
+    this.mostrarPartidasEnUI(partidas, 'http');
+  }
+
+  private mostrarPartidasEnUI(partidas: any[], modo: 'firebase' | 'http') {
     const listaContainer = document.getElementById('listaPartidas')!;
     listaContainer.innerHTML = "";
     if (partidas.length === 0) {
-        listaContainer.innerHTML = '<p style="color: #666; font-style: italic; text-align: center;">No hay partidas disponibles.</p>';
+        listaContainer.innerHTML = `<p style="color: #666; font-style: italic; text-align: center;">No hay partidas disponibles (modo ${modo}).</p>`;
         return;
     }
     partidas.forEach((p: any) => {
@@ -345,10 +523,10 @@ class Game implements IGame {
         item.style.cssText = "background: #222; margin-bottom: 5px; padding: 10px; border-radius: 3px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444;";
         item.innerHTML = `
             <div style="text-align: left;">
-                <strong style="color: #007bff;">ID: ${p.id}</strong><br>
+                <strong style="color: #007bff;">${p.nombre || p.id}</strong><br>
                 <span style="font-size: 10px; color: #888;">Host: ${p.hostNick} | Jugadores: ${p.numJugadores}</span>
             </div>
-            <button class="join-btn" data-id="${p.id}" style="background: #28a745; color: white; border: none; padding: 5px 10px; cursor: pointer; font-family: monospace; font-weight: bold;">UNIRSE</button>
+            <button class="join-btn" data-id="${p.id}" data-modo="${modo}" style="background: #28a745; color: white; border: none; padding: 5px 10px; cursor: pointer; font-family: monospace; font-weight: bold;">UNIRSE</button>
         `;
         listaContainer.appendChild(item);
     });
@@ -356,9 +534,56 @@ class Game implements IGame {
     listaContainer.querySelectorAll('.join-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const id = (e.target as HTMLElement).getAttribute('data-id');
-            if (id) this.unirseAPartidaFirestore(id);
+            const m = (e.target as HTMLElement).getAttribute('data-modo') as 'firebase' | 'http';
+            if (id) {
+                if (m === 'http') {
+                    this.iniciarModoHttp();
+                    this.unirseAPartidaHttp(id);
+                } else {
+                    this.unirseAPartidaFirestore(id);
+                }
+            }
         });
     });
+  }
+
+  private iniciarModoHttp() {
+    if (this.networkHttp) return;
+    this.esHost = false;
+    this.modoMultijugador = 'http';
+    this.signaling = crearSignalingClient();
+    this.networkHttp = new NetworkManagerHttp();
+    this.networkHttp.setSignaling(this.signaling);
+  }
+
+  cambiarModoServidor(modo: 'firebase' | 'http') {
+    this.modoMultijugador = modo;
+    const btnFirebase = document.getElementById('btnServidorFirebase');
+    const btnHttp = document.getElementById('btnServidorHttp');
+    const info = document.getElementById('serverModeInfo');
+    
+    if (btnFirebase && btnHttp && info) {
+      if (modo === 'firebase') {
+        btnFirebase.style.background = '#007bff';
+        btnFirebase.style.borderColor = '#0056b3';
+        btnHttp.style.background = '#17a2b8';
+        btnHttp.style.borderColor = '#138496';
+        info.textContent = 'Modo: Firebase';
+      } else {
+        btnFirebase.style.background = '#17a2b8';
+        btnFirebase.style.borderColor = '#138496';
+        btnHttp.style.background = '#007bff';
+        btnHttp.style.borderColor = '#0056b3';
+        info.textContent = `Modo: Servidor Local (${getSignalingUrl()})`;
+      }
+    }
+    
+    if (modo === 'http') {
+      this.iniciarModoHttp();
+      this.listarPartidasHttp();
+    } else if (document.getElementById('lobbyFirebase')?.style.display !== 'none') {
+      this.listarPartidasFirestore();
+    }
   }
 
   async iniciarComoHostManual() {
@@ -386,13 +611,44 @@ class Game implements IGame {
   }
 
   async admitirCandidatos() {
-    this.ui.registrarLogConexion("Buscando candidatos...");
-    const snapshot = await this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual!).collection('conexiones').get();
-    snapshot.forEach((doc: any) => {
-        if (doc.id !== this.network.idLocal && !this.network.jugadoresRemotos.has(doc.id)) {
-            this.network.setupWebRTCHost(doc.id, this);
+    if (this.modoMultijugador === 'firebase') {
+        this.ui.registrarLogConexion("Buscando candidatos...");
+        const snapshot = await this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual!).collection('conexiones').get();
+        snapshot.forEach((doc: any) => {
+            if (doc.id !== this.network.idLocal && !this.network.jugadoresRemotos.has(doc.id)) {
+                this.network.setupWebRTCHost(doc.id, this);
+            }
+        });
+    } else if (this.modoMultijugador === 'http' && this.networkHttp) {
+        this.ui.registrarLogConexion("Buscando Guests...");
+        
+        // Obtener lista inicial de Guests pendientes
+        const guests = await this.signaling!.getGuests(this.networkHttp.idPartidaActual!);
+        this.ui.registrarLogConexion(`Found ${guests.length} Guest(s) waiting`);
+        
+        for (const guest of guests) {
+            if (!this.networkHttp.jugadoresRemotos.has(guest.guestId)) {
+                this.ui.registrarLogConexion(`Connecting to ${guest.nick}...`);
+                await this.networkHttp.setupWebRTCHost(guest.guestId, this);
+            }
         }
-    });
+        
+        // Iniciar polling para detectar nuevos Guests
+        this.signaling!.iniciarPolling(this.networkHttp.idLocal);
+        
+        // Polling adicional para detectar Guests que se unan mientras jugamos
+        this.guestPollingInterval = window.setInterval(async () => {
+            if (this.esHost && this.networkHttp) {
+                const newGuests = await this.signaling!.getGuests(this.networkHttp.idPartidaActual!);
+                for (const guest of newGuests) {
+                    if (!this.networkHttp.jugadoresRemotos.has(guest.guestId)) {
+                        this.ui.registrarLogConexion(`New player ${guest.nick} joined!`);
+                        await this.networkHttp.setupWebRTCHost(guest.guestId, this);
+                    }
+                }
+            }
+        }, 3000);
+    }
   }
 
   iniciarEleccionHost() {
@@ -441,13 +697,14 @@ class Game implements IGame {
   }
 
   configurarIntervalosHost() {
-    setInterval(() => {
+    this.detenerIntervalosFirebase();
+    this.firebaseHeartbeatInterval = window.setInterval(() => {
         if (this.esHost && this.network.idPartidaActual) {
             this.firebase.updateHeartbeat(this.network.idPartidaActual, this.network.jugadoresRemotos.size + 1);
         }
     }, 10000);
 
-    setInterval(() => {
+    this.firebaseNpcSyncInterval = window.setInterval(() => {
         if (this.esHost && this.network.multiplayerActivo) {
             // Sincronizar NPCs
             const listaNpcs = this.listaDeEnemigos.map(e => ({
@@ -468,6 +725,17 @@ class Game implements IGame {
             this.network.enviarMensaje({ tipo: 'objetos', lista: objetos, is_update: true });
         }
     }, 5000);
+  }
+
+  private detenerIntervalosFirebase() {
+    if (this.firebaseHeartbeatInterval !== null) {
+      window.clearInterval(this.firebaseHeartbeatInterval);
+      this.firebaseHeartbeatInterval = null;
+    }
+    if (this.firebaseNpcSyncInterval !== null) {
+      window.clearInterval(this.firebaseNpcSyncInterval);
+      this.firebaseNpcSyncInterval = null;
+    }
   }
 
   async inicializarAssets() {
@@ -629,10 +897,42 @@ class Game implements IGame {
 
       document.getElementById('characterModal')!.style.display = 'none';
 
-      // Sincronizar con el nickInput original por compatibilidad con el resto del código
       (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
       this.actualizarStatsLobby();
       this.registrarEventoLog(`Personaje guardado: ${this.protagonista.nombre} (${selectedClass})`);
+
+      if (this.partidaIdDesdeUrl) {
+        this.registrarEventoLog(`Conectando a partida ${this.partidaIdDesdeUrl}...`);
+        this.cambiarModoServidor('http');
+        this.ui.ocultarLobby();
+        
+        try {
+          this.unirseAPartidaHttp(this.partidaIdDesdeUrl);
+        } catch (e) {
+          this.registrarEventoLog(`Error al conectar: ${e}`);
+        }
+        return;
+      }
+
+      if (this._flowTarget === 'host') {
+        this.registrarEventoLog('Iniciando como Host...');
+        this.cambiarModoServidor('http');
+        this.ui.ocultarLobby();
+        this.iniciarComoHostHttp();
+        return;
+      }
+
+      if (this._flowTarget === 'manual') {
+        this.registrarEventoLog('Modo manual seleccionado');
+        document.getElementById('lobbyInitial')!.style.display = 'none';
+        document.getElementById('lobbyManual')!.style.display = 'flex';
+        return;
+      }
+
+      if (this._flowTarget === 'solo') {
+        this.empezarSolo();
+        return;
+      }
   }
 
   mostrarQRManual(titulo: string, data: string) {

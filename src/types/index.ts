@@ -75,4 +75,5 @@ export interface IGame {
     iniciarEleccionHost(): void;
     unirseAPartidaFirestore(id: string): Promise<void>;
     obtenerEntidadPorNombre(nombre: string): IEntidadRPG | null;
+    iniciarMotorJuego(): void;
 }

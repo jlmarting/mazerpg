@@ -100,6 +100,13 @@
 
             <div id="gameOptions" style="display: none; flex-direction: column; align-items: center; width: 100%; max-width: 450px;">
                 <button id="btnReanudar" style="display: none; width: 100%; padding: 12px; cursor: pointer; background: #6f42c1; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px; margin-bottom: 15px;">REANUDAR PARTIDA</button>
+                
+                <div id="serverModeSelector" style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px; gap: 5px;">
+                    <button id="btnServidorFirebase" style="flex: 1; padding: 8px; cursor: pointer; background: #007bff; color: white; border: 2px solid #0056b3; font-family: monospace; font-size: 10px; border-radius: 5px;">FIREBASE</button>
+                    <button id="btnServidorHttp" style="flex: 1; padding: 8px; cursor: pointer; background: #17a2b8; color: white; border: 2px solid #138496; font-family: monospace; font-size: 10px; border-radius: 5px;">SERVIDOR LOCAL</button>
+                </div>
+                <p id="serverModeInfo" style="font-size: 10px; color: #888; text-align: center; margin-bottom: 10px;">Modo: Firebase</p>
+                
                 <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 15px; gap: 10px;">
                     <button id="btnCrearPartida" style="flex: 1; padding: 12px; cursor: pointer; background: #007bff; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px;">CREAR PARTIDA</button>
                     <button id="btnUnirseLobby" style="flex: 1; padding: 12px; cursor: pointer; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px;">UNIRSE A PARTIDA</button>

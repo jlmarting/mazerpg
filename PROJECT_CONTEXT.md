@@ -22,8 +22,10 @@ src/
 │   ├── JugadorRemoto.ts    # Representación ligera de jugador remoto (posible extensión)
 │   └── EnemigoNPC.ts       # Enemigos controlados por IA
 ├── network/         # Gestión de señalización y conexión P2P
-│   ├── FirebaseManager.ts  # Wrapper de Firestore (crear partida, heartbeat, señalización)
-│   └── NetworkManager.ts   # WebRTC, manejo de DataChannel, lógica de host/guest
+│   ├── FirebaseManager.ts   # Wrapper de Firestore (crear partida, heartbeat, señalización)
+│   ├── NetworkManager.ts    # WebRTC vía Firebase signaling
+│   ├── NetworkManagerHttp.ts# WebRTC vía servidor HTTP de señalización externo
+│   └── SignalingClient.ts   # Cliente HTTP para el servidor de señalización en :8080
 ├── tools/           # Utilidades de depuración y desarrollo (logger, debug overlay)
 ├── types/           # Interfaces y tipos TypeScript compartidos
 │   └── index.ts     # Exporta IGame, GameConfig, IEntidadRPG, etc.

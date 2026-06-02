@@ -21,7 +21,15 @@ jobs:
           sed -i "s/__FIREBASE_MESSAGING_SENDER_ID__/${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}/g" index.html
           sed -i "s/__FIREBASE_APP_ID__/${{ secrets.FIREBASE_APP_ID }}/g" index.html
       # --- AQUÍ TERMINA LO NUESTRO ---
-      - run: npm ci && npm run build
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

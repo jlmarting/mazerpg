@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migración a sprite-based rendering con STRUCTOR v1.5 (`bca032f`)
 - Soporte de sprites VFX y redimensionamiento dinámico del mapa (`021667d`)
 - Modo multijugador HTTP con servidor de señalización externo (`bab0b3b`)
+- Píldoras formativas LEARN sobre WebRTC, signaling híbrido, buffering ICE y host-authority con snapshots (`9f6bc75`, `8dc717a`)
 
 ### Changed
 - Estandarización de configuración de sprites a formato basado en puntos (`e0c31e7`)

@@ -23,9 +23,9 @@ Game loop, state management y patrones de sincronización entre render y lógica
 
 | # | Título | Estado | Descripción |
 |---|--------|--------|-------------|
-| 10 | Separar Render de Lógica con `requestAnimationFrame` | 📝 Pendiente | Desacoplar framerate visual del tick rate del mundo mediante un loop de render independiente |
-| 11 | Patrón Singleton como State Container (`window.game`) | 📝 Pendiente | Ventajas y riesgos de centralizar todo el estado en un singleton global expuesto al navegador |
-| 12 | Command Queue para Multiplayer Autoritativo | 📝 Pendiente | Encolar acciones de clientes en el host para resolverlas de forma determinista en cada tick |
+| 10 | [Separar Render de Lógica con `requestAnimationFrame`](architecture/10-separar-render-logica.md) | ✅ | Desacoplar framerate visual del tick rate del mundo mediante un loop de render independiente |
+| 11 | [Patrón Singleton como State Container (`window.game`)](architecture/11-singleton-state-container.md) | ✅ | Ventajas y riesgos de centralizar todo el estado en un singleton global expuesto al navegador |
+| 12 | [Command Queue para Multiplayer Autoritativo](architecture/12-command-queue-multiplayer.md) | ✅ | Encolar acciones de clientes en el host para resolverlas de forma determinista en cada tick |
 
 ---
 

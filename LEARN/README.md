@@ -47,9 +47,9 @@ Procedural generation, serialización compacta y post-procesamiento de mapas.
 
 | # | Título | Estado | Descripción |
 |---|--------|--------|-------------|
-| 30 | Generación Procedural con BSP | 📝 Pendiente | Binary Space Partitioning: dividir recursivamente, crear salas en hojas y conectar con pasillos |
-| 31 | Serialización Compacta con Bitmasking + Base36 | 📝 Pendiente | Comprimir cada celda a un dígito base36 usando bits para muros y transitabilidad |
-| 32 | Garantía de Conectividad vía Post-procesamiento | 📝 Pendiente | Forzar rutas manuales tras la generación para asegurar que inicio y fin sean alcanzables |
+| 30 | [Generación Procedural con BSP](world/30-generacion-procedural-bsp.md) | ✅ | Binary Space Partitioning: dividir recursivamente, crear salas en hojas y conectar con pasillos |
+| 31 | [Serialización Compacta con Bitmasking + Base36](world/31-serializacion-compacta-bitmasking.md) | ✅ | Comprimir cada celda a un dígito base36 usando bits para muros y transitabilidad |
+| 32 | [Garantía de Conectividad vía Post-procesamiento](world/32-garantia-conectividad-postprocesamiento.md) | ✅ | Forzar rutas manuales tras la generación para asegurar que inicio y fin sean alcanzables |
 
 ---
 
@@ -71,9 +71,9 @@ Configuración de build, convenciones de calidad y gestión de entornos.
 
 | # | Título | Estado | Descripción |
 |---|--------|--------|-------------|
-| 50 | Multi-Entry Build con Vite | 📝 Pendiente | Compilar dos aplicaciones independientes (juego + structor) desde el mismo repo |
-| 51 | TypeScript Strict como Gate de Calidad | 📝 Pendiente | Cómo `noUnusedLocals` + `noUnusedParameters` fuerzan limpieza constante del código |
-| 52 | Inyección de Configuración: Build vs Runtime | 📝 Pendiente | Placeholders en HTML reemplazados por CI vs `window.FIREBASE_CONFIG` en desarrollo local |
+| 50 | [Multi-Entry Build con Vite](tooling/50-multi-entry-build-vite.md) | ✅ | Compilar dos aplicaciones independientes (juego + structor) desde el mismo repo |
+| 51 | [TypeScript Strict como Gate de Calidad](tooling/51-typescript-strict-gate-calidad.md) | ✅ | Cómo `noUnusedLocals` + `noUnusedParameters` fuerzan limpieza constante del código |
+| 52 | [Inyección de Configuración: Build vs Runtime](tooling/52-inyeccion-configuracion-build-runtime.md) | ✅ | Placeholders en HTML reemplazados por CI vs `window.FIREBASE_CONFIG` en desarrollo local |
 
 ---
 

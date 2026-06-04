@@ -60,8 +60,8 @@ Jerarquías de clases, máquinas de estados y desacoplamiento mediante callbacks
 | # | Título | Estado | Descripción |
 |---|--------|--------|-------------|
 | 40 | [Herencia + Interfaz Compartida (`IEntidadRPG`)](entities/40-herencia-interfaz-ientidadrpg.md) | ✅ | Jerarquía de entidades con lógica común en clase base y especialización en subclases |
-| 41 | State Machine Ligero para Animación | 📝 Pendiente | Estados (`idle`, `walking`, `attacking`) con expiración automática y mapeo a sprites |
-| 42 | Callback Pattern para Efectos de Daño | 📝 Pendiente | Desacoplar la lógica de combate (`recibirDano`) de la lógica visual/red mediante callbacks |
+| 41 | [State Machine Ligero para Animación](entities/41-state-machine-animacion.md) | ✅ | Estados (`idle`, `walking`, `attacking`) con expiración automática y mapeo a sprites |
+| 42 | [Callback Pattern para Efectos de Daño](entities/42-callback-pattern-dano.md) | ✅ | Desacoplar la lógica de combate (`recibirDano`) de la lógica visual/red mediante callbacks |
 
 ---
 

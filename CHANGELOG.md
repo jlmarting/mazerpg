@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Soporte de sprites VFX y redimensionamiento dinámico del mapa (`021667d`)
 - Modo multijugador HTTP con servidor de señalización externo (`bab0b3b`)
 - Píldoras formativas LEARN sobre WebRTC, signaling híbrido, buffering ICE y host-authority con snapshots (`9f6bc75`, `8dc717a`)
+- Píldora LEARN introductoria a WebRTC ampliada con conceptos pormenorizados (`b83f001`)
+- Píldoras LEARN de Arquitectura del Juego: separación render/lógica, singleton state container y command queue (`5a757b3`)
+- Píldoras LEARN de Entidades y Patrones: herencia + interfaz, state machine ligero y callback pattern (`3e3e350`, `87d5249`)
+- Píldoras LEARN de Renderizado y Sprites: fallback visual, fog of war y sprite mapping tool (`d57fa48`)
+- Píldoras LEARN de Generación de Mundos: BSP, serialización compacta y garantía de conectividad (`fb0e822`)
+- Píldoras LEARN de Tooling y TypeScript: multi-entry build, strict mode e inyección de configuración (`fb0e822`)
 
 ### Changed
 - Estandarización de configuración de sprites a formato basado en puntos (`e0c31e7`)

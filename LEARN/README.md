@@ -35,9 +35,9 @@ Sistema de dibujo, fallback visual y herramientas de desarrollo para assets.
 
 | # | Título | Estado | Descripción |
 |---|--------|--------|-------------|
-| 20 | Cadena de Fallback Visual (Sprite → Emoji → Geométrico) | 📝 Pendiente | Cómo garantizar que el juego sea jugable incluso sin assets gráficos cargados |
-| 21 | Fog of War con Decaimiento Temporal | 📝 Pendiente | Niebla de guerra basada en timestamps: cálculo de opacidad progresiva y clipping de viewport |
-| 22 | Sprite Mapping Tool como Dev Tool integrada | 📝 Pendiente | El contrato `GameSpriteContract` y cómo mantener consistencia entre assets y código |
+| 20 | [Cadena de Fallback Visual (Sprite → Emoji → Geométrico)](rendering/20-cadena-fallback-visual.md) | ✅ | Cómo garantizar que el juego sea jugable incluso sin assets gráficos cargados |
+| 21 | [Fog of War con Decaimiento Temporal](rendering/21-fog-of-war-decaimiento.md) | ✅ | Niebla de guerra basada en timestamps: cálculo de opacidad progresiva y clipping de viewport |
+| 22 | [Sprite Mapping Tool como Dev Tool integrada](rendering/22-sprite-mapping-tool.md) | ✅ | El contrato `GameSpriteContract` y cómo mantener consistencia entre assets y código |
 
 ---
 

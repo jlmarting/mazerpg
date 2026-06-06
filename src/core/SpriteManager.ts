@@ -66,9 +66,18 @@ export class SpriteManager {
 
         // Validar que el sprite esté dentro de los límites de la imagen
         if (sprite.image) {
+            const imgW = sprite.image.naturalWidth || sprite.image.width;
+            const imgH = sprite.image.naturalHeight || sprite.image.height;
+            if (imgW === 0 || imgH === 0) {
+                console.warn(`Sprite ${nombre} referencia imagen sin dimensiones (${imgW}x${imgH}).`);
+                return undefined;
+            }
             if (sprite.sx < 0 || sprite.sy < 0 ||
-                sprite.sx >= sprite.image.width ||
-                sprite.sy >= sprite.image.height) {
+                sprite.sx >= imgW ||
+                sprite.sy >= imgH ||
+                sprite.sx + sprite.sw > imgW ||
+                sprite.sy + sprite.sh > imgH) {
+                console.warn(`Sprite ${nombre} fuera de límites de la imagen: sx=${sprite.sx}, sy=${sprite.sy}, sw=${sprite.sw}, sh=${sprite.sh} vs img=${imgW}x${imgH}.`);
                 return undefined;
             }
         }
@@ -91,7 +100,7 @@ export class SpriteManager {
         return this.images.has(nombre);
     }
 
-    dibujarSprite(ctx: CanvasRenderingContext2D, nombre: string, x: number, y: number, w: number, h: number) {
+    dibujarSprite(ctx: CanvasRenderingContext2D, nombre: string, x: number, y: number, w: number, h: number): boolean {
         let sprite = this.obtenerSprite(nombre);
 
         // Fallback para animaciones: si no existe el frame específico, buscar el base o el frame 0
@@ -102,14 +111,22 @@ export class SpriteManager {
         }
 
         if (sprite && sprite.image) {
-            // Verificación básica de límites para evitar "dibujar aire" en el canvas
-            const validSX = sprite.sx >= 0 && sprite.sx < sprite.image.width;
-            const validSY = sprite.sy >= 0 && sprite.sy < sprite.image.height;
+            const imgW = sprite.image.naturalWidth || sprite.image.width;
+            const imgH = sprite.image.naturalHeight || sprite.image.height;
+            const validSX = sprite.sx >= 0 && sprite.sx < imgW;
+            const validSY = sprite.sy >= 0 && sprite.sy < imgH;
+            const validSW = sprite.sx + sprite.sw <= imgW;
+            const validSH = sprite.sy + sprite.sh <= imgH;
 
-            if (validSX && validSY) {
+            if (validSX && validSY && validSW && validSH) {
                 ctx.drawImage(sprite.image, sprite.sx, sprite.sy, sprite.sw, sprite.sh, x, y, w, h);
+                return true;
+            } else {
+                console.warn(`dibujarSprite: sprite ${nombre} tiene coordenadas inválidas para drawImage.`);
             }
         }
+
+        return false;
     }
 
     /**

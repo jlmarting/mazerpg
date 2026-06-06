@@ -130,18 +130,32 @@ export abstract class EntidadRPG implements IEntidadRPG {
 
         const spriteManager = (window as any).game?.renderer?.spriteManager;
         let maxFrames = 1;
+        let keyBase = '';
 
         if (spriteManager) {
             const prefix = (this as any).tipo !== undefined ? 'npc' : 'player';
             const clase = (this as any).clase || (this as any).tipo?.toLowerCase() || 'guerrero';
-            const keyBase = `${prefix}_${clase}_${this.estadoActual}`;
+            keyBase = `${prefix}_${clase}_${this.estadoActual}`;
             maxFrames = spriteManager.obtenerContadorFrames(keyBase) || 1;
         }
 
         if (this.estadoActual === 'fallen' && this.frameActual === maxFrames - 1 && maxFrames > 1) {
             // Se queda en el último frame de caído
         } else {
-            this.frameActual = (this.frameActual + 1) % maxFrames;
+            const siguienteFrame = (this.frameActual + 1) % Math.max(1, maxFrames);
+            // Validar que el siguiente frame existe antes de avanzar; si no, mantener frame actual
+            if (spriteManager && keyBase) {
+                const tieneSiguiente = spriteManager.obtenerSprite(`${keyBase}_${siguienteFrame}`) ||
+                                       (siguienteFrame === 0 && spriteManager.obtenerSprite(keyBase));
+                if (tieneSiguiente) {
+                    this.frameActual = siguienteFrame;
+                } else if (!spriteManager.obtenerSprite(`${keyBase}_${this.frameActual}`)) {
+                    // Si incluso el frame actual es inválido, resetear a 0
+                    this.frameActual = 0;
+                }
+            } else {
+                this.frameActual = siguienteFrame;
+            }
         }
     }
   }

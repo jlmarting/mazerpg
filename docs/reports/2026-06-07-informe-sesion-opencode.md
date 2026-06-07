@@ -95,4 +95,88 @@ Los cambios de esta sesión se reflejan en los siguientes commits:
 
 ---
 
+## Anexo: OpenCode vs GitHub Copilot — Análisis Comparativo
+
+### Metodología
+
+Este anexo compara **OpenCode** (herramienta usada en esta sesión) con **GitHub Copilot** (alternativa del mercado) desde tres perspectivas: forma de trabajo, métricas de uso de IA y capacidad de auditoría. La comparación se basa en la experiencia de uso real documentada en este informe y en el conocimiento general de ambas plataformas a fecha de junio 2026.
+
+---
+
+### 1. Forma de Trabajo
+
+| Aspecto | OpenCode | GitHub Copilot |
+|---------|----------|----------------|
+| **Interfaz** | CLI en terminal / TUI | Plugin IDE (VS Code, JetBrains, etc.) |
+| **Modalidad** | Agente autónomo con herramientas (tool-calls) | Chat + autocompletado inline |
+| **Flujo típico** | Usuario describe objetivo → agente ejecuta múltiples pasos (leer, editar, bash) | Usuario escribe código → Copilot sugiere línea/snippet |
+| **Modelos** | **Multimodelo** intercambiable por tarea: `deepseek-v4-flash` (barato), `glm-5.1` (precisión), `qwen3.7-max` (capacidad), `kimi-k2.6` (aprendizaje), modelos locales Ollama, etc. | Modelo único por suscripción (GPT-4o, Claude, etc.). Sin control granular. |
+| **Agentes** | Agentes especializados: `learn` (píldoras formativas), `changelog` (CHANGELOG automático), `explore` (análisis de código), `build` (desarrollo general) | Sin sistema de agentes. Un solo chat omnímodo. |
+| **Ejecución** | El agente ejecuta comandos reales: edita archivos, corre `git`, `npm`, scripts, etc. | Solo sugiere código. El usuario debe aplicarlo manualmente. |
+| **Contexto de entrada** | Todo el repositorio, con snapshot de git + herramientas de búsqueda (glob, grep, read) | Archivo abierto + selección. Contexto limitado al editor. |
+| **Offline/Local** | Sí (Ollama: Qwen2.5, Llama 3.3) | No. Requiere conexión a Internet. |
+
+**Conclusión**: OpenCode está diseñado para **trabajo autónomo delegado** (el agente hace), mientras que Copilot está diseñado para **asistencia en tiempo real** (el agente sugiere, el humano hace). No son mutuamente excluyentes: OpenCode brilla en automatización de tareas complejas de múltiples pasos; Copilot brilla en productividad momento a momento dentro del IDE.
+
+---
+
+### 2. Métricas de Uso de IA
+
+| Métrica | OpenCode | GitHub Copilot |
+|---------|----------|----------------|
+| **Transparencia de costes** | **Total**. Cada mensaje registra modelo, proveedor, tokens input/output/reasoning, caché, coste en USD. | **Nula**. Coste fijo por suscripción (10 USD/mes individual, 19 USD/mes business). No hay desglose por sesión, solicitud o modelo. |
+| **Registro de sesiones** | Completo en SQLite local: sesiones, mensajes, tokens, costes, archivos modificados, diffs. | No existe. |
+| **Traza de ejecución** | Log detallado por sesión (cada llamada API, tiempo, errores). | No existe. |
+| **Consumo por modelo** | **Sí**. Se sabe exactamente cuánto se gastó en cada modelo. | No aplica (un solo modelo). |
+| **Coste por tarea** | **Sí**. Cada solicitud de usuario tiene su coste asociado. | No disponible. |
+| **Métricas de caché** | Sí: tokens leídos/escritos en caché por mensaje. | No expuesto. |
+
+**Conclusión**: OpenCode ofrece **transparencia radical** en métricas de IA. Cada céntimo gastado es trazable hasta la solicitud, el modelo y el fichero modificado. Copilot opera como una caja negra: pagas una tarifa plana y no sabes qué consumes ni cómo se usa la capacidad de IA. Para un departamento de I+D que necesita justificar costes y optimizar recursos, OpenCode es muy superior.
+
+---
+
+### 3. Auditoría de Trabajos
+
+| Aspecto | OpenCode | GitHub Copilot |
+|---------|----------|----------------|
+| **Traza completa** | Cada sesión guarda: qué se pidió, con qué modelo, qué archivos se cambiaron, cuánto costó, cuánto tardó. | No disponible. Solo queda el código cometado. |
+| **Atribución** | Cada cambio se asocia a una sesión, una solicitud y un modelo concretos. | No es posible saber si un cambio fue sugerido por Copilot o escrito manualmente. |
+| **Diffs por solicitud** | Sí. Cada mensaje de usuario incluye el diff del cambio realizado. | No existe. |
+| **Coste por PR/commit** | Calculable a partir de los datos de sesión. | Imposible. |
+| **Trazabilidad de fallos** | Errores de API registrados con mensaje completo (ej. "Insufficient balance"). | No aplica. |
+| **Exportabilidad** | Datos en SQLite consultable con SQL. Logs en texto plano. | Sin acceso a datos de uso. |
+
+**Conclusión**: OpenCode proporciona un **sistema de auditoría completo** que permite responder preguntas como "¿cuánto costó este refactor?", "¿qué modelo se usó para esta funcionalidad?", "¿cuánto tiempo de IA consumió este PR?". Con Copilot es imposible responder a estas preguntas. En un entorno donde la gobernanza de IA es cada vez más relevante (trazabilidad, justificación de costes, optimización de modelos), OpenCode ofrece ventajas decisivas.
+
+---
+
+### 4. Limitaciones de OpenCode frente a Copilot
+
+Para ser completamente honestos:
+
+1. **Curva de aprendizaje**: OpenCode requiere manejo de terminal, conceptos de agentes, y configurar proveedores. Copilot se instala en 30 segundos desde el marketplace.
+2. **Autocompletado inline**: Copilot ofrece sugerencias mientras escribes, en el editor. OpenCode no tiene esta modalidad.
+3. **Madurez y ecosistema**: Copilot tiene años de desarrollo, millones de usuarios, integración con GitHub Actions, Code Review, y un ecosistema enterprise maduro.
+4. **Discovery**: OpenCode no "sugiere" código mientras escribes. Es un agente que actúa bajo demanda.
+5. **Soporte enterprise**: Copilot ofrece SSO, facturación consolidada, compliance centralizado. OpenCode es más artesanal en este aspecto.
+
+---
+
+### 5. Veredicto
+
+| Si necesitas... | OpenCode | Copilot |
+|----------------|----------|---------|
+| Automatizar tareas complejas (refactor, docs, tests) | ⭐ **Excelente** | ⚠️ Limitado |
+| Transparencia de costes y auditoría | ⭐ **Excelente** | ❌ No disponible |
+| Sugerencias inline en el IDE | ❌ No disponible | ⭐ **Excelente** |
+| Optimizar costes de IA por tarea | ⭐ **Excelente** | ❌ No posible |
+| Gobernanza y trazabilidad | ⭐ **Excelente** | ❌ Mínimo |
+| Productividad inmediata sin configuración | ⚠️ Curva media | ⭐ Excelente |
+| Trabajo offline/local | ⭐ Sí (Ollama) | ❌ No |
+| Multimodelo estratégico | ⭐ Sí | ❌ No |
+
+**En resumen**: OpenCode y GitHub Copilot son herramientas complementarias, no sustitutas. Para un departamento de I+D que necesita **auditar, optimizar y justificar** el uso de IA, OpenCode ofrece capacidades que Copilot simplemente no tiene. Para productividad día a día en el editor, Copilot sigue siendo el estándar. La combinación de ambas sería la estrategia óptima.
+
+---
+
 *Documento generado automáticamente a partir de los registros de sesión de OpenCode.*

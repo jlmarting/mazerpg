@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Sesión OpenCode 2026-06-07</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --green: #22c55e;
+    --orange: #f97316;
+    --red: #ef4444;
+    --purple: #a855f7;
+    --pink: #ec4899;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 2rem;
+    min-height: 100vh;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; }
+  h1 span { color: var(--accent); }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 2rem; }
+  .grid { display: grid; gap: 1.25rem; }
+  .stats-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1.5rem; }
+  .charts-grid { grid-template-columns: 1fr 1fr; }
+  .full { grid-column: 1 / -1; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    padding: 1.25rem;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--accent); }
+  .card-header { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.5rem; }
+  .stat-value { font-size: 2rem; font-weight: 700; }
+  .stat-value.dollar::before { content: '$'; font-size: 1.2rem; vertical-align: super; }
+  .stat-label { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+  .stat-sub { font-size: 0.75rem; color: var(--muted); }
+
+  .tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+  .tag-green { background: rgba(34,197,94,0.15); color: var(--green); }
+  .tag-orange { background: rgba(249,115,22,0.15); color: var(--orange); }
+  .tag-red { background: rgba(239,68,68,0.15); color: var(--red); }
+  .tag-blue { background: rgba(56,189,248,0.15); color: var(--accent); }
+  .tag-purple { background: rgba(168,85,247,0.15); color: var(--purple); }
+
+  .timeline { position: relative; padding-left: 2rem; }
+  .timeline::before {
+    content: ''; position: absolute; left: 0.5rem; top: 0; bottom: 0;
+    width: 2px; background: var(--border);
+  }
+  .tl-item { position: relative; padding: 0.6rem 0 0.6rem 1rem; border-bottom: 1px solid rgba(51,65,85,0.3); }
+  .tl-item:last-child { border-bottom: none; }
+  .tl-item::before {
+    content: ''; position: absolute; left: -1.65rem; top: 1rem;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--bg);
+  }
+  .tl-item.fail::before { background: var(--red); }
+  .tl-item.precise::before { background: var(--purple); }
+  .tl-item.capacity::before { background: var(--orange); }
+  .tl-time { font-size: 0.7rem; color: var(--muted); font-family: 'Courier New', monospace; }
+  .tl-model { font-size: 0.8rem; font-weight: 600; margin: 0.1rem 0; font-family: 'Courier New', monospace; }
+  .tl-desc { font-size: 0.75rem; color: var(--muted); }
+  .tl-cost { font-size: 0.75rem; font-weight: 700; float: right; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { text-align: left; padding: 0.5rem 0.75rem; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(51,65,85,0.3); }
+  td:last-child, th:last-child { text-align: right; }
+  tr:hover td { background: rgba(56,189,248,0.03); }
+  .total-row td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
+
+  .progress-bar { display: flex; height: 1.5rem; border-radius: 0.5rem; overflow: hidden; margin: 0.5rem 0; }
+  .progress-bar div { display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 600; color: #fff; transition: width 0.8s ease; }
+
+  .flex-between { display: flex; justify-content: space-between; align-items: center; }
+  @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem">
+    <div>
+      <h1>OpenCode <span>Dashboard</span></h1>
+      <div class="subtitle">Informe técnico de sesión &mdash; 7 de junio de 2026 &middot; 09:28 &ndash; 11:01 (1h 33min)</div>
+    </div>
+    <div style="text-align:right;font-size:0.75rem;color:var(--muted);line-height:1.6">
+      <span class="tag tag-blue">ses_15e968d4affe7LUph9ZoqB5ojW</span><br>
+      Rama: <code style="color:var(--accent)">fix/sprites_no_visibles</code>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="grid stats-grid">
+    <div class="card">
+      <div class="card-header">Coste Total</div>
+      <div class="stat-value dollar">3.94</div>
+      <div class="stat-label">USD estimado</div>
+    </div>
+    <div class="card">
+      <div class="card-header">Solicitudes</div>
+      <div class="stat-value">9</div>
+      <div class="stat-label">5 exitosas &middot; 1 fallo &middot; 3 cambios de modelo</div>
+    </div>
+    <div class="card">
+      <div class="card-header">Tokens Totales</div>
+      <div class="stat-value">237k</div>
+      <div class="stat-label">201k input &middot; 36k output &middot; 11k reasoning</div>
+    </div>
+    <div class="card">
+      <div class="card-header">Cache de Contexto</div>
+      <div class="stat-value">12.6M</div>
+      <div class="stat-label">tokens leídos de caché &middot; ahorro ~3x</div>
+    </div>
+    <div class="card">
+      <div class="card-header">Archivos</div>
+      <div class="stat-value">9</div>
+      <div class="stat-label">+724 / -43 líneas</div>
+    </div>
+    <div class="card">
+      <div class="card-header">Ratio Tool-Calls</div>
+      <div class="stat-value">89%</div>
+      <div class="stat-label">142 tool-calls &middot; 8 stops</div>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="grid charts-grid">
+
+    <!-- Coste por modelo -->
+    <div class="card">
+      <div class="card-header">Coste por Modelo (USD)</div>
+      <canvas id="costChart" height="200"></canvas>
+      <div style="margin-top:0.75rem;font-size:0.7rem;color:var(--muted);text-align:center;">Los modelos de alta capacidad (<code>qwen3.7-max</code>, <code>glm-5.1</code>) concentran el 99% del coste</div>
+    </div>
+
+    <!-- Tokens por modelo -->
+    <div class="card">
+      <div class="card-header">Tokens Input + Output por Modelo</div>
+      <canvas id="tokensChart" height="200"></canvas>
+      <div style="margin-top:0.75rem;font-size:0.7rem;color:var(--muted);text-align:center;"><code>deepseek-v4-flash</code> procesa el mayor volumen con el mínimo coste</div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="card full">
+      <div class="card-header">Línea de Tiempo de Solicitudes</div>
+      <div class="timeline">
+        <div class="tl-item fail">
+          <span class="tl-cost" style="color:var(--red)">FAIL</span>
+          <div class="tl-time">09:28</div>
+          <div class="tl-model"><span class="tag tag-red">deepseek-v4-flash</span> opencode</div>
+          <div class="tl-desc">Saldo insuficiente &mdash; intento fallido</div>
+        </div>
+        <div class="tl-item">
+          <span class="tl-cost">0.01 USD</span>
+          <div class="tl-time">09:29</div>
+          <div class="tl-model"><span class="tag tag-blue">deepseek-v4-flash</span> opencode-go</div>
+          <div class="tl-desc">Retomado con proveedor alternativo. Documentación LEARN</div>
+        </div>
+        <div class="tl-item">
+          <span class="tl-cost">0.00 USD</span>
+          <div class="tl-time">09:37</div>
+          <div class="tl-model"><span class="tag tag-blue">deepseek-v4-flash</span></div>
+          <div class="tl-desc">Continuación / ajustes sobre documento generado</div>
+        </div>
+        <div class="tl-item">
+          <span class="tl-cost">0.01 USD</span>
+          <div class="tl-time">09:39</div>
+          <div class="tl-model"><span class="tag tag-blue">deepseek-v4-flash</span></div>
+          <div class="tl-desc">Edición índice LEARN (<code>docs/learn/README.md</code>)</div>
+        </div>
+        <div class="tl-item precise">
+          <span class="tl-cost" style="color:var(--purple)">1.07 USD</span>
+          <div class="tl-time">09:56</div>
+          <div class="tl-model"><span class="tag tag-purple">glm-5.1</span></div>
+          <div class="tl-desc">Refactorización memory leaks en <code>src/main.ts</code> &mdash; alta precisión</div>
+        </div>
+        <div class="tl-item capacity">
+          <span class="tl-cost" style="color:var(--orange)">0.42 USD</span>
+          <div class="tl-time">10:07</div>
+          <div class="tl-model"><span class="tag tag-orange">qwen3.7-max</span></div>
+          <div class="tl-desc">Edición LEARN README &mdash; alta capacidad</div>
+        </div>
+        <div class="tl-item capacity">
+          <span class="tl-cost" style="color:var(--orange)">1.12 USD</span>
+          <div class="tl-time">10:29</div>
+          <div class="tl-model"><span class="tag tag-orange">qwen3.7-max</span></div>
+          <div class="tl-desc">Continuación LEARN README (segunda ronda)</div>
+        </div>
+        <div class="tl-item">
+          <span class="tl-cost">0.01 USD</span>
+          <div class="tl-time">10:39</div>
+          <div class="tl-model"><span class="tag tag-blue">deepseek-v4-flash</span></div>
+          <div class="tl-desc">Creación LEARN contingencia (<code>16-medidas-contingencia-game-loop.md</code>)</div>
+        </div>
+        <div class="tl-item">
+          <span class="tl-cost">0.01 USD</span>
+          <div class="tl-time">10:47</div>
+          <div class="tl-model"><span class="tag tag-blue">deepseek-v4-flash</span></div>
+          <div class="tl-desc">Correcciones memory leaks <code>src/main.ts</code></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Eficiencia de Caché -->
+    <div class="card full">
+      <div class="card-header">Eficiencia de Caché de Contexto por Modelo</div>
+      <div style="margin-bottom:0.5rem;font-size:0.75rem;color:var(--muted);">Ratio de aciertos de caché sobre tokens totales de entrada</div>
+      <div class="progress-bar" style="background:var(--border);">
+        <div id="cacheBarQwen" style="width:0%;background:linear-gradient(90deg,var(--orange),#fbbf24);"></div>
+      </div>
+      <div class="flex-between" style="font-size:0.75rem;margin-bottom:0.5rem;">
+        <span><code>qwen3.7-max</code></span>
+        <span id="cachePctQwen" style="font-weight:700;color:var(--orange);">0%</span>
+      </div>
+      <div class="progress-bar" style="background:var(--border);">
+        <div id="cacheBarGlm" style="width:0%;background:linear-gradient(90deg,var(--purple),#c084fc);"></div>
+      </div>
+      <div class="flex-between" style="font-size:0.75rem;margin-bottom:0.5rem;">
+        <span><code>glm-5.1</code></span>
+        <span id="cachePctGlm" style="font-weight:700;color:var(--purple);">0%</span>
+      </div>
+      <div class="progress-bar" style="background:var(--border);">
+        <div id="cacheBarDeep" style="width:0%;background:linear-gradient(90deg,var(--accent),#60a5fa);"></div>
+      </div>
+      <div class="flex-between" style="font-size:0.75rem;">
+        <span><code>deepseek-v4-flash</code></span>
+        <span id="cachePctDeep" style="font-weight:700;color:var(--accent);">0%</span>
+      </div>
+      <div style="margin-top:0.75rem;font-size:0.7rem;color:var(--muted);text-align:center;">El uso intensivo de caché reduce drásticamente el coste real frente al nominal</div>
+    </div>
+
+    <!-- Tabla detallada -->
+    <div class="card full">
+      <div class="card-header">Desglose Detallado por Modelo</div>
+      <table>
+        <thead>
+          <tr><th>Modelo</th><th>Mensajes</th><th>Sol.</th><th>Input</th><th>Output</th><th>Reasoning</th><th>Cache Read</th><th>Coste</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tag tag-orange">qwen3.7-max</span></td>
+            <td>40</td><td>2</td>
+            <td>228</td><td>12,587</td><td>0</td>
+            <td>4,008,704</td>
+            <td><strong>2.82 USD</strong></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-purple">glm-5.1</span></td>
+            <td>50</td><td>1</td>
+            <td>76,822</td><td>5,790</td><td>0</td>
+            <td>3,615,488</td>
+            <td><strong>1.07 USD</strong></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-blue">deepseek-v4-flash</span> (opencode-go)</td>
+            <td>68</td><td>5</td>
+            <td>124,031</td><td>17,877</td><td>11,421</td>
+            <td>4,977,024</td>
+            <td>0.04 USD</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-red">deepseek-v4-flash</span> (opencode, fallo)</td>
+            <td>2</td><td>1</td>
+            <td>0</td><td>0</td><td>0</td>
+            <td>0</td>
+            <td>0.00 USD</td>
+          </tr>
+          <tr class="total-row">
+            <td>TOTAL</td><td>160</td><td>9</td>
+            <td>201,081</td><td>36,254</td><td>11,421</td>
+            <td>12,601,216</td>
+            <td><strong>3.94 USD</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid var(--border);font-size:0.75rem;color:var(--muted);text-align:center;">
+    Datos extraídos de OpenCode &middot; Sesión <code>ses_15e968d4affe7LUph9ZoqB5ojW</code> &middot; Proyecto <code>mazerpg</code>
+  </div>
+</div>
+
+<script>
+// Cost by model
+new Chart(document.getElementById('costChart'), {
+  type: 'bar',
+  data: {
+    labels: ['qwen3.7-max', 'glm-5.1', 'deepseek-v4-flash'],
+    datasets: [{
+      data: [2.82, 1.07, 0.04],
+      backgroundColor: ['rgba(249,115,22,0.7)', 'rgba(168,85,247,0.7)', 'rgba(56,189,248,0.7)'],
+      borderColor: ['#f97316', '#a855f7', '#38bdf8'],
+      borderWidth: 2,
+      borderRadius: 4
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: { callback: v => '$' + v, color: '#94a3b8' },
+        grid: { color: 'rgba(51,65,85,0.3)' }
+      },
+      x: {
+        ticks: { color: '#94a3b8', font: { size: 10 } },
+        grid: { display: false }
+      }
+    }
+  }
+});
+
+// Tokens by model
+new Chart(document.getElementById('tokensChart'), {
+  type: 'bar',
+  data: {
+    labels: ['qwen3.7-max', 'glm-5.1', 'deepseek-v4-flash'],
+    datasets: [
+      {
+        label: 'Input',
+        data: [228, 76822, 124031],
+        backgroundColor: 'rgba(56,189,248,0.7)',
+        borderColor: '#38bdf8',
+        borderWidth: 1,
+        borderRadius: 2
+      },
+      {
+        label: 'Output',
+        data: [12587, 5790, 17877],
+        backgroundColor: 'rgba(34,197,94,0.7)',
+        borderColor: '#22c55e',
+        borderWidth: 1,
+        borderRadius: 2
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: { color: '#94a3b8', font: { size: 10 } }
+      }
+    },
+    scales: {
+      x: {
+        stacked: false,
+        ticks: { color: '#94a3b8', font: { size: 10 } },
+        grid: { display: false }
+      },
+      y: {
+        beginAtZero: true,
+        ticks: { color: '#94a3b8', callback: v => v >= 1000 ? (v/1000).toFixed(0)+'k' : v },
+        grid: { color: 'rgba(51,65,85,0.3)' }
+      }
+    }
+  }
+});
+
+// Cache efficiency bars - animated on load
+setTimeout(() => {
+  document.getElementById('cacheBarQwen').style.width = '98.5%';
+  document.getElementById('cachePctQwen').textContent = '98.5%';
+  document.getElementById('cacheBarGlm').style.width = '97.9%';
+  document.getElementById('cachePctGlm').textContent = '97.9%';
+  document.getElementById('cacheBarDeep').style.width = '97.5%';
+  document.getElementById('cachePctDeep').textContent = '97.5%';
+}, 200);
+</script>
+</body>
+</html>

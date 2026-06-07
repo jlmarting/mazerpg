@@ -26,6 +26,10 @@ Game loop, state management y patrones de sincronización entre render y lógica
 | 10 | [Separar Render de Lógica con `requestAnimationFrame`](architecture/10-separar-render-logica.md) | ✅ | Desacoplar framerate visual del tick rate del mundo mediante un loop de render independiente |
 | 11 | [Patrón Singleton como State Container (`window.game`)](architecture/11-singleton-state-container.md) | ✅ | Ventajas y riesgos de centralizar todo el estado en un singleton global expuesto al navegador |
 | 12 | [Command Queue para Multiplayer Autoritativo](architecture/12-command-queue-multiplayer.md) | ✅ | Encolar acciones de clientes en el host para resolverlas de forma determinista en cada tick |
+| 13 | [Callbacks huérfanos en señalización](architecture/13-callbacks-huerfanos-signaling.md) | ✅ | Por qué un `onSignal` sin `unsub()` al abrir el canal P2P causa fugas de memoria progresivas |
+| 14 | [El bucle que nunca duerme](architecture/14-requestanimationframe-sin-stop.md) | ✅ | `requestAnimationFrame` perpetuo sin `cancelAnimationFrame`: el juego renderiza a 60fps aunque esté en pausa |
+| 15 | [Timers zombie al sobrescribir servicios](architecture/15-timers-zombies-sobrescritura.md) | ✅ | Crear un nuevo `SignalingClient` sin destruir el anterior deja múltiples timers activos en segundo plano |
+| 16 | [Medidas de contingencia para game loops](architecture/16-medidas-contingencia-game-loop.md) | ✅ | Auto-pause en background (solo solitario), monitor de FPS, hotkey de emergencia, botón del pánico para touch y FPS display en modo debug |
 
 ---
 

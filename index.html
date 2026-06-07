@@ -29,6 +29,10 @@
                 <div class="dropdown-content">
                     <button id="btnDebug" class="menu-btn">DEBUG (D)</button>
                     <button id="btnLogPanel" class="menu-btn">VER CONEXIONES</button>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: #fff; font-family: monospace; font-size: 11px; cursor: pointer;">
+                        <input type="checkbox" id="panicBtnToggle" style="cursor: pointer;">
+                        BOTÓN DEL PÁNICO
+                    </label>
                     <button id="btnEmpezar" class="menu-btn" disabled>REINTENTAR</button>
                     <button id="btnAbandonar" class="menu-btn" style="background: #dc3545; color: white;">ABANDONAR</button>
                 </div>
@@ -274,6 +278,10 @@
             <button id="btnSalir" style="padding: 10px 20px; cursor: pointer; background: #6c757d; color: white; border: none; font-family: monospace; font-weight: bold;">SALIR</button>
         </div>
     </div>
+
+    <div id="fpsDisplay" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: #0f0; padding: 5px 10px; font-family: monospace; font-size: 12px; border-radius: 3px; z-index: 100; display: none;">FPS: --</div>
+
+    <button id="panicButton" style="position: fixed; top: 15px; right: 15px; width: 50px; height: 50px; border-radius: 50%; background: #dc3545; color: white; border: 3px solid #fff; font-size: 20px; font-weight: bold; cursor: pointer; z-index: 100; display: none; box-shadow: 0 4px 8px rgba(0,0,0,0.5);">⚠</button>
 
     <script type="module" src="/src/main.ts"></script>
 </body>

@@ -68,6 +68,12 @@ class Game implements IGame {
   private firebaseHeartbeatInterval: number | null = null;
   private firebaseNpcSyncInterval: number | null = null;
   private _flowTarget: 'solo' | 'host' | 'manual' | null = null;
+  private gameLoopId: number | null = null;
+  private juegoPausado: boolean = false;
+  private ultimoFrameTime: number = 0;
+  private fpsBajoContador: number = 0;
+  private readonly FPS_MINIMO: number = 15;
+  private readonly FPS_UMBRAL_SEGUNDOS: number = 3;
 
   constructor() {
     (window as any).game = this;
@@ -91,6 +97,42 @@ class Game implements IGame {
     canvas.addEventListener('mousedown', (e) => {
         this.manejarTap(e.clientX, e.clientY);
     });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.motorIniciado && !this.network.multiplayerActivo) {
+        this.pausarJuego();
+      } else if (!document.hidden && this.juegoPausado && !this.network.multiplayerActivo) {
+        this.reanudarJuego();
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'Q') {
+        e.preventDefault();
+        if (confirm('¿Forzar recarga de emergencia?')) {
+          window.location.reload();
+        }
+      }
+    });
+
+    const panicToggle = document.getElementById('panicBtnToggle') as HTMLInputElement;
+    if (panicToggle) {
+      panicToggle.addEventListener('change', () => {
+        const panicBtn = document.getElementById('panicButton');
+        if (panicBtn) {
+          panicBtn.style.display = panicToggle.checked ? 'block' : 'none';
+        }
+      });
+    }
+
+    const panicBtn = document.getElementById('panicButton');
+    if (panicBtn) {
+      panicBtn.addEventListener('click', () => {
+        if (confirm('¿Forzar recarga de emergencia?')) {
+          window.location.reload();
+        }
+      });
+    }
   }
 
   initMap() {
@@ -362,6 +404,8 @@ class Game implements IGame {
   iniciarComoHostHttp() {
     this.esHost = true;
     this.modoMultijugador = 'http';
+    this.signaling?.desconectar();
+    this.networkHttp?.desconectar();
     this.signaling = crearSignalingClient();
     this.networkHttp = new NetworkManagerHttp();
     this.networkHttp.setSignaling(this.signaling);
@@ -551,6 +595,7 @@ class Game implements IGame {
     if (this.networkHttp) return;
     this.esHost = false;
     this.modoMultijugador = 'http';
+    this.signaling?.desconectar();
     this.signaling = crearSignalingClient();
     this.networkHttp = new NetworkManagerHttp();
     this.networkHttp.setSignaling(this.signaling);
@@ -787,6 +832,11 @@ class Game implements IGame {
         if (this.esHost && this.network.multiplayerActivo) {
             this.network.enviarMensaje({ tipo: 'host_migration_trigger', reason: 'host_abandoned' });
         }
+        this.detenerMotorJuego();
+        this.detenerIntervalosHttp();
+        this.detenerIntervalosFirebase();
+        if (this.networkHttp) this.networkHttp.desconectar();
+        this.signaling?.desconectar();
         window.location.reload();
     }
   }
@@ -1073,6 +1123,8 @@ class Game implements IGame {
         this.generarObjetos();
         this.generarEscenarioDinamicoDemo();
     }
+    this.ultimoFrameTime = performance.now();
+    this.fpsBajoContador = 0;
     this.cicloDeJuego();
   }
 
@@ -1308,6 +1360,40 @@ class Game implements IGame {
   }
 
   cicloDeJuego() {
+    const ahora = performance.now();
+    if (this.ultimoFrameTime > 0) {
+      const delta = ahora - this.ultimoFrameTime;
+      const fps = 1000 / delta;
+      
+      if (this.config.vistaDebugActivada) {
+        const fpsDisplay = document.getElementById('fpsDisplay');
+        if (fpsDisplay) {
+          fpsDisplay.style.display = 'block';
+          fpsDisplay.textContent = `FPS: ${fps.toFixed(1)}`;
+          fpsDisplay.style.color = fps < this.FPS_MINIMO ? '#ff4444' : '#0f0';
+        }
+      } else {
+        const fpsDisplay = document.getElementById('fpsDisplay');
+        if (fpsDisplay) fpsDisplay.style.display = 'none';
+      }
+      
+      if (fps < this.FPS_MINIMO) {
+        if (delta > 1000) {
+          this.fpsBajoContador = 0;
+        } else {
+          this.fpsBajoContador += delta / 1000;
+        }
+        if (this.fpsBajoContador >= this.FPS_UMBRAL_SEGUNDOS && !this.network.multiplayerActivo) {
+          this.registrarEventoLog(`⚠️ FPS bajo detectado (${fps.toFixed(1)}). Pausando automáticamente.`);
+          this.pausarJuego();
+          return;
+        }
+      } else {
+        this.fpsBajoContador = Math.max(0, this.fpsBajoContador - delta / 1000);
+      }
+    }
+    this.ultimoFrameTime = ahora;
+
     this.actualizar();
     this.renderer.limpiar();
     const offset = this.renderer.obtenerOffsetCamara(this.protagonista, this.config);
@@ -1411,7 +1497,34 @@ class Game implements IGame {
     this.renderer.dibujarMarcadoresMovimiento(this.config);
     this.renderer.dibujarUI(this);
 
-    requestAnimationFrame(() => this.cicloDeJuego());
+    this.gameLoopId = requestAnimationFrame(() => this.cicloDeJuego());
+  }
+
+  detenerMotorJuego() {
+    if (this.gameLoopId !== null) {
+      cancelAnimationFrame(this.gameLoopId);
+      this.gameLoopId = null;
+    }
+    this.motorIniciado = false;
+  }
+
+  pausarJuego() {
+    if (this.juegoPausado || !this.motorIniciado) return;
+    this.juegoPausado = true;
+    if (this.gameLoopId !== null) {
+      cancelAnimationFrame(this.gameLoopId);
+      this.gameLoopId = null;
+    }
+    this.registrarEventoLog('⏸️ Juego pausado (pestaña en background)');
+  }
+
+  reanudarJuego() {
+    if (!this.juegoPausado) return;
+    this.juegoPausado = false;
+    this.ultimoFrameTime = performance.now();
+    this.fpsBajoContador = 0;
+    this.cicloDeJuego();
+    this.registrarEventoLog('▶️ Juego reanudado');
   }
 
   procesarTick() {
@@ -2412,40 +2525,46 @@ class Game implements IGame {
             if (!this.esHost) {
                 const emisorA = this.obtenerEntidadPorId(idSujeto);
                 if (emisorA) emisorA.setEstado('attacking', 800);
-                this.bolasDeFuego.push({
-                    x: msg.ex,
-                    y: msg.ey,
-                    targetX: msg.tx,
-                    targetY: msg.ty,
-                    pct: 0,
-                    speed: 0.05,
-                    aplicarDano: false,
-                    color: "#aaa",
-                    esFlecha: true
-                });
+                if (this.bolasDeFuego.length < 50) {
+                    this.bolasDeFuego.push({
+                        x: msg.ex,
+                        y: msg.ey,
+                        targetX: msg.tx,
+                        targetY: msg.ty,
+                        pct: 0,
+                        speed: 0.05,
+                        aplicarDano: false,
+                        color: "#aaa",
+                        esFlecha: true
+                    });
+                }
             }
             break;
         case 'freeze_spawn':
             if (!this.esHost) {
-                this.freezes.push({
-                    x: msg.x,
-                    y: msg.y,
-                    radio: msg.r,
-                    inicio: Date.now(),
-                    duracion: msg.d
-                });
+                if (this.freezes.length < 50) {
+                    this.freezes.push({
+                        x: msg.x,
+                        y: msg.y,
+                        radio: msg.r,
+                        inicio: Date.now(),
+                        duracion: msg.d
+                    });
+                }
             }
             break;
         case 'whirlwind_spawn':
             if (!this.esHost) {
                 const emisorW = this.obtenerEntidadPorId(idSujeto);
                 if (emisorW) emisorW.setEstado('attacking', 800);
-                this.whirlwinds.push({
-                    x: msg.x,
-                    y: msg.y,
-                    inicio: Date.now(),
-                    duracion: 800
-                });
+                if (this.whirlwinds.length < 50) {
+                    this.whirlwinds.push({
+                        x: msg.x,
+                        y: msg.y,
+                        inicio: Date.now(),
+                        duracion: 800
+                    });
+                }
             }
             break;
         case 'object_spawned':
@@ -2515,14 +2634,16 @@ class Game implements IGame {
             break;
         case 'radar_spawn':
             if (!this.esHost) {
-                this.radares.push({
-                    x: msg.x,
-                    y: msg.y,
-                    inicio: Date.now(),
-                    duracion: 5000,
-                    respuestas: msg.respuestas,
-                    idEmisor: msg.idEmisor
-                });
+                if (this.radares.length < 20) {
+                    this.radares.push({
+                        x: msg.x,
+                        y: msg.y,
+                        inicio: Date.now(),
+                        duracion: 5000,
+                        respuestas: msg.respuestas,
+                        idEmisor: msg.idEmisor
+                    });
+                }
             }
             break;
         case 'handshake':
@@ -2749,15 +2870,17 @@ class Game implements IGame {
             if (!this.esHost) {
                 const emisorF = this.obtenerEntidadPorId(idSujeto);
                 if (emisorF) emisorF.setEstado('attacking', 800);
-                this.bolasDeFuego.push({
-                    x: msg.ex,
-                    y: msg.ey,
-                    targetX: msg.tx,
-                    targetY: msg.ty,
-                    pct: 0,
-                    aplicarDano: false,
-                    color: msg.c
-                });
+                if (this.bolasDeFuego.length < 50) {
+                    this.bolasDeFuego.push({
+                        x: msg.ex,
+                        y: msg.ey,
+                        targetX: msg.tx,
+                        targetY: msg.ty,
+                        pct: 0,
+                        aplicarDano: false,
+                        color: msg.c
+                    });
+                }
             }
             break;
         case 'npc_sync_all':

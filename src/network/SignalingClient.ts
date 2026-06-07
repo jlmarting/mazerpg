@@ -255,6 +255,9 @@ export class SignalingClient {
     this.detenerPolling();
     this.initialized = false;
     this.idPartidaActual = null;
+    // TODO(jl): clear callback arrays to prevent lingering references
+    this.onSignalCallbacks = [];
+    this.onPartidasCallbacks = [];
   }
 }
 

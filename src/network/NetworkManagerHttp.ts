@@ -16,7 +16,7 @@ export class NetworkManagerHttp {
     public activo: boolean = false;
     public signaling: SignalingClient | null = null;
 
-    private iceBuffers: Map<string, any[]> = new Map();
+    private iceBuffers: Map<string, any[]> = new Map(); // TODO(jl): entries never removed — clean up on channel open or disconnect
     private unsubscribes: Map<string, () => void> = new Map();
 
     constructor() {}
@@ -104,7 +104,10 @@ export class NetworkManagerHttp {
 
         dc.addEventListener('open', () => {
             game.ui.registrarLogConexion(`✅ CANAL P2P ABIERTO con ${guestId}.`);
+            const unsub = this.unsubscribes.get(guestId);
+            if (unsub) { unsub(); this.unsubscribes.delete(guestId); }
             pc.onicecandidate = null;
+            this.iceBuffers.delete(guestId);
             if (this.idPartidaActual) this.signaling!.limpiarSignaling(this.idPartidaActual, guestId);
         });
 
@@ -212,6 +215,7 @@ export class NetworkManagerHttp {
             j.pc.close();
         });
         this.jugadoresRemotos.clear();
+        this.iceBuffers.clear();
         this.multiplayerActivo = false;
         this.activo = false;
         if (this.signaling) {

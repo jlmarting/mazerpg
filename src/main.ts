@@ -1278,6 +1278,11 @@ class Game implements IGame {
     this.asustarMonstruosCercanos(pos.f, pos.c);
     this.protagonista.vidaActual = this.protagonista.vidaMaxima;
     this.protagonista.estaVivo = true;
+    this.protagonista.estadoActual = 'idle';
+    this.protagonista.frameActual = 0;
+    this.protagonista.ultimaActualizacionFrame = 0;
+    this.protagonista.estadoExpira = 0;
+    this.protagonista.estaCaminando = false;
     this.protagonista.enCombateCon = null;
     this.protagonista.puntosExperiencia = 0;
     this.juegoTerminado = false;
@@ -1295,7 +1300,9 @@ class Game implements IGame {
             id: this.network.idLocal,
             nick: this.protagonista.nombre,
             hp: this.protagonista.vidaActual,
-            maxHp: this.protagonista.vidaMaxima
+            maxHp: this.protagonista.vidaMaxima,
+            est: this.protagonista.estadoActual,
+            fr: this.protagonista.frameActual
         });
     }
   }
@@ -2670,6 +2677,12 @@ class Game implements IGame {
                     jPos.entidad.vidaActual = msg.hp;
                     jPos.entidad.vidaMaxima = msg.maxHp;
                     jPos.entidad.estaVivo = msg.hp > 0;
+                }
+                if (msg.est !== undefined) {
+                    jPos.entidad.estadoActual = msg.est;
+                }
+                if (msg.fr !== undefined) {
+                    jPos.entidad.frameActual = msg.fr;
                 }
             }
             if (this.esHost) this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);

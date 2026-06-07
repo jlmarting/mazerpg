@@ -97,6 +97,28 @@ src/
 └── types/index.ts       # Shared interfaces (IGame, IEntidadRPG, GameConfig, etc.)
 ```
 
+### Documentation Structure
+
+```
+docs/
+├── README.md                    # Documentation index
+├── project-context.md           # Project context and architecture overview
+├── proposals/                   # Technical proposals and RFCs
+│   ├── README.md               # Proposal template and guidelines
+│   └── 2025-06-07-*.md         # Individual proposals
+├── learn/                       # LEARN pills (educational content)
+│   ├── README.md               # LEARN index
+│   ├── webrtc/                 # WebRTC and multiplayer
+│   ├── architecture/           # Game architecture patterns
+│   ├── rendering/              # Rendering and sprites
+│   ├── world/                  # World generation
+│   ├── entities/               # Entity patterns
+│   └── tooling/                # Build and tooling
+├── analisis-refactor.md        # Historical refactoring analysis
+├── analisis-sprites.md         # Sprite migration analysis
+└── analisis-sprites-avanzado.md # Advanced sprite architecture
+```
+
 ### Multi-page Build
 Vite builds two entry points:
 - `index.html` → main game (`/src/main.ts`)

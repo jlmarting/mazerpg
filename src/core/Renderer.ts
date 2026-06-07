@@ -324,20 +324,49 @@ export class Renderer {
     const keyBase = `${prefix}_${clase}_${entidad.estadoActual}`;
     const spriteKey = `${keyBase}_${entidad.frameActual}`;
 
-    // 1. Intentar dibujar Sprite
-    if (entidad.estaVivo && (this.spriteManager.obtenerSprite(spriteKey) || this.spriteManager.obtenerSprite(keyBase))) {
-        this.spriteManager.dibujarSprite(this.ctx, spriteKey, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
-    }
-    // 2. Si ha caído, dibujar tumba o estado fallen
-    else if (!entidad.estaVivo) {
-        this.dibujarTumba(x, y, TAMANO_CELDA);
-    }
-    // 3. Fallback a figuras geométricas (Stick figures / Bloques)
-    else {
-        if (esNPC) {
-            this.dibujarNPCFallback(entidad, x, y, TAMANO_CELDA);
+    // Cadena de fallback visual: preferir siempre un sprite real sobre figuras geométricas
+    let keyADibujar: string | null = null;
+
+    if (entidad.estaVivo) {
+        if (this.spriteManager.obtenerSprite(spriteKey)) {
+            keyADibujar = spriteKey;
+        } else if (this.spriteManager.obtenerSprite(keyBase)) {
+            keyADibujar = keyBase;
         } else {
-            this.dibujarJugadorFallback(entidad, x, y, TAMANO_CELDA);
+            // Si el estado actual carece de sprite, caer a idle (o idle_0 o alias simplificado)
+            const idleKey = `${prefix}_${clase}_idle`;
+            if (this.spriteManager.obtenerSprite(idleKey)) {
+                keyADibujar = idleKey;
+            } else if (this.spriteManager.obtenerSprite(`${idleKey}_0`)) {
+                keyADibujar = `${idleKey}_0`;
+            } else if (this.spriteManager.obtenerSprite(`${prefix}_${clase}`)) {
+                keyADibujar = `${prefix}_${clase}`;
+            }
+        }
+    } else {
+        // Entidad muerta: intentar sprite fallen antes de la tumba geométrica
+        const fallenKey = `${prefix}_${clase}_fallen`;
+        if (this.spriteManager.obtenerSprite(fallenKey)) {
+            keyADibujar = fallenKey;
+        } else if (this.spriteManager.obtenerSprite(`${fallenKey}_0`)) {
+            keyADibujar = `${fallenKey}_0`;
+        }
+    }
+
+    let dibujado = false;
+    if (keyADibujar) {
+        dibujado = this.spriteManager.dibujarSprite(this.ctx, keyADibujar, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
+    }
+
+    if (!dibujado) {
+        if (!entidad.estaVivo) {
+            this.dibujarTumba(x, y, TAMANO_CELDA);
+        } else {
+            if (esNPC) {
+                this.dibujarNPCFallback(entidad, x, y, TAMANO_CELDA);
+            } else {
+                this.dibujarJugadorFallback(entidad, x, y, TAMANO_CELDA);
+            }
         }
     }
 

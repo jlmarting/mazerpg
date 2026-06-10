@@ -74,6 +74,9 @@ class Game implements IGame {
   private fpsBajoContador: number = 0;
   private readonly FPS_MINIMO: number = 15;
   private readonly FPS_UMBRAL_SEGUNDOS: number = 3;
+  private diagTimer: number | null = null;
+  private diagFrameCount: number = 0;
+  private diagLastLog: number = 0;
 
   constructor() {
     (window as any).game = this;
@@ -1105,9 +1108,28 @@ class Game implements IGame {
     }
   }
 
+  private iniciarDiagnostico() {
+    if (this.diagTimer !== null) return;
+    this.diagLastLog = Date.now();
+    this.diagFrameCount = 0;
+    this.diagTimer = window.setInterval(() => {
+      const ahora = Date.now();
+      const fps = this.diagFrameCount / ((ahora - this.diagLastLog) / 1000);
+      console.log(`[DIAG] FPS:${fps.toFixed(1)} ` +
+        `cola:${this.colaAcciones.length} bolas:${this.bolasDeFuego.length} ` +
+        `radar:${this.radares.length} whirl:${this.whirlwinds.length} ` +
+        `freeze:${this.freezes.length} enem:${this.listaDeEnemigos.filter((e:any) => e.estaVivo).length}/${this.listaDeEnemigos.length} ` +
+        `rem:${this.network?.jugadoresRemotos?.size ?? 0} ` +
+        `pause:${this.juegoPausado} host:${this.esHost} mp:${this.network?.multiplayerActivo}`);
+      this.diagFrameCount = 0;
+      this.diagLastLog = ahora;
+    }, 10000);
+  }
+
   iniciarMotorJuego() {
     if (this.motorIniciado) return;
     this.motorIniciado = true;
+    this.iniciarDiagnostico();
 
     // Mostrar menús
     document.getElementById('topMenu')!.style.display = 'block';
@@ -1360,6 +1382,7 @@ class Game implements IGame {
   }
 
   cicloDeJuego() {
+    this.diagFrameCount++;
     const ahora = performance.now();
     if (this.ultimoFrameTime > 0) {
       const delta = ahora - this.ultimoFrameTime;

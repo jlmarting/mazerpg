@@ -1520,7 +1520,10 @@ class Game implements IGame {
     this.renderer.dibujarMarcadoresMovimiento(this.config);
     this.renderer.dibujarUI(this);
 
-    this.gameLoopId = requestAnimationFrame(() => this.cicloDeJuego());
+    this.gameLoopId = requestAnimationFrame(() => {
+      try { this.cicloDeJuego(); }
+      catch (e) { console.error('[CICLO] Error en game loop:', e, (e as Error).stack); this.gameLoopId = requestAnimationFrame(() => this.cicloDeJuego()); }
+    });
   }
 
   detenerMotorJuego() {

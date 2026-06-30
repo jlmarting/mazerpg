@@ -63,44 +63,66 @@ src/
 └── tools/structor.ts       # Herramienta de mapeo de sprites (entry point aparte)
 ```
 
-## Cómo empezar
+## Puesta en marcha
 
-### Requisitos
+### 1. Requisitos previos
 
-- [Node.js](https://nodejs.org/) (v18+)
-- [pnpm](https://pnpm.io/)
+- [Node.js](https://nodejs.org/) v18 o superior
+- [pnpm](https://pnpm.io/) (gestor de paquetes)
 
-### Instalación
+### 2. Clonar e instalar dependencias
 
 ```bash
+git clone <url-del-repo>
+cd mazerpg
 pnpm install
 ```
 
-### Desarrollo
+### 3. Arrancar el servidor de desarrollo
 
 ```bash
 pnpm dev
 ```
 
-Abre http://localhost:5173 para el juego y http://localhost:5173/structor.html para la herramienta de sprites.
+- Juego principal: http://localhost:5173
+- Herramienta de sprites (structor): http://localhost:5173/structor.html
 
-> **Nota**: Para usar el modo Firebase en local, debes configurar `window.FIREBASE_CONFIG` en `index.html` con tus credenciales reales. Los placeholders (`__FIREBASE_API_KEY__`, etc.) se inyectan automáticamente durante el despliegue CI.
+### 4. Configurar Firebase (solo si usas modo multijugador Firebase)
 
-### Build de producción
+Los placeholders en `index.html` (`__FIREBASE_API_KEY__`, etc.) deben reemplazarse con credenciales reales de un proyecto Firebase. Edita el bloque `window.FIREBASE_CONFIG` en `index.html`:
 
-```bash
-pnpm build
+```js
+window.FIREBASE_CONFIG = {
+    apiKey: "TU_API_KEY",
+    authDomain: "TU_AUTH_DOMAIN",
+    projectId: "TU_PROJECT_ID",
+    storageBucket: "TU_STORAGE_BUCKET",
+    messagingSenderId: "TU_SENDER_ID",
+    appId: "TU_APP_ID"
+};
 ```
 
-Vite genera dos entry points:
+Si no necesitas multijugador Firebase, el juego funciona en modo un jugador sin esta configuración.
+
+### 5. Servidor de signaling (solo si usas modo multijugador HTTP)
+
+El modo HTTP requiere un servidor de signaling externo escuchando en `http://localhost:8080`. El código de este servidor **no está incluido** en el repo. Si el servidor corre en otra URL, defínela antes de abrir el juego:
+
+```js
+window.SIGNALING_SERVER_URL = 'http://localhost:8080';
+```
+
+### 6. Verificar tipos y construir para producción
+
+```bash
+pnpm tsc --noEmit   # Solo verificación de tipos (sin emitir archivos)
+pnpm build           # tsc + vite build (errores de tipo fallan el build)
+pnpm preview         # Previsualizar el build de producción en local
+```
+
+El build genera dos páginas en `dist/`:
 - `dist/index.html` → Juego principal
 - `dist/structor.html` → Herramienta de mapeo de sprites
-
-### Preview del build
-
-```bash
-pnpm preview
-```
 
 ## Modos de juego
 

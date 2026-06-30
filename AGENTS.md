@@ -1,156 +1,153 @@
-# AGENTS.md - Maze RPG Developer Guide
+# AGENTS.md - Guía de desarrollo Maze RPG
 
-## Project Overview
+## Resumen del proyecto
 
-Browser-based maze RPG with multiplayer support. Includes a dev tool (`structor`) for sprite mapping.
+RPG de laberinto en navegador con soporte multijugador. Incluye una herramienta de desarrollo (`structor`) para mapeo de sprites.
 
-## Technology Stack
+## Stack tecnológico
 
-- **Runtime**: Vanilla TypeScript (ES Modules)
-- **Build**: Vite (multi-entry: `index.html` + `structor.html`)
-- **Backend**: Firebase (Firestore) + external HTTP signaling server on port `8080`
-- **Testing**: None configured
+- **Runtime**: TypeScript vanilla (ES Modules), CSS mediante import de Vite (`src/style.css`)
+- **Build**: Vite (multi-entry: `index.html` + `structor.html`), deploy con Firebase Hosting
+- **Backend**: Firebase (Firestore) + servidor externo HTTP de signaling en puerto `8080`
+- **Testing**: No configurado
 
-## Commands
+## Comandos
 
 ```bash
-pnpm dev           # Vite dev server
-pnpm build         # tsc + vite build (type errors fail the build)
-pnpm preview       # Preview production build
-pnpm tsc --noEmit  # Type check only
+pnpm dev           # Servidor de desarrollo Vite
+pnpm build         # tsc + vite build (errores de tipo fallan el build)
+pnpm preview       # Previsualizar build de producción
+pnpm tsc --noEmit  # Solo verificación de tipos
 ```
 
-## Repo-specific Gotchas
+## Peligros específicos del repo
 
-### Firebase Config Injection
-`index.html` contains placeholder strings like `__FIREBASE_API_KEY__`. The CI workflow (`firebase-hosting-merge.yml`) injects real secrets via `sed` during deploy. For local dev, `window.FIREBASE_CONFIG` must be set manually or Firebase will show "not configured".
+### Inyección de configuración de Firebase
+`index.html` contiene strings placeholder como `__FIREBASE_API_KEY__`. Los workflows de CI (`.github/workflows/firebase-hosting-*.yml`) inyectan los secretos reales con `sed` durante el deploy. Tanto el workflow de merge a main como el de PR ejecutan `pnpm build`, por lo que los errores de tipo bloquean CI. Para desarrollo local, reemplaza los placeholders con credenciales reales en `index.html` o configura `window.FIREBASE_CONFIG` desde la consola del navegador.
 
-### External Signaling Server
-HTTP multiplayer mode expects a signaling server at `http://localhost:8080`. The server code is **not in this repo**; it is an external dependency.
+### Servidor externo de signaling
+El modo multijugador HTTP espera un servidor de signaling en la URL almacenada en `window.SIGNALING_SERVER_URL` (por defecto: `http://localhost:8080`). El código del servidor **no está en este repo**; es una dependencia externa. Define `window.SIGNALING_SERVER_URL` globalmente antes de instanciar `Game` para sobrescribir el valor por defecto.
 
-### TypeScript Strictness
-`tsconfig.json` enables:
-- `noUnusedLocals: true`
-- `noUnusedParameters: true`
-- `strict: true`
+### Rigor de TypeScript
+`tsconfig.json` activa `strict`, `noUnusedLocals`, `noUnusedParameters` y `noFallthroughCasesInSwitch`. `pnpm build` ejecuta `tsc && vite build` — los errores de tipo fallan el build. No ignores ni suprimas estos errores.
 
-This means `pnpm build` fails on unused variables or parameters. Do not ignore these errors.
+## Estilo de código
 
-## Code Style
-
-### File Naming
-- **Classes**: PascalCase filename matching class name (e.g., `Renderer.ts` → `class Renderer`).
-- **Other files**: kebab-case (e.g., `sprite-manager.ts`).
-- **One class per file** (filename matches class name).
+### Nombrado de archivos
+- **Clases**: PascalCase, el nombre del archivo coincide con la clase (ej. `Renderer.ts` → `class Renderer`).
+- **Otros archivos**: kebab-case (ej. `sprite-manager.ts`).
+- **Una clase por archivo** (el nombre del archivo coincide con la clase).
 
 ### Imports
-- **Omit extensions**: `import { X } from '../world/Celda'` (Vite `moduleResolution: bundler` + `allowImportingTsExtensions`).
-- Avoid bare imports unless side-effect-only.
-- Group: external (firebase), then internal modules.
+- **Sin extensión**: `import { X } from '../world/Celda'` (Vite `moduleResolution: bundler` + `allowImportingTsExtensions`).
+- Import de CSS como efecto lateral: `import './style.css'` en `main.ts` es correcto.
+- Agrupar: externos (firebase), luego módulos internos.
 
-### TypeScript Conventions
-- Always use explicit types for function parameters and return types.
-- Use `interface` for public APIs, `type` for unions/aliases.
-- Use `| null` instead of optional (`?`) for nullable fields that can be null.
-- Non-null assertion (`!`) allowed only when guaranteed by logic.
-- Avoid `any`; use explicit types or `Record<string, unknown>`.
+### Convenciones de TypeScript
+- Usar tipos explícitos en parámetros y retornos de funciones.
+- Usar `interface` para APIs públicas, `type` para uniones/alias.
+- Usar `| null` en lugar de opcional (`?`) para campos que pueden ser null.
+- Non-null assertion (`!`) solo cuando esté garantizado por lógica.
+- Evitar `any`; usar tipos explícitos o `Record<string, unknown>`.
 
-### Naming Conventions
-- **Classes / Interfaces**: PascalCase (e.g., `NetworkManager`, `IGame`).
-- **Functions / methods**: camelCase (e.g., `crearPartidaFirestore`).
-- **Variables / fields**: camelCase, descriptive (e.g., `networkHttp`, `modoMultijugador`).
-- **Constants**: `UPPER_SNAKE_CASE` for true constants, camelCase for config objects.
+### Convenciones de nombres
+- **Clases / Interfaces**: PascalCase (ej. `NetworkManager`, `IGame`).
+- **Funciones / métodos**: camelCase (ej. `crearPartidaFirestore`).
+- **Variables / campos**: camelCase, descriptivo (ej. `networkHttp`, `modoMultijugador`).
+- **Constantes**: `UPPER_SNAKE_CASE` para verdaderas constantes, camelCase para objetos de configuración.
 
-### Error Handling
-- Use try/catch for async operations with meaningful error messages.
-- Log errors before throwing: `console.error('Failed to X:', error); throw new Error(...);`.
-- Never silently swallow errors.
-- Handle null/undefined at boundary: check before accessing, return early.
+### Manejo de errores
+- Usar try/catch en operaciones asíncronas con mensajes de error significativos.
+- Registrar errores antes de lanzar: `console.error('Fallo al X:', error); throw new Error(...);`.
+- Nunca tragar errores silenciosamente.
+- Verificar null/undefined en los límites: comprobar antes de acceder, retornar temprano.
 
-### UI/DOM Patterns
-- Use non-null assertion only for elements guaranteed to exist: `document.getElementById('canvas')!`.
-- Add null checks for optional elements.
-- Cache DOM references in constructors or lazy-load with getters.
+### Patrones UI/DOM
+- Usar non-null assertion solo para elementos garantizados: `document.getElementById('canvas')!`.
+- Añadir comprobaciones de null para elementos opcionales.
+- Cachear referencias del DOM en el constructor o con getters lazy.
 
-### State Management
-- `Game` class is the central state container (singleton via `window.game`).
-- Network managers (`NetworkManager`, `NetworkManagerHttp`) handle multiplayer state.
-- Keep UI state in sync with game state.
+### Gestión de estado
+- La clase `Game` es el contenedor central de estado, instanciada al final de `src/main.ts`.
+- Los gestores de red (`NetworkManager`, `NetworkManagerHttp`) manejan el estado multijugador.
+- Mantener el estado de UI sincronizado con el estado del juego.
 
-### Performance
-- Avoid creating new objects in hot paths (game loop, render loop).
-- Use `Map` for O(1) lookups instead of array find.
-- Cache computed values that don't change frequently.
+### Rendimiento
+- Evitar crear objetos nuevos en rutas calientes (game loop, render loop).
+- Usar `Map` para búsquedas O(1) en lugar de array find.
+- Cachear valores calculados que no cambian con frecuencia.
 
-## Architecture / Project Structure
+## Arquitectura / Estructura del proyecto
 
 ```
 src/
-├── main.ts              # Game class (~2800 lines)
+├── main.ts              # Clase Game (~2900 líneas)
+├── style.css            # Todos los estilos del juego (importado como efecto lateral en main.ts)
 ├── core/                # Renderer, SpriteManager, SpriteConfig
 ├── network/             # NetworkManager, NetworkManagerHttp, SignalingClient, FirebaseManager
 ├── entities/            # Jugador, JugadorRemoto, EntidadRPG, EnemigoNPC
 ├── world/               # Celda, generation, serialization, constants
 ├── ui/                  # UIManager, ChatModels
 ├── utils/               # pathfinding, session
-├── tools/structor.ts    # Sprite mapping dev tool (standalone, not part of game loop)
-└── types/index.ts       # Shared interfaces (IGame, IEntidadRPG, GameConfig, etc.)
+├── config/              # sprites.json (configuración de mapeo de sprites para la herramienta structor)
+├── tools/structor.ts    # Herramienta de mapeo de sprites (entry point independiente)
+└── types/index.ts       # Interfaces compartidas (IGame, IEntidadRPG, GameConfig, etc.)
 ```
 
-### Documentation Structure
+### Estructura de documentación
 
 ```
 docs/
-├── README.md                    # Documentation index
-├── project-context.md           # Project context and architecture overview
-├── proposals/                   # Technical proposals and RFCs
-│   ├── README.md               # Proposal template and guidelines
-│   └── 2025-06-07-*.md         # Individual proposals
-├── learn/                       # LEARN pills (educational content)
-│   ├── README.md               # LEARN index
-│   ├── webrtc/                 # WebRTC and multiplayer
-│   ├── architecture/           # Game architecture patterns
-│   ├── rendering/              # Rendering and sprites
-│   ├── world/                  # World generation
-│   ├── entities/               # Entity patterns
-│   └── tooling/                # Build and tooling
-├── analisis-refactor.md        # Historical refactoring analysis
-├── analisis-sprites.md         # Sprite migration analysis
-└── analisis-sprites-avanzado.md # Advanced sprite architecture
+├── README.md                    # Índice de documentación
+├── project-context.md           # Contexto y visión general del proyecto
+├── proposals/                   # Propuestas técnicas y RFCs
+│   ├── README.md               # Plantilla de propuestas
+│   └── 2025-06-07-*.md         # Propuestas individuales
+├── learn/                       # Píldoras formativas LEARN
+│   ├── README.md               # Índice LEARN
+│   ├── webrtc/                 # WebRTC y multijugador
+│   ├── architecture/           # Patrones de arquitectura del juego
+│   ├── rendering/              # Renderizado y sprites
+│   ├── world/                  # Generación del mundo
+│   ├── entities/               # Patrones de entidades
+│   └── tooling/                # Build y herramientas
+├── analisis-refactor.md        # Análisis histórico de refactorización
+├── analisis-sprites.md         # Análisis de migración de sprites
+└── analisis-sprites-avanzado.md # Arquitectura avanzada de sprites
 ```
 
-### Multi-page Build
-Vite builds two entry points:
-- `index.html` → main game (`/src/main.ts`)
-- `structor.html` → sprite mapping tool (`/src/tools/structor.ts`)
+### Build multi-página
+Vite genera dos puntos de entrada:
+- `index.html` → juego principal (`/src/main.ts`)
+- `structor.html` → herramienta de mapeo de sprites (`/src/tools/structor.ts`)
 
-## Common Patterns
+## Patrones comunes
 
-### Multiplayer Modes
+### Modos multijugador
 - `modoMultijugador: 'firebase' | 'http' | 'manual'`
-- **Firebase**: uses Firestore for signaling, then WebRTC P2P.
-- **HTTP**: uses external signaling server on `:8080`, then WebRTC P2P.
-- Both modes support Host/Guest architecture. Host is source of truth.
+- **Firebase**: usa Firestore para signaling, luego WebRTC P2P.
+- **HTTP**: usa servidor externo de signaling en `:8080`, luego WebRTC P2P.
+- Ambos modos usan arquitectura Host/Invitado. El Host es la fuente de verdad.
 
-### Signaling Flow (HTTP Mode)
-1. Host creates game via HTTP server → receives party ID.
-2. Guest lists games → joins by ID.
-3. WebRTC connection established for game data sync.
+### Flujo de signaling (modo HTTP)
+1. El Host crea partida vía servidor HTTP → recibe un ID de sala.
+2. El Invitado lista partidas → se une por ID.
+3. Se establece la conexión WebRTC para sincronización de datos del juego.
 
 ### Game Loop
-- Tick-based via `requestAnimationFrame`.
-- `Game` class manages entity updates, rendering, and network sync.
+- Basado en ticks mediante `requestAnimationFrame`.
+- La clase `Game` gestiona actualizaciones de entidades, renderizado y sincronización de red.
 
-### Interval Management
-Always clean up intervals when switching modes or ending games:
+### Gestión de intervalos
+Limpiar siempre los intervalos al cambiar de modo o terminar partidas:
 
 ```typescript
-this.detenerIntervalosHttp();  // or detenerIntervalosFirebase()
+this.detenerIntervalosHttp();  // o detenerIntervalosFirebase()
 this.configurarIntervalosHostHttp();
 ```
 
-## Git Workflow
+## Flujo de trabajo Git
 
-- Make small, focused commits.
-- Commit message format: `[feature|fix|refactor|chore] short description`.
-- Run `pnpm build` before committing to ensure type safety.
+- Commits pequeños y enfocados.
+- Formato de mensaje: `[feature|fix|refactor|chore] descripción breve`.
+- Ejecutar `pnpm build` antes de commitear para asegurar seguridad de tipos.

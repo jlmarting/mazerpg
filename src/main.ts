@@ -5,6 +5,7 @@ import { JugadorRemoto } from './entities/JugadorRemoto';
 import { EnemigoNPC } from './entities/EnemigoNPC';
 import { Renderer } from './core/Renderer';
 import { UIManager } from './ui/UIManager';
+import { LobbyManager } from './ui/LobbyManager';
 import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
 import { NetworkManagerHttp } from './network/NetworkManagerHttp';
@@ -67,7 +68,7 @@ class Game implements IGame {
   private guestPollingInterval: number | null = null;
   private firebaseHeartbeatInterval: number | null = null;
   private firebaseNpcSyncInterval: number | null = null;
-  private _flowTarget: 'solo' | 'host' | 'manual' | null = null;
+  public lobbyManager!: LobbyManager;
   private gameLoopId: number | null = null;
   private juegoPausado: boolean = false;
   private ultimoFrameTime: number = 0;
@@ -88,8 +89,8 @@ class Game implements IGame {
     this.ajustarDimensiones();
     window.addEventListener('resize', () => this.ajustarDimensiones());
     this.setupEventListeners();
-    this.revisarSesionGuardada();
     this.verificarUrlParams();
+    this.lobbyManager = new LobbyManager(this);
 
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -214,82 +215,14 @@ class Game implements IGame {
       document.getElementById('logPanel')?.classList.toggle('visible');
     });
 
-    document.getElementById('btnSolo')?.addEventListener('click', () => this.mostrarSeleccionDificultad('solo'));
-    document.getElementById('btnCrearPartida')?.addEventListener('click', () => this.mostrarSeleccionDificultad('host'));
-    document.getElementById('btnUnirseLobby')?.addEventListener('click', () => this.mostrarLobbyFirebase());
-    document.getElementById('btnVolverLobbyFirebase')?.addEventListener('click', () => this.regresarAlLobby());
-    document.getElementById('btnVolverLobbyManual')?.addEventListener('click', () => this.regresarAlLobby());
-    document.getElementById('btnLobbyManual')?.addEventListener('click', () => {
-      document.getElementById('lobbyInitial')!.style.display = 'none';
-      document.getElementById('lobbyManual')!.style.display = 'flex';
-    });
 
-    document.getElementById('btnServidorFirebase')?.addEventListener('click', () => this.cambiarModoServidor('firebase'));
-    document.getElementById('btnServidorHttp')?.addEventListener('click', () => this.cambiarModoServidor('http'));
-
-    document.getElementById('btnRefrescar')?.addEventListener('click', () => {
-      if (this.modoMultijugador === 'http') {
-        this.listarPartidasHttp();
-      } else {
-        this.listarPartidasFirestore();
-      }
-    });
-    document.getElementById('btnReanudar')?.addEventListener('click', () => this.reanudarPartida());
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnSalir')?.addEventListener('click', () => window.location.reload());
     document.getElementById('btnAbandonar')?.addEventListener('click', () => this.abandonarPartida());
 
-    document.getElementById('btnOpenCharacterModal')?.addEventListener('click', () => this.abrirModalPersonaje());
-    document.getElementById('btnEditCharacter')?.addEventListener('click', () => this.abrirModalPersonaje());
-    document.getElementById('btnRandomName')?.addEventListener('click', () => this.generarNombreAleatorio());
-    document.getElementById('btnCharReroll')?.addEventListener('click', () => this.recalcularStatsPersonaje());
-    document.getElementById('btnSaveCharacter')?.addEventListener('click', () => this.guardarPersonaje());
 
-    document.querySelectorAll('.class-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.class-btn').forEach(b => b.classList.remove('selected'));
-            (e.currentTarget as HTMLElement).classList.add('selected');
-            this.recalcularStatsPersonaje();
-        });
-    });
-
-    document.querySelectorAll('.diff-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const diff = (e.currentTarget as HTMLElement).getAttribute('data-diff') as any;
-            this.config.dificultad = diff;
-            document.getElementById('difficultyModal')!.style.display = 'none';
-            if (this._flowTarget === 'solo') {
-                this.empezarSolo();
-            } else if (this._flowTarget === 'host') {
-                if (this.modoMultijugador === 'http') {
-                    this.iniciarComoHostHttp();
-                } else {
-                    this.iniciarComoHostFirebase();
-                }
-            } else if (this._flowTarget === 'manual') {
-                this.iniciarComoHostManual();
-            }
-        });
-    });
-
-    document.getElementById('btnBackFromDiff')?.addEventListener('click', () => {
-        document.getElementById('difficultyModal')!.style.display = 'none';
-    });
-
-    // Eventos de QR Manual
-    document.getElementById('btnShowOfferQR')?.addEventListener('click', () => this.mostrarQRManual('OFERTA', (document.getElementById('manualOfferOut') as HTMLTextAreaElement).value));
-    document.getElementById('btnShowAnswerQR')?.addEventListener('click', () => this.mostrarQRManual('RESPUESTA', (document.getElementById('manualAnswerOut') as HTMLTextAreaElement).value));
-    document.getElementById('btnCloseQRModal')?.addEventListener('click', () => {
-        document.getElementById('qrModal')!.style.display = 'none';
-    });
-    document.getElementById('btnScanQROffer')?.addEventListener('click', () => this.escanearQRManual('manualOfferIn'));
-    document.getElementById('btnScanQRAnswer')?.addEventListener('click', () => this.escanearQRManual('manualAnswerIn'));
-
-    document.getElementById('btnGenOferta')?.addEventListener('click', () => {
-        this.mostrarSeleccionDificultad('manual');
-    });
 
     document.getElementById('btnProcesarResp')?.addEventListener('click', () => {
         const sdp = (document.getElementById('manualAnswerIn') as HTMLTextAreaElement).value;
@@ -336,8 +269,6 @@ class Game implements IGame {
         this.registrarEventoLog(`Velocidad de turno ajustada a ${val}ms`);
     });
 
-    this.actualizarStatsLobby();
-
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         this.ui.toggleChat(this);
@@ -382,9 +313,104 @@ class Game implements IGame {
     });
   }
 
-  mostrarSeleccionDificultad(target: 'solo' | 'host' | 'manual') {
-    this._flowTarget = target;
-    document.getElementById('difficultyModal')!.style.display = 'flex';
+  onStartSolo(dificultad: string): void {
+    this.config.dificultad = dificultad as GameConfig['dificultad'];
+    this.mundoSincronizado = true;
+    this.guardarSesion('solo');
+    this.ui.ocultarLobby();
+    this.iniciarMotorJuego();
+  }
+
+  onHostGame(modo: 'firebase' | 'http' | 'manual', dificultad: string): void {
+    this.config.dificultad = dificultad as GameConfig['dificultad'];
+    if (modo === 'http') {
+      this.iniciarComoHostHttp();
+    } else if (modo === 'manual') {
+      this.iniciarComoHostManual();
+    } else {
+      this.iniciarComoHostFirebase();
+    }
+  }
+
+  onSaveCharacter(nombre: string, color: string, clase: string): void {
+    this.protagonista.nombre = nombre;
+    this.protagonista.color = color;
+    this.protagonista.clase = clase;
+    this.protagonista.personajeCreado = true;
+    (document.getElementById('nickInput') as HTMLInputElement).value = nombre;
+    this.registrarEventoLog(`Personaje guardado: ${nombre} (${clase})`);
+    this.actualizarPanelAcciones();
+
+    if (this.partidaIdDesdeUrl) {
+      this.registrarEventoLog(`Conectando a partida ${this.partidaIdDesdeUrl}...`);
+      this.cambiarModoServidor('http');
+      this.ui.ocultarLobby();
+      try {
+        this.unirseAPartidaHttp(this.partidaIdDesdeUrl);
+      } catch (e) {
+        this.registrarEventoLog(`Error al conectar: ${e}`);
+      }
+    }
+  }
+
+  onJoinGame(partidaId: string, modo: 'firebase' | 'http'): void {
+    this.lobbyManager.showConnecting('Conectando a la partida...');
+    if (modo === 'http') {
+      this.iniciarModoHttp();
+      this.unirseAPartidaHttp(partidaId);
+    } else {
+      this.unirseAPartidaFirestore(partidaId);
+    }
+  }
+
+  onResumeSession(): void {
+    this.reanudarPartida();
+  }
+
+  onSwitchServerMode(modo: 'firebase' | 'http'): void {
+    this.modoMultijugador = modo;
+    if (modo === 'http') {
+      this.iniciarModoHttp();
+    }
+  }
+
+  onCancelConnect(): void {
+    this.lobbyManager.showInitialView();
+  }
+
+  getCharacterData(): import('./ui/LobbyManager').CharacterData {
+    return {
+      nombre: this.protagonista.nombre,
+      color: this.protagonista.color,
+      clase: this.protagonista.clase,
+      fuerza: this.protagonista.fuerza,
+      agilidad: this.protagonista.agilidad,
+      inteligencia: this.protagonista.inteligencia,
+      personajeCreado: this.protagonista.personajeCreado
+    };
+  }
+
+  hasSavedSession(): boolean {
+    return localStorage.getItem('mazeRPG_lastSession') !== null;
+  }
+
+  getCurrentServerMode(): 'firebase' | 'http' {
+    return this.modoMultijugador === 'manual' ? 'firebase' : this.modoMultijugador;
+  }
+
+  getSignalingUrlLabel(): string {
+    return getSignalingUrl();
+  }
+
+  isFirebaseConfigured(): boolean {
+    return this.firebase.isInitialized();
+  }
+
+  async getGameList(modo: 'firebase' | 'http'): Promise<any[]> {
+    if (modo === 'http') {
+      return await this.listarPartidasHttp();
+    }
+    return await this.listarPartidasFirestore();
   }
 
   empezarSolo() {
@@ -539,59 +565,15 @@ class Game implements IGame {
     this.iniciarMotorJuego();
   }
 
-  mostrarLobbyFirebase() {
-    document.getElementById('lobbyInitial')!.style.display = 'none';
-    document.getElementById('lobbyFirebase')!.style.display = 'flex';
-    this.listarPartidasFirestore();
+  async listarPartidasFirestore(): Promise<any[]> {
+    return await this.firebase.getPartidasActivas();
   }
 
-  async listarPartidasFirestore() {
-    const partidas = await this.firebase.getPartidasActivas();
-    this.mostrarPartidasEnUI(partidas, 'firebase');
-  }
-
-  async listarPartidasHttp() {
+  async listarPartidasHttp(): Promise<any[]> {
     if (!this.signaling) {
       this.signaling = crearSignalingClient();
     }
-    const partidas = await this.signaling.getPartidasActivas();
-    this.mostrarPartidasEnUI(partidas, 'http');
-  }
-
-  private mostrarPartidasEnUI(partidas: any[], modo: 'firebase' | 'http') {
-    const listaContainer = document.getElementById('listaPartidas')!;
-    listaContainer.innerHTML = "";
-    if (partidas.length === 0) {
-        listaContainer.innerHTML = `<p style="color: #666; font-style: italic; text-align: center;">No hay partidas disponibles (modo ${modo}).</p>`;
-        return;
-    }
-    partidas.forEach((p: any) => {
-        const item = document.createElement('div');
-        item.style.cssText = "background: #222; margin-bottom: 5px; padding: 10px; border-radius: 3px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444;";
-        item.innerHTML = `
-            <div style="text-align: left;">
-                <strong style="color: #007bff;">${p.nombre || p.id}</strong><br>
-                <span style="font-size: 10px; color: #888;">Host: ${p.hostNick} | Jugadores: ${p.numJugadores}</span>
-            </div>
-            <button class="join-btn" data-id="${p.id}" data-modo="${modo}" style="background: #28a745; color: white; border: none; padding: 5px 10px; cursor: pointer; font-family: monospace; font-weight: bold;">UNIRSE</button>
-        `;
-        listaContainer.appendChild(item);
-    });
-
-    listaContainer.querySelectorAll('.join-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const id = (e.target as HTMLElement).getAttribute('data-id');
-            const m = (e.target as HTMLElement).getAttribute('data-modo') as 'firebase' | 'http';
-            if (id) {
-                if (m === 'http') {
-                    this.iniciarModoHttp();
-                    this.unirseAPartidaHttp(id);
-                } else {
-                    this.unirseAPartidaFirestore(id);
-                }
-            }
-        });
-    });
+    return await this.signaling.getPartidasActivas();
   }
 
   private iniciarModoHttp() {
@@ -606,31 +588,8 @@ class Game implements IGame {
 
   cambiarModoServidor(modo: 'firebase' | 'http') {
     this.modoMultijugador = modo;
-    const btnFirebase = document.getElementById('btnServidorFirebase');
-    const btnHttp = document.getElementById('btnServidorHttp');
-    const info = document.getElementById('serverModeInfo');
-    
-    if (btnFirebase && btnHttp && info) {
-      if (modo === 'firebase') {
-        btnFirebase.style.background = '#007bff';
-        btnFirebase.style.borderColor = '#0056b3';
-        btnHttp.style.background = '#17a2b8';
-        btnHttp.style.borderColor = '#138496';
-        info.textContent = 'Modo: Firebase';
-      } else {
-        btnFirebase.style.background = '#17a2b8';
-        btnFirebase.style.borderColor = '#138496';
-        btnHttp.style.background = '#007bff';
-        btnHttp.style.borderColor = '#0056b3';
-        info.textContent = `Modo: Servidor Local (${getSignalingUrl()})`;
-      }
-    }
-    
     if (modo === 'http') {
       this.iniciarModoHttp();
-      this.listarPartidasHttp();
-    } else if (document.getElementById('lobbyFirebase')?.style.display !== 'none') {
-      this.listarPartidasFirestore();
     }
   }
 
@@ -819,16 +778,7 @@ class Game implements IGame {
       aviso.textContent = `Modo geométrico activo (Sprites faltantes)`;
   }
 
-  regresarAlLobby() {
-    document.getElementById('lobbyInitial')!.style.display = 'block';
-    document.getElementById('lobbyFirebase')!.style.display = 'none';
-    document.getElementById('lobbyManual')!.style.display = 'none';
-    document.getElementById('lobby')!.style.display = 'flex';
-    document.getElementById('mazeCanvas')!.style.display = 'none';
-    document.getElementById('topMenu')!.style.display = 'none';
-    document.getElementById('actionsMenu')!.style.display = 'none';
-    this.actualizarStatsLobby();
-  }
+
 
   abandonarPartida() {
     if (confirm("¿Seguro que quieres abandonar la partida?")) {
@@ -841,42 +791,6 @@ class Game implements IGame {
         if (this.networkHttp) this.networkHttp.desconectar();
         this.signaling?.desconectar();
         window.location.reload();
-    }
-  }
-
-  actualizarStatsLobby() {
-    // Actualizar previsualización "cool"
-    const preview = document.getElementById('characterPreview');
-    const creationSection = document.getElementById('charCreationSection');
-    const options = document.getElementById('gameOptions');
-
-    if (this.protagonista.nombre !== "Jugador" || (this.protagonista as any).personajeCreado) {
-        if (preview) preview.style.display = 'block';
-        if (creationSection) creationSection.style.display = 'none';
-        if (options) options.style.display = 'flex';
-        this.revisarSesionGuardada();
-
-        document.getElementById('previewName')!.textContent = this.protagonista.nombre;
-        const colorDiv = document.getElementById('previewColor')!;
-        colorDiv.style.backgroundColor = this.protagonista.color;
-        colorDiv.style.color = this.protagonista.color; // Para boxShadow currentColor
-
-        const icons: any = { guerrero: '🪖', explorador: '🏹', mago: '🪄' };
-        const names: any = { guerrero: 'GUERRERO', explorador: 'EXPLORADOR', mago: 'MAGO' };
-
-        document.getElementById('previewClassIcon')!.textContent = icons[this.protagonista.clase] || '👤';
-        document.getElementById('previewClassName')!.textContent = names[this.protagonista.clase] || 'AVENTURERO';
-
-        document.getElementById('previewFue')!.textContent = this.protagonista.fuerza.toString();
-        document.getElementById('previewAgi')!.textContent = this.protagonista.agilidad.toString();
-        document.getElementById('previewInt')!.textContent = this.protagonista.inteligencia.toString();
-
-        // Actualizar habilidades en el panel de acciones
-        this.actualizarPanelAcciones();
-    } else {
-        if (preview) preview.style.display = 'none';
-        if (creationSection) creationSection.style.display = 'block';
-        if (options) options.style.display = 'none';
     }
   }
 
@@ -900,113 +814,6 @@ class Game implements IGame {
       if (btnRestart) btnRestart.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
   }
 
-  abrirModalPersonaje() {
-      document.getElementById('characterModal')!.style.display = 'flex';
-      if (this.protagonista.nombre === "Jugador") {
-          this.generarNombreAleatorio();
-      } else {
-          (document.getElementById('charNameInput') as HTMLInputElement).value = this.protagonista.nombre;
-          (document.getElementById('charColorInput') as HTMLInputElement).value = this.protagonista.color;
-          document.querySelectorAll('.class-btn').forEach(btn => {
-              if (btn.getAttribute('data-class') === this.protagonista.clase) {
-                  btn.classList.add('selected');
-              } else {
-                  btn.classList.remove('selected');
-              }
-          });
-      }
-      this.recalcularStatsPersonaje();
-  }
-
-  generarNombreAleatorio() {
-      const nombres = [
-          "Tharos", "Elowen", "Grombrindal", "Luthien", "Drizzt", "Ciri", "Geralt", "Yennefer",
-          "Boromir", "Galadriel", "Aragorn", "Legolas", "Gimli", "Saruman", "Gandalf", "Radagast",
-          "Elrond", "Glorfindel", "Eowyn", "Faramir", "Theoden", "Denethor", "Beren", "Tinuviel"
-      ];
-      const randomName = nombres[Math.floor(Math.random() * nombres.length)];
-      (document.getElementById('charNameInput') as HTMLInputElement).value = randomName;
-  }
-
-  recalcularStatsPersonaje() {
-      const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
-      this.protagonista.generarStats(selectedClass);
-
-      const f = document.getElementById('charFue')!;
-      const a = document.getElementById('charAgi')!;
-      const i = document.getElementById('charInt')!;
-
-      f.textContent = this.protagonista.fuerza.toString();
-      a.textContent = this.protagonista.agilidad.toString();
-      i.textContent = this.protagonista.inteligencia.toString();
-  }
-
-  guardarPersonaje() {
-      this.protagonista.nombre = (document.getElementById('charNameInput') as HTMLInputElement).value || "Héroe";
-      this.protagonista.color = (document.getElementById('charColorInput') as HTMLInputElement).value;
-      const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
-      this.protagonista.clase = selectedClass;
-      (this.protagonista as any).personajeCreado = true;
-
-      document.getElementById('characterModal')!.style.display = 'none';
-
-      (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
-      this.actualizarStatsLobby();
-      this.registrarEventoLog(`Personaje guardado: ${this.protagonista.nombre} (${selectedClass})`);
-
-      if (this.partidaIdDesdeUrl) {
-        this.registrarEventoLog(`Conectando a partida ${this.partidaIdDesdeUrl}...`);
-        this.cambiarModoServidor('http');
-        this.ui.ocultarLobby();
-        
-        try {
-          this.unirseAPartidaHttp(this.partidaIdDesdeUrl);
-        } catch (e) {
-          this.registrarEventoLog(`Error al conectar: ${e}`);
-        }
-        return;
-      }
-
-      if (this._flowTarget === 'host') {
-        this.registrarEventoLog('Iniciando como Host...');
-        this.cambiarModoServidor('http');
-        this.ui.ocultarLobby();
-        this.iniciarComoHostHttp();
-        return;
-      }
-
-      if (this._flowTarget === 'manual') {
-        this.registrarEventoLog('Modo manual seleccionado');
-        document.getElementById('lobbyInitial')!.style.display = 'none';
-        document.getElementById('lobbyManual')!.style.display = 'flex';
-        return;
-      }
-
-      if (this._flowTarget === 'solo') {
-        this.empezarSolo();
-        return;
-      }
-  }
-
-  mostrarQRManual(titulo: string, data: string) {
-      if (!data) {
-          alert("No hay datos para generar QR");
-          return;
-      }
-      const qrImage = document.getElementById('modalQRImage') as HTMLImageElement;
-      qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data)}`;
-      document.getElementById('modalQRTitle')!.textContent = titulo;
-      document.getElementById('qrModal')!.style.display = 'flex';
-  }
-
-  escanearQRManual(targetId: string) {
-      const data = prompt("Pega aquí el contenido del código QR (o usa tu cámara si el dispositivo lo permite):");
-      if (data) {
-          (document.getElementById(targetId) as HTMLTextAreaElement).value = data;
-          this.registrarEventoLog("QR escaneado y pegado en " + targetId);
-      }
-  }
-
   recalcularStats() {
     const prevClass = this.protagonista.clase;
     const prevColor = this.protagonista.color;
@@ -1018,7 +825,6 @@ class Game implements IGame {
     this.protagonista.generarStats();
 
     this.setupEntity(this.protagonista);
-    this.actualizarStatsLobby();
     this.registrarEventoLog("Estadísticas recalculadas.");
   }
 
@@ -1056,21 +862,6 @@ class Game implements IGame {
     }));
   }
 
-  revisarSesionGuardada() {
-    const data = localStorage.getItem('mazeRPG_lastSession');
-    const btn = document.getElementById('btnReanudar');
-    if (data && btn) {
-        btn.style.display = 'block';
-        // Asegurar que el contenedor de opciones sea visible si hay algo que reanudar
-        const options = document.getElementById('gameOptions');
-        if (options) options.style.display = 'flex';
-        const creation = document.getElementById('charCreationSection');
-        if (creation) creation.style.display = 'none';
-    } else if (btn) {
-        btn.style.display = 'none';
-    }
-  }
-
   async reanudarPartida() {
     const dataStr = localStorage.getItem('mazeRPG_lastSession');
     if (!dataStr) return;
@@ -1080,7 +871,7 @@ class Game implements IGame {
     this.protagonista.clase = data.class;
     this.protagonista.color = data.color;
     this.config.dificultad = data.diff || 'medio';
-    (this.protagonista as any).personajeCreado = true;
+    this.protagonista.personajeCreado = true;
     (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
 
     if (data.rol === 'solo') {
@@ -1554,16 +1345,15 @@ class Game implements IGame {
   }
 
   procesarTick() {
-    if (!this.esHost) return;
-
     while (this.colaAcciones.length > 0) {
         const item = this.colaAcciones.shift();
         this.resolverAccion(item.id, item.accion);
     }
 
-    this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
-
-    this.enviarSnapshot();
+    if (this.esHost) {
+      this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
+      this.enviarSnapshot();
+    }
   }
 
   enviarSnapshot() {
@@ -1635,13 +1425,11 @@ class Game implements IGame {
     if (intStat) intStat.textContent = this.protagonista.inteligencia.toString();
     if (xpStat) xpStat.textContent = this.protagonista.puntosExperiencia.toString();
 
-    if (this.esHost) {
-        const ahoraTick = Date.now();
+    const ahoraTick = Date.now();
         if (ahoraTick - this.ultimoTick >= this.config.tickRate) {
             this.procesarTick();
             this.ultimoTick = ahoraTick;
         }
-    }
 
     this.actualizarCooldownsUI();
 
@@ -1702,7 +1490,7 @@ class Game implements IGame {
 
     const ahora = Date.now();
 
-    if (!this.network.multiplayerActivo) {
+    if (!this.network.multiplayerActivo && !this.esHost) {
         this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
     }
 

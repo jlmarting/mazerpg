@@ -10,6 +10,7 @@ export class Jugador extends EntidadRPG {
   clase: string = 'guerrero';
   color: string = '#007bff';
   spriteKey: string = 'player_idle';
+  personajeCreado: boolean = false;
 
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
@@ -113,8 +114,8 @@ export class Jugador extends EntidadRPG {
         this.estaCaminando = true;
         return true;
     } else {
-        // En modo solo, resolvemos inmediatamente usando la lógica de resolución centralizada
-        (game as any).resolverAccion(game.network.idLocal, { tipo: 'mover', df: deltaFila, dc: deltaColumna });
+        if ((game as any).juegoPausado) return false;
+        (game as any).colaAcciones.push({ id: game.network.idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
         return true;
     }
   }

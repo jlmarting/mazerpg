@@ -30,8 +30,15 @@ export function algoritmoBusquedaAStar(
       return null;
     }
 
-    conjuntoAbierto.sort((a, b) => (puntuacionF.get(a) || Infinity) - (puntuacionF.get(b) || Infinity));
-    let celdaActual = conjuntoAbierto.shift()!;
+    let minIdx = 0;
+    let minF = puntuacionF.get(conjuntoAbierto[0]) || Infinity;
+    for (let i = 1; i < conjuntoAbierto.length; i++) {
+      const f = puntuacionF.get(conjuntoAbierto[i]) || Infinity;
+      if (f < minF) { minF = f; minIdx = i; }
+    }
+    let celdaActual = conjuntoAbierto[minIdx];
+    conjuntoAbierto[minIdx] = conjuntoAbierto[conjuntoAbierto.length - 1];
+    conjuntoAbierto.pop();
 
     if (celdaActual === destino) {
       return reconstruirRuta(origenDelCamino, celdaActual);

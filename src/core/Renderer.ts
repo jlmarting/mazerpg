@@ -10,6 +10,9 @@ export class Renderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   public spriteManager: SpriteManager;
+  private mazeCache: HTMLCanvasElement | null = null;
+  private mazeCacheCtx: CanvasRenderingContext2D | null = null;
+  private mazeCacheValida: boolean = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -76,165 +79,14 @@ export class Renderer {
    * Dibuja el suelo, muros y objetos estáticos del laberinto.
    */
   dibujarLaberinto(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
+    this.cacheMazeDibujar(mapaLaberinto, offset, config);
+
+    const { TAMANO_CELDA, ALTO_UI_TOP, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
     const { colOffset, filaOffset } = offset;
-    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
-
-    this.ctx.fillStyle = '#000';
-    this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, CELDAS_VISIBLES_Y * TAMANO_CELDA);
-
-    const fInicio = Math.floor(filaOffset);
-    const fFin = Math.ceil(filaOffset + CELDAS_VISIBLES_Y);
-    const cInicio = Math.floor(colOffset);
-    const cFin = Math.ceil(colOffset + CELDAS_VISIBLES_X);
-
-    for (let fila = fInicio; fila < fFin; fila++) {
-      if (fila < 0 || fila >= NUMERO_FILAS) continue;
-      for (let columna = cInicio; columna < cFin; columna++) {
-        if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
-
-        const celda = mapaLaberinto[fila][columna];
-        const x = (columna - colOffset) * TAMANO_CELDA;
-        const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
-
-        if (celda.esTransitable) {
-          // Intentar dibujar sprite de suelo (Hoja de escenario estático)
-          const spriteSuelo = 'static_suelo_cesped';
-          if (this.spriteManager.obtenerSprite(spriteSuelo)) {
-            this.spriteManager.dibujarSprite(this.ctx, spriteSuelo, x, y, TAMANO_CELDA, TAMANO_CELDA);
-          } else if (this.spriteManager.obtenerSprite('floor')) {
-            this.spriteManager.dibujarSprite(this.ctx, 'floor', x, y, TAMANO_CELDA, TAMANO_CELDA);
-          } else {
-            this.ctx.fillStyle = '#FFF';
-            this.ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
-          }
-
-          // Delinear bordes o dibujar muros con sprites
-          this.ctx.strokeStyle = '#800080';
-          this.ctx.lineWidth = 2;
-
-          if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
-            const spriteMuro = 'static_muro_superior';
-            if (this.spriteManager.obtenerSprite(spriteMuro)) {
-                this.spriteManager.dibujarSprite(this.ctx, spriteMuro, x, y, TAMANO_CELDA, 4);
-            } else if (this.spriteManager.obtenerSprite('static_muro_normal')) {
-                this.spriteManager.dibujarSprite(this.ctx, 'static_muro_normal', x, y, TAMANO_CELDA, 4);
-            } else if (this.spriteManager.obtenerSprite('wall_top')) {
-                this.spriteManager.dibujarSprite(this.ctx, 'wall_top', x, y, TAMANO_CELDA, 4);
-            } else {
-                this.ctx.beginPath();
-                this.ctx.moveTo(x, y);
-                this.ctx.lineTo(x + TAMANO_CELDA, y);
-                this.ctx.stroke();
-            }
-          }
-          if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) {
-            if (this.spriteManager.obtenerSprite('static_muro_inferior')) {
-                this.spriteManager.dibujarSprite(this.ctx, 'static_muro_inferior', x, y + TAMANO_CELDA - 4, TAMANO_CELDA, 4);
-            } else if (this.spriteManager.obtenerSprite('wall_bottom')) {
-                this.spriteManager.dibujarSprite(this.ctx, 'wall_bottom', x, y + TAMANO_CELDA - 4, TAMANO_CELDA, 4);
-            } else {
-                this.ctx.beginPath();
-                this.ctx.moveTo(x, y + TAMANO_CELDA);
-                this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
-                this.ctx.stroke();
-            }
-          }
-          if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) {
-            if (this.spriteManager.obtenerSprite('static_muro_izquierdo')) {
-                this.spriteManager.dibujarSprite(this.ctx, 'static_muro_izquierdo', x, y, 4, TAMANO_CELDA);
-            } else if (this.spriteManager.obtenerSprite('wall_left')) {
-                this.spriteManager.dibujarSprite(this.ctx, 'wall_left', x, y, 4, TAMANO_CELDA);
-            } else {
-                this.ctx.beginPath();
-                this.ctx.moveTo(x, y);
-                this.ctx.lineTo(x, y + TAMANO_CELDA);
-                this.ctx.stroke();
-            }
-          }
-          if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) {
-            if (this.spriteManager.obtenerSprite('static_muro_derecho')) {
-                this.spriteManager.dibujarSprite(this.ctx, 'static_muro_derecho', x + TAMANO_CELDA - 4, y, 4, TAMANO_CELDA);
-            } else if (this.spriteManager.obtenerSprite('wall_right')) {
-                this.spriteManager.dibujarSprite(this.ctx, 'wall_right', x + TAMANO_CELDA - 4, y, 4, TAMANO_CELDA);
-            } else {
-                this.ctx.beginPath();
-                this.ctx.moveTo(x + TAMANO_CELDA, y);
-                this.ctx.lineTo(x + TAMANO_CELDA, y + TAMANO_CELDA);
-                this.ctx.stroke();
-            }
-          }
-
-          // Dibujar Burbuja
-          if (celda.burbuja) {
-            this.ctx.strokeStyle = '#87CEEB'; // Azul Celeste
-            this.ctx.lineWidth = 2;
-            this.ctx.beginPath();
-            this.ctx.arc((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2, TAMANO_CELDA / 2.5, 0, Math.PI * 2);
-            this.ctx.stroke();
-            this.ctx.fillStyle = 'rgba(135, 206, 235, 0.3)';
-            this.ctx.fill();
-          }
-
-          // Dibujar Portal
-          if (celda.esPortal) {
-            this.ctx.fillStyle = 'rgba(0, 0, 255, 0.4)';
-            this.ctx.beginPath();
-            this.ctx.moveTo((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 5);
-            this.ctx.lineTo((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA - 5, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2);
-            this.ctx.lineTo((columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA - 5);
-            this.ctx.lineTo((columna - colOffset) * TAMANO_CELDA + 5, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2);
-            this.ctx.closePath();
-            this.ctx.fill();
-            this.ctx.strokeStyle = '#0000ff';
-            this.ctx.stroke();
-          }
-
-          // Dibujar Alimento
-          if (celda.alimento) {
-            const spriteName = `food_${celda.alimento.tipo.toLowerCase().replace(/ /g, '_')}`;
-            if (this.spriteManager.obtenerSprite(spriteName)) {
-                this.spriteManager.dibujarSprite(this.ctx, spriteName, x + 4, y + 4, TAMANO_CELDA - 8, TAMANO_CELDA - 8);
-            } else {
-                this.ctx.font = '16px serif';
-                this.ctx.textAlign = 'center';
-                let icon = '🍎';
-                if (celda.alimento.tipo === 'Plátano') icon = '🍌';
-                if (celda.alimento.tipo === 'Kiwi') icon = '🥝';
-                if (celda.alimento.tipo === 'Brócoli') icon = '🥦';
-                if (celda.alimento.tipo === 'Muslo de pollo') icon = '🍗';
-                if (celda.alimento.tipo === 'Chuleta') icon = '🥩';
-                if (celda.alimento.tipo === 'Pescado') icon = '🐟';
-
-                this.ctx.fillText(icon, (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
-            }
-          }
-
-          // Dibujar Pico
-          if (celda.tienePico) {
-            if (this.spriteManager.obtenerSprite('pickaxe')) {
-                this.spriteManager.dibujarSprite(this.ctx, 'pickaxe', x + 4, y + 4, TAMANO_CELDA - 8, TAMANO_CELDA - 8);
-            } else {
-                this.ctx.font = '16px serif';
-                this.ctx.textAlign = 'center';
-                this.ctx.fillText('⛏️', (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 6);
-            }
-          }
-
-          // Dibujar Escenario Dinámico (Puertas, Trampas)
-          if (celda.tipoEscenario !== 'ninguno') {
-              const spriteDyn = `dynamic_${celda.tipoEscenario}_${celda.estadoEscenario}_0`;
-              if (this.spriteManager.obtenerSprite(spriteDyn)) {
-                  this.spriteManager.dibujarSprite(this.ctx, spriteDyn, x, y, TAMANO_CELDA, TAMANO_CELDA);
-              }
-          }
-        }
-      }
-    }
-
     const filaMeta = NUMERO_FILAS - 1;
     const colMeta = NUMERO_COLUMNAS - 1;
-    if (filaMeta >= filaOffset && filaMeta < filaOffset + CELDAS_VISIBLES_Y &&
-        colMeta >= colOffset && colMeta < colOffset + CELDAS_VISIBLES_X) {
+    if (filaMeta >= filaOffset && filaMeta < filaOffset + config.CELDAS_VISIBLES_Y &&
+        colMeta >= colOffset && colMeta < colOffset + config.CELDAS_VISIBLES_X) {
       this.ctx.fillStyle = 'rgba(0, 200, 0, 0.6)';
       this.ctx.fillRect((colMeta - colOffset) * TAMANO_CELDA + 2, (filaMeta - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2, TAMANO_CELDA - 4, TAMANO_CELDA - 4);
       this.ctx.fillStyle = '#050';
@@ -860,4 +712,156 @@ export class Renderer {
   }
 
   getCtx() { return this.ctx; }
+
+  inicializarCacheLaberinto(mapaLaberinto: Celda[][], config: GameConfig) {
+    const { TAMANO_CELDA, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
+    const w = NUMERO_COLUMNAS * TAMANO_CELDA;
+    const h = NUMERO_FILAS * TAMANO_CELDA;
+    if (!this.mazeCache || this.mazeCache.width !== w || this.mazeCache.height !== h) {
+      this.mazeCache = document.createElement('canvas');
+      this.mazeCache.width = w;
+      this.mazeCache.height = h;
+      this.mazeCacheCtx = this.mazeCache.getContext('2d')!;
+    }
+    const ctx = this.mazeCacheCtx!;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+
+    for (let fila = 0; fila < NUMERO_FILAS; fila++) {
+      for (let columna = 0; columna < NUMERO_COLUMNAS; columna++) {
+        const celda = mapaLaberinto[fila][columna];
+        const x = columna * TAMANO_CELDA;
+        const y = fila * TAMANO_CELDA;
+
+        if (!celda.esTransitable) {
+          ctx.fillStyle = '#333';
+          ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
+          continue;
+        }
+
+        if (this.spriteManager.obtenerSprite('static_suelo_cesped')) {
+          this.spriteManager.dibujarSprite(ctx, 'static_suelo_cesped', x, y, TAMANO_CELDA, TAMANO_CELDA);
+        } else if (this.spriteManager.obtenerSprite('floor')) {
+          this.spriteManager.dibujarSprite(ctx, 'floor', x, y, TAMANO_CELDA, TAMANO_CELDA);
+        } else {
+          ctx.fillStyle = '#FFF';
+          ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
+        }
+
+        ctx.strokeStyle = '#800080';
+        ctx.lineWidth = 2;
+
+        if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
+          this.dibujarMuroCache(ctx, fila, columna, x, y, TAMANO_CELDA, 'superior', NUMERO_FILAS);
+        }
+        if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) {
+          this.dibujarMuroCache(ctx, fila, columna, x, y, TAMANO_CELDA, 'inferior', NUMERO_FILAS);
+        }
+        if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) {
+          this.dibujarMuroCache(ctx, fila, columna, x, y, TAMANO_CELDA, 'izquierdo', NUMERO_FILAS);
+        }
+        if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) {
+          this.dibujarMuroCache(ctx, fila, columna, x, y, TAMANO_CELDA, 'derecho', NUMERO_FILAS);
+        }
+
+        if (celda.burbuja) {
+          ctx.strokeStyle = '#87CEEB';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(x + TAMANO_CELDA / 2, y + TAMANO_CELDA / 2, TAMANO_CELDA / 2.5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(135, 206, 235, 0.3)';
+          ctx.fill();
+        }
+
+        if (celda.esPortal) {
+          ctx.fillStyle = 'rgba(0, 0, 255, 0.4)';
+          ctx.beginPath();
+          ctx.moveTo(x + TAMANO_CELDA / 2, y + 5);
+          ctx.lineTo(x + TAMANO_CELDA - 5, y + TAMANO_CELDA / 2);
+          ctx.lineTo(x + TAMANO_CELDA / 2, y + TAMANO_CELDA - 5);
+          ctx.lineTo(x + 5, y + TAMANO_CELDA / 2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#0000ff';
+          ctx.stroke();
+        }
+
+        if (celda.alimento) {
+          this.dibujarItemCache(ctx, celda.alimento.tipo, 'food', x, y, TAMANO_CELDA, '🍎');
+        }
+
+        if (celda.tienePico) {
+          this.dibujarItemCache(ctx, 'pickaxe', 'pickaxe', x, y, TAMANO_CELDA, '⛏️');
+        }
+
+        if (celda.tipoEscenario !== 'ninguno') {
+          const spriteDyn = `dynamic_${celda.tipoEscenario}_${celda.estadoEscenario}_0`;
+          if (this.spriteManager.obtenerSprite(spriteDyn)) {
+            this.spriteManager.dibujarSprite(ctx, spriteDyn, x, y, TAMANO_CELDA, TAMANO_CELDA);
+          }
+        }
+      }
+    }
+    this.mazeCacheValida = true;
+  }
+
+  private dibujarMuroCache(ctx: CanvasRenderingContext2D, _fila: number, _columna: number, x: number, y: number, tam: number, lado: string, _numFilas: number) {
+    const spriteNames: Record<string, string[]> = {
+      superior: ['static_muro_superior', 'static_muro_normal', 'wall_top'],
+      inferior: ['static_muro_inferior', 'wall_bottom'],
+      izquierdo: ['static_muro_izquierdo', 'wall_left'],
+      derecho: ['static_muro_derecho', 'wall_right'],
+    };
+    const names = spriteNames[lado] || [];
+    for (const name of names) {
+      if (this.spriteManager.obtenerSprite(name)) {
+        let dx = x, dy = y, dw = tam, dh = 4;
+        if (lado === 'inferior') dy = y + tam - 4;
+        if (lado === 'izquierdo') { dw = 4; dh = tam; }
+        if (lado === 'derecho') { dx = x + tam - 4; dw = 4; dh = tam; }
+        this.spriteManager.dibujarSprite(ctx, name, dx, dy, dw, dh);
+        return;
+      }
+    }
+    ctx.beginPath();
+    if (lado === 'superior') { ctx.moveTo(x, y); ctx.lineTo(x + tam, y); }
+    else if (lado === 'inferior') { ctx.moveTo(x, y + tam); ctx.lineTo(x + tam, y + tam); }
+    else if (lado === 'izquierdo') { ctx.moveTo(x, y); ctx.lineTo(x, y + tam); }
+    else if (lado === 'derecho') { ctx.moveTo(x + tam, y); ctx.lineTo(x + tam, y + tam); }
+    ctx.stroke();
+  }
+
+  private dibujarItemCache(ctx: CanvasRenderingContext2D, tipo: string, _iconName: string, x: number, y: number, tam: number, emoji: string) {
+    const spriteName = tipo === 'pickaxe' ? 'pickaxe' : `food_${tipo.toLowerCase().replace(/ /g, '_')}`;
+    if (this.spriteManager.obtenerSprite(spriteName)) {
+      this.spriteManager.dibujarSprite(ctx, spriteName, x + 4, y + 4, tam - 8, tam - 8);
+    } else {
+      ctx.font = '16px serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(emoji, x + tam / 2, y + tam / 2 + 6);
+    }
+  }
+
+  invalidarCacheLaberinto() {
+    this.mazeCacheValida = false;
+  }
+
+  private cacheMazeDibujar(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+    const { colOffset, filaOffset } = offset;
+
+    if (!this.mazeCacheValida || !this.mazeCache) {
+      this.inicializarCacheLaberinto(mapaLaberinto, config);
+    }
+
+    const srcX = Math.max(0, Math.floor(colOffset) * TAMANO_CELDA);
+    const srcY = Math.max(0, Math.floor(filaOffset) * TAMANO_CELDA);
+    const viewW = CELDAS_VISIBLES_X * TAMANO_CELDA;
+    const viewH = CELDAS_VISIBLES_Y * TAMANO_CELDA;
+    const srcW = Math.min(this.mazeCache!.width - srcX, viewW);
+    const srcH = Math.min(this.mazeCache!.height - srcY, viewH);
+
+    this.ctx.drawImage(this.mazeCache!, srcX, srcY, srcW, srcH, 0, ALTO_UI_TOP, srcW, srcH);
+  }
 }

@@ -1692,6 +1692,7 @@ class Game implements IGame {
             if (celdaObjetivo.golpesCavar >= 5) {
                 celdaObjetivo.esTransitable = true;
                 celdaObjetivo.golpesCavar = 0;
+                this.renderer.invalidarCacheLaberinto();
                 eliminarMurosEntre(this.mapaLaberinto[entidad.fila][entidad.columna], celdaObjetivo);
                 this.network.enviarMensaje({
                     tipo: 'dig_completed',
@@ -1715,6 +1716,7 @@ class Game implements IGame {
             if (celdaNueva.tienePico) {
                 (entidad as any).tienePico = true;
                 celdaNueva.tienePico = false;
+                this.renderer.invalidarCacheLaberinto();
                 this.network.enviarMensaje({ tipo: 'pick_collected', f: entidad.fila, c: entidad.columna });
             }
             if (celdaNueva.alimento) {
@@ -1723,6 +1725,7 @@ class Game implements IGame {
                 const recuperacion = Math.floor(PC / CC);
                 entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + Math.max(1, recuperacion));
                 celdaNueva.alimento = null;
+                this.renderer.invalidarCacheLaberinto();
                 this.network.enviarMensaje({ tipo: 'food_consumed', f: entidad.fila, c: entidad.columna });
             }
             if (celdaNueva.burbuja) {
@@ -2563,6 +2566,7 @@ class Game implements IGame {
                 celda.tienePico = o.p || false;
                 celda.esPortal = o.pr || false;
             });
+            this.renderer?.invalidarCacheLaberinto();
             if (!this.motorIniciado) {
                 this.mundoSincronizado = true;
                 this.ui.ocultarLobby();
@@ -2572,16 +2576,19 @@ class Game implements IGame {
         case 'food_consumed':
             const celdaFood = this.mapaLaberinto[msg.f][msg.c];
             celdaFood.alimento = null;
+            this.renderer?.invalidarCacheLaberinto();
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'pick_collected':
             const celdaPick = this.mapaLaberinto[msg.f][msg.c];
             celdaPick.tienePico = false;
+            this.renderer?.invalidarCacheLaberinto();
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'dig_completed':
             const celdaDig = this.mapaLaberinto[msg.f][msg.c];
             celdaDig.esTransitable = true;
+            this.renderer?.invalidarCacheLaberinto();
             if (msg.fromF !== undefined && msg.fromC !== undefined) {
                 eliminarMurosEntre(this.mapaLaberinto[msg.fromF][msg.fromC], celdaDig);
             }

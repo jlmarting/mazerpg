@@ -734,8 +734,6 @@ export class Renderer {
         const y = fila * TAMANO_CELDA;
 
         if (!celda.esTransitable) {
-          ctx.fillStyle = '#333';
-          ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
           continue;
         }
 
@@ -855,13 +853,21 @@ export class Renderer {
       this.inicializarCacheLaberinto(mapaLaberinto, config);
     }
 
-    const srcX = Math.max(0, Math.floor(colOffset) * TAMANO_CELDA);
-    const srcY = Math.max(0, Math.floor(filaOffset) * TAMANO_CELDA);
     const viewW = CELDAS_VISIBLES_X * TAMANO_CELDA;
     const viewH = CELDAS_VISIBLES_Y * TAMANO_CELDA;
+    let srcX = colOffset * TAMANO_CELDA;
+    let srcY = filaOffset * TAMANO_CELDA;
+    let dx = 0;
+    let dy = ALTO_UI_TOP;
+
+    if (srcX < 0) { dx = -srcX; srcX = 0; }
+    if (srcY < 0) { dy = -srcY + ALTO_UI_TOP; srcY = 0; }
+
     const srcW = Math.min(this.mazeCache!.width - srcX, viewW);
     const srcH = Math.min(this.mazeCache!.height - srcY, viewH);
 
-    this.ctx.drawImage(this.mazeCache!, srcX, srcY, srcW, srcH, 0, ALTO_UI_TOP, srcW, srcH);
+    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.drawImage(this.mazeCache!, srcX, srcY, srcW, srcH, dx, dy, srcW, srcH);
+    this.ctx.imageSmoothingEnabled = true;
   }
 }

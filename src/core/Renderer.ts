@@ -1,6 +1,7 @@
 import { Celda } from '../world/Celda';
 import { CameraOffset, GameConfig, IEntidadRPG } from '../types';
 import { SpriteManager } from './SpriteManager';
+import { carasHaciaSuelo, hashCelda, varianteSuelo } from '../world/autotile';
 
 /**
  * Clase responsable de toda la lógica de renderizado del juego.
@@ -130,7 +131,7 @@ export class Renderer {
         }
 
         if (opacidad > 0) {
-          this.ctx.fillStyle = `rgba(0, 0, 0, ${opacidad})`;
+          this.ctx.fillStyle = `rgba(3, 5, 14, ${opacidad})`;
           this.ctx.fillRect((columna - colOffset) * TAMANO_CELDA, (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP, TAMANO_CELDA, TAMANO_CELDA);
         }
       }
@@ -734,33 +735,19 @@ export class Renderer {
         const y = fila * TAMANO_CELDA;
 
         if (!celda.esTransitable) {
+          this.pintarBloqueMuro(ctx, mapaLaberinto, fila, columna, x, y, TAMANO_CELDA, NUMERO_FILAS, NUMERO_COLUMNAS);
           continue;
         }
 
-        if (this.spriteManager.obtenerSprite('static_suelo_cesped')) {
-          this.spriteManager.dibujarSprite(ctx, 'static_suelo_cesped', x, y, TAMANO_CELDA, TAMANO_CELDA);
-        } else if (this.spriteManager.obtenerSprite('floor')) {
-          this.spriteManager.dibujarSprite(ctx, 'floor', x, y, TAMANO_CELDA, TAMANO_CELDA);
-        } else {
-          ctx.fillStyle = '#FFF';
-          ctx.fillRect(x, y, TAMANO_CELDA, TAMANO_CELDA);
-        }
+        this.pintarSuelo(ctx, fila, columna, x, y, TAMANO_CELDA);
 
-        ctx.strokeStyle = '#800080';
-        ctx.lineWidth = 2;
-
-        if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) {
-          this.dibujarMuroCache(ctx, fila, columna, x, y, TAMANO_CELDA, 'superior', NUMERO_FILAS);
-        }
-        if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) {
-          this.dibujarMuroCache(ctx, fila, columna, x, y, TAMANO_CELDA, 'inferior', NUMERO_FILAS);
-        }
-        if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) {
-          this.dibujarMuroCache(ctx, fila, columna, x, y, TAMANO_CELDA, 'izquierdo', NUMERO_FILAS);
-        }
-        if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) {
-          this.dibujarMuroCache(ctx, fila, columna, x, y, TAMANO_CELDA, 'derecho', NUMERO_FILAS);
-        }
+        // Sombra interior en los bordes que dan a muro: profundidad barata (en caché)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+        const banda = Math.max(3, Math.floor(TAMANO_CELDA * 0.12));
+        if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) ctx.fillRect(x, y, TAMANO_CELDA, banda);
+        if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) ctx.fillRect(x, y + TAMANO_CELDA - banda, TAMANO_CELDA, banda);
+        if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) ctx.fillRect(x, y, banda, TAMANO_CELDA);
+        if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) ctx.fillRect(x + TAMANO_CELDA - banda, y, banda, TAMANO_CELDA);
 
         if (celda.burbuja) {
           ctx.strokeStyle = '#87CEEB';
@@ -804,6 +791,47 @@ export class Renderer {
     this.mazeCacheValida = true;
   }
 
+  private pintarSuelo(ctx: CanvasRenderingContext2D, fila: number, columna: number, x: number, y: number, tam: number) {
+    const sprite = `static_suelo_${varianteSuelo(fila, columna)}`;
+    if (this.spriteManager.obtenerSprite(sprite)) {
+      this.spriteManager.dibujarSprite(ctx, sprite, x, y, tam, tam);
+    } else if (this.spriteManager.obtenerSprite('floor')) {
+      this.spriteManager.dibujarSprite(ctx, 'floor', x, y, tam, tam);
+    } else {
+      ctx.fillStyle = '#FFF';
+      ctx.fillRect(x, y, tam, tam);
+    }
+    // Motas deterministas para romper la repetición del tile
+    const h = hashCelda(fila, columna);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    const mx = x + tam * (0.2 + 0.6 * h);
+    const my = y + tam * (0.2 + 0.6 * hashCelda(columna, fila));
+    ctx.beginPath();
+    ctx.arc(mx, my, Math.max(1, tam * 0.03), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private pintarBloqueMuro(ctx: CanvasRenderingContext2D, mapa: Celda[][], fila: number, columna: number, x: number, y: number, tam: number, numFilas: number, numColumnas: number) {
+    ctx.fillStyle = '#2b2f36';
+    ctx.fillRect(x, y, tam, tam);
+    // Vetado determinista de la piedra
+    const h = hashCelda(fila + 1000, columna + 1000);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.fillRect(x, y + tam * h * 0.9, tam, Math.max(1, tam * 0.06));
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.fillRect(x, y + tam * (1 - h) * 0.9, tam, Math.max(1, tam * 0.08));
+    // Solo las caras que dan a suelo llevan sprite de muro
+    const caras = carasHaciaSuelo({
+      superior: fila > 0 && mapa[fila - 1][columna].esTransitable,
+      inferior: fila < numFilas - 1 && mapa[fila + 1][columna].esTransitable,
+      izquierdo: columna > 0 && mapa[fila][columna - 1].esTransitable,
+      derecho: columna < numColumnas - 1 && mapa[fila][columna + 1].esTransitable,
+    });
+    for (const lado of caras) {
+      this.dibujarMuroCache(ctx, fila, columna, x, y, tam, lado, numFilas);
+    }
+  }
+
   private dibujarMuroCache(ctx: CanvasRenderingContext2D, _fila: number, _columna: number, x: number, y: number, tam: number, lado: string, _numFilas: number) {
     const spriteNames: Record<string, string[]> = {
       superior: ['static_muro_superior', 'static_muro_normal', 'wall_top'],
@@ -812,22 +840,56 @@ export class Renderer {
       derecho: ['static_muro_derecho', 'wall_right'],
     };
     const names = spriteNames[lado] || [];
+    const prof = Math.max(4, Math.floor(tam * 0.3));
     for (const name of names) {
       if (this.spriteManager.obtenerSprite(name)) {
-        let dx = x, dy = y, dw = tam, dh = 4;
-        if (lado === 'inferior') dy = y + tam - 4;
-        if (lado === 'izquierdo') { dw = 4; dh = tam; }
-        if (lado === 'derecho') { dx = x + tam - 4; dw = 4; dh = tam; }
+        let dx = x, dy = y, dw = tam, dh = prof;
+        if (lado === 'inferior') dy = y + tam - prof;
+        if (lado === 'izquierdo') { dw = prof; dh = tam; }
+        if (lado === 'derecho') { dx = x + tam - prof; dw = prof; dh = tam; }
         this.spriteManager.dibujarSprite(ctx, name, dx, dy, dw, dh);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.lineWidth = Math.max(1, Math.floor(tam * 0.04));
+        ctx.beginPath();
+        if (lado === 'superior') { ctx.moveTo(x, y + prof); ctx.lineTo(x + tam, y + prof); }
+        else if (lado === 'inferior') { ctx.moveTo(x, y + tam - prof); ctx.lineTo(x + tam, y + tam - prof); }
+        else if (lado === 'izquierdo') { ctx.moveTo(x + prof, y); ctx.lineTo(x + prof, y + tam); }
+        else if (lado === 'derecho') { ctx.moveTo(x + tam - prof, y); ctx.lineTo(x + tam - prof, y + tam); }
+        ctx.stroke();
         return;
       }
     }
+    // Fallback sin sprite: cara de piedra clara con borde
+    ctx.fillStyle = '#4a5058';
+    if (lado === 'superior') ctx.fillRect(x, y, tam, prof);
+    else if (lado === 'inferior') ctx.fillRect(x, y + tam - prof, tam, prof);
+    else if (lado === 'izquierdo') ctx.fillRect(x, y, prof, tam);
+    else if (lado === 'derecho') ctx.fillRect(x + tam - prof, y, prof, tam);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.lineWidth = Math.max(1, Math.floor(tam * 0.04));
     ctx.beginPath();
     if (lado === 'superior') { ctx.moveTo(x, y); ctx.lineTo(x + tam, y); }
     else if (lado === 'inferior') { ctx.moveTo(x, y + tam); ctx.lineTo(x + tam, y + tam); }
     else if (lado === 'izquierdo') { ctx.moveTo(x, y); ctx.lineTo(x, y + tam); }
     else if (lado === 'derecho') { ctx.moveTo(x + tam, y); ctx.lineTo(x + tam, y + tam); }
     ctx.stroke();
+  }
+
+  /**
+   * Viñeta radial centrada en el jugador + parpadeo sutil de antorcha.
+   * Un solo fill por frame, en coordenadas de mundo (dentro del zoom).
+   */
+  dibujarViñeta(colJugador: number, filaJugador: number, offset: CameraOffset, config: GameConfig) {
+    const { TAMANO_CELDA, ALTO_UI_TOP, RADIO_VISION } = config;
+    const cx = (colJugador - offset.colOffset + 0.5) * TAMANO_CELDA;
+    const cy = (filaJugador - offset.filaOffset + 0.5) * TAMANO_CELDA + ALTO_UI_TOP;
+    const radio = RADIO_VISION * TAMANO_CELDA * 1.35;
+    const flicker = 0.42 + 0.05 * Math.sin(Date.now() / 320);
+    const g = this.ctx.createRadialGradient(cx, cy, radio * 0.45, cx, cy, radio);
+    g.addColorStop(0, 'rgba(0, 0, 8, 0)');
+    g.addColorStop(1, `rgba(0, 0, 8, ${flicker.toFixed(3)})`);
+    this.ctx.fillStyle = g;
+    this.ctx.fillRect(cx - radio, cy - radio, radio * 2, radio * 2);
   }
 
   private dibujarItemCache(ctx: CanvasRenderingContext2D, tipo: string, _iconName: string, x: number, y: number, tam: number, emoji: string) {

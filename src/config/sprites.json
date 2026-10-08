@@ -4,6 +4,7 @@
     "sheet_npcs": "sprites/npcs.png",
     "sheet_static": "sprites/static.png",
     "sheet_dynamic": "sprites/dynamic.png",
+    "sheet_food": "sprites/food.png",
     "food_apple": "sprites/apple.png",
     "tool_pickaxe": "sprites/pickaxe.png",
     "hero_custom": "sprites/hero_custom.png"
@@ -100,20 +101,20 @@
         "fallen": {
           "puntos": [
             {
-              "x": 0,
-              "y": 128,
+              "x": 54,
+              "y": 160,
               "w": 32,
               "h": 32
             },
             {
-              "x": 32,
-              "y": 128,
+              "x": 111,
+              "y": 160,
               "w": 32,
               "h": 32
             },
             {
-              "x": 64,
-              "y": 128,
+              "x": 168,
+              "y": 160,
               "w": 32,
               "h": 32
             }
@@ -125,8 +126,8 @@
         "idle": {
           "puntos": [
             {
-              "x": 0,
-              "y": 160,
+              "x": 32,
+              "y": 256,
               "w": 32,
               "h": 32
             }
@@ -704,7 +705,85 @@
               "h": 32
             }
           ],
-          "imagen": "food_apple"
+          "imagen": "sheet_food"
+        }
+      },
+      "pescado": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 192,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_food"
+        }
+      },
+      "chuleta": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 160,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_food"
+        }
+      },
+      "muslo_de_pollo": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 128,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_food"
+        }
+      },
+      "brócoli": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 96,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_food"
+        }
+      },
+      "kiwi": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 64,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_food"
+        }
+      },
+      "plátano": {
+        "idle": {
+          "puntos": [
+            {
+              "x": 32,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_food"
         }
       }
     },

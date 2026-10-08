@@ -78,6 +78,7 @@ Configuración de build, convenciones de calidad y gestión de entornos.
 | 50 | [Multi-Entry Build con Vite](tooling/50-multi-entry-build-vite.md) | ✅ | Compilar dos aplicaciones independientes (juego + structor) desde el mismo repo |
 | 51 | [TypeScript Strict como Gate de Calidad](tooling/51-typescript-strict-gate-calidad.md) | ✅ | Cómo `noUnusedLocals` + `noUnusedParameters` fuerzan limpieza constante del código |
 | 52 | [Inyección de Configuración: Build vs Runtime](tooling/52-inyeccion-configuracion-build-runtime.md) | ✅ | Placeholders en HTML reemplazados por CI vs `window.FIREBASE_CONFIG` en desarrollo local |
+| 53 | [El import que compila en tu máquina pero no en CI](tooling/53-import-sin-trackear-clon-limpio.md) | ✅ | Un fichero importado pero sin trackear pasa el build local y rompe el clon limpio de CI |
 
 ---
 

@@ -240,9 +240,6 @@ class Game implements IGame {
         }
     });
 
-    document.getElementById('btnReroll')?.addEventListener('click', () => this.recalcularStats());
-    document.getElementById('btnQR')?.addEventListener('click', () => this.generarQR());
-
     document.getElementById('btnFireball')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
     document.getElementById('btnFireballAction')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
     document.getElementById('btnWhirlwindAction')?.addEventListener('click', () => this.lanzarWhirlwind(this.protagonista, true));
@@ -351,6 +348,11 @@ class Game implements IGame {
         this.registrarEventoLog(`Error al conectar: ${e}`);
       }
     }
+  }
+
+  onRerollStats(clase: string): void {
+    this.protagonista.generarStats(clase);
+    this.registrarEventoLog("Estadísticas recalculadas.");
   }
 
   onJoinGame(partidaId: string, modo: 'firebase' | 'http'): void {
@@ -814,20 +816,6 @@ class Game implements IGame {
       if (btnRestart) btnRestart.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
   }
 
-  recalcularStats() {
-    const prevClass = this.protagonista.clase;
-    const prevColor = this.protagonista.color;
-    const prevName = this.protagonista.nombre;
-
-    this.protagonista = new Jugador(prevName);
-    this.protagonista.clase = prevClass;
-    this.protagonista.color = prevColor;
-    this.protagonista.generarStats();
-
-    this.setupEntity(this.protagonista);
-    this.registrarEventoLog("Estadísticas recalculadas.");
-  }
-
   generarQR() {
     const baseUrl = window.location.origin + window.location.pathname;
     const roomId = this.network.idPartidaActual;
@@ -1220,6 +1208,7 @@ class Game implements IGame {
         persistence *= 1.5;
     }
     this.renderer.dibujarNiebla(this.mapaLaberinto, offset, this.config, persistence);
+    this.renderer.dibujarViñeta(this.protagonista.visualColumna, this.protagonista.visualFila, offset, this.config);
 
     // Actualizar estados de animación antes de dibujar
     this.protagonista.actualizarEstado();

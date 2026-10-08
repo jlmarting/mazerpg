@@ -74,174 +74,217 @@
     </div>
 
     <div id="lobby">
-        <h1 style="color: #007bff;">MazeRPG</h1>
+        <svg class="svg-defs" width="0" height="0" aria-hidden="true">
+            <defs>
+                <symbol id="art-crest" viewBox="0 0 200 90">
+                    <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M96 62 C70 55 48 44 30 22 M96 62 C78 52 62 44 48 40 M96 62 C82 58 70 56 60 56"/>
+                        <path d="M104 62 C130 55 152 44 170 22 M104 62 C122 52 138 44 152 40 M104 62 C118 58 130 56 140 56"/>
+                        <path d="M100 30 L118 36 V52 C118 64 110 72 100 78 C90 72 82 64 82 52 V36 Z"/>
+                        <path d="M92 52 Q100 45 108 52 Q100 59 92 52 Z"/>
+                        <circle cx="100" cy="52" r="2.5" fill="currentColor" stroke="none"/>
+                        <path d="M88 32 L82 20 M112 32 L118 20"/>
+                    </g>
+                </symbol>
+                <symbol id="art-sword" viewBox="0 0 32 32">
+                    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 2 L18.5 7 V17 H13.5 V7 Z M9 19 H23 M16 19 V24"/>
+                        <circle cx="16" cy="26.5" r="2"/>
+                    </g>
+                </symbol>
+                <symbol id="art-bow" viewBox="0 0 32 32">
+                    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 3 C19 8.5 19 23.5 11 29 M11 3 V29 M5 16 H25 M25 16 L20.5 12.5 M25 16 L20.5 19.5"/>
+                    </g>
+                </symbol>
+                <symbol id="art-staff" viewBox="0 0 32 32">
+                    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 2 L22 9 L17 16 L12 9 Z M12 29 L15.5 17 M13.4 23.5 L18 22"/>
+                    </g>
+                </symbol>
+            </defs>
+        </svg>
+        <div class="lobby-crest" aria-hidden="true">
+            <svg class="crest-svg"><use href="#art-crest"/></svg>
+        </div>
+        <h1 class="lobby-title">MazeRPG</h1>
+        <p class="lobby-tagline">Forja tu héroe · Desciende al laberinto</p>
 
-        <!-- Campo oculto por compatibilidad -->
         <input type="hidden" id="nickInput" value="Héroe">
 
         <div id="lobbyInitial">
-            <div id="characterPreview" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 10px; border: 1px solid #333; margin-bottom: 25px; width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
-                    <div id="previewColor" style="width: 50px; height: 50px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 15px currentColor;"></div>
-                    <div style="text-align: left;">
-                        <div id="previewName" style="font-size: 20px; font-weight: bold; color: #fff;">-</div>
-                        <div id="previewClassInfo" style="font-size: 14px; color: #e67e22; display: flex; align-items: center; gap: 5px;">
+            <div id="characterPreview" class="character-preview">
+                <div class="character-preview-header">
+                    <div id="previewPortrait" class="portrait-medallion small" data-clase="guerrero" aria-hidden="true">
+                        <svg class="portrait-icon" data-icon="guerrero"><use href="#art-sword"/></svg>
+                        <svg class="portrait-icon" data-icon="explorador"><use href="#art-bow"/></svg>
+                        <svg class="portrait-icon" data-icon="mago"><use href="#art-staff"/></svg>
+                    </div>
+                    <div id="previewColor" class="character-preview-avatar"></div>
+                    <div class="character-preview-nameplate">
+                        <div id="previewName" class="character-preview-name">-</div>
+                        <div id="previewClassInfo" class="character-preview-class">
                             <span id="previewClassIcon"></span> <span id="previewClassName"></span>
                         </div>
                     </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; background: #000; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-family: monospace; font-size: 12px;">
-                    <div style="color: #ff4444;">FUE: <span id="previewFue">-</span></div>
-                    <div style="color: #44ff44;">AGI: <span id="previewAgi">-</span></div>
-                    <div style="color: #4444ff;">INT: <span id="previewInt">-</span></div>
+                <div class="character-preview-stats-bar">
+                    <div class="stat-fue">FUE: <span id="previewFue">-</span></div>
+                    <div class="stat-agi">AGI: <span id="previewAgi">-</span></div>
+                    <div class="stat-int">INT: <span id="previewInt">-</span></div>
                 </div>
-                <button id="btnEditCharacter" style="width: 100%; padding: 8px; background: #444; color: #fff; border: 1px solid #666; cursor: pointer; font-family: monospace; font-size: 12px; border-radius: 4px;">EDITAR PERSONAJE</button>
+                <button id="btnEditCharacter" class="btn-edit-character">EDITAR PERSONAJE</button>
             </div>
 
-            <div id="charCreationSection">
-                <button id="btnOpenCharacterModal" style="padding: 15px 30px; cursor: pointer; background: #e67e22; color: white; border: none; font-family: monospace; font-weight: bold; font-size: 16px; border-radius: 5px; box-shadow: 0 4px #d35400;">CREAR PERSONAJE</button>
+            <div id="charCreationSection" class="char-creation-section">
+                <button id="btnOpenCharacterModal" class="btn-create-character">CREAR PERSONAJE</button>
             </div>
 
-            <div id="gameOptions" style="display: none; flex-direction: column; align-items: center; width: 100%; max-width: 450px;">
-                <button id="btnReanudar" style="display: none; width: 100%; padding: 12px; cursor: pointer; background: #6f42c1; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px; margin-bottom: 15px;">REANUDAR PARTIDA</button>
-                
-                <div id="serverModeSelector" style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px; gap: 5px;">
-                    <button id="btnServidorFirebase" style="flex: 1; padding: 8px; cursor: pointer; background: #007bff; color: white; border: 2px solid #0056b3; font-family: monospace; font-size: 10px; border-radius: 5px;">FIREBASE</button>
-                    <button id="btnServidorHttp" style="flex: 1; padding: 8px; cursor: pointer; background: #17a2b8; color: white; border: 2px solid #138496; font-family: monospace; font-size: 10px; border-radius: 5px;">SERVIDOR LOCAL</button>
+            <div id="gameOptions" class="game-options">
+                <button id="btnReanudar" class="btn-resume">REANUDAR PARTIDA</button>
+
+                <div id="serverModeSelector" class="server-mode-toggle">
+                    <button id="btnServidorFirebase" class="btn-server-mode active">FIREBASE</button>
+                    <button id="btnServidorHttp" class="btn-server-mode">SERVIDOR LOCAL</button>
                 </div>
-                <p id="serverModeInfo" style="font-size: 10px; color: #888; text-align: center; margin-bottom: 10px;">Modo: Firebase</p>
-                
-                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 15px; gap: 10px;">
-                    <button id="btnCrearPartida" style="flex: 1; padding: 12px; cursor: pointer; background: #007bff; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px;">CREAR PARTIDA</button>
-                    <button id="btnUnirseLobby" style="flex: 1; padding: 12px; cursor: pointer; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold; border-radius: 5px;">UNIRSE A PARTIDA</button>
+                <p id="serverModeInfo" class="server-mode-info">Modo: Firebase</p>
+
+                <div class="game-main-actions">
+                    <button id="btnCrearPartida" class="btn-create-game">CREAR PARTIDA</button>
+                    <button id="btnUnirseLobby" class="btn-join-lobby">UNIRSE A PARTIDA</button>
                 </div>
-                <div style="border-top: 1px solid #333; padding-top: 15px; width: 100%; display: flex; flex-direction: column; gap: 10px;">
-                    <button id="btnSolo" style="padding: 10px; cursor: pointer; background: #444; color: #fff; border: none; font-family: monospace; border-radius: 5px;">MODO UN JUGADOR</button>
-                    <button id="btnLobbyManual" style="padding: 10px; cursor: pointer; background: #6c757d; color: white; border: none; font-family: monospace; border-radius: 5px;">CONEXIÓN MANUAL</button>
+                <div class="game-secondary-actions">
+                    <button id="btnSolo" class="btn-solo">MODO UN JUGADOR</button>
+                    <button id="btnLobbyManual" class="btn-manual-mode">CONEXIÓN MANUAL</button>
                 </div>
             </div>
         </div>
 
-        <div id="lobbyManual" style="display: none; width: 100%; max-width: 600px; flex-direction: column; align-items: center; gap: 15px;">
-            <h2 style="color: #6c757d; margin: 0;">MODO MANUAL</h2>
+        <div id="lobbyManual" class="lobby-manual">
+            <h2>MODO MANUAL</h2>
 
-            <div id="manualHostSection" style="width: 100%; border: 1px solid #007bff; padding: 15px; border-radius: 5px; background: #111;">
-                <h3 style="margin-top: 0; color: #007bff; font-size: 14px;">PASO 1: COMO ANFITRIÓN (HOST)</h3>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <button id="btnGenOferta" style="background: #007bff; color: white; border: none; padding: 8px; cursor: pointer; font-family: monospace; flex: 1;">GENERAR OFERTA</button>
-                    <button id="btnScanQRAnswer" style="background: #e67e22; color: white; border: none; padding: 8px; cursor: pointer; font-family: monospace; flex: 1;">ESCANEAR QR RESPUESTA</button>
+            <div id="manualHostSection" class="manual-panel host">
+                <h3>PASO 1: COMO ANFITRIÓN (HOST)</h3>
+                <div class="manual-btn-row">
+                    <button id="btnGenOferta" class="manual-btn blue">GENERAR OFERTA</button>
+                    <button id="btnScanQRAnswer" class="manual-btn orange">ESCANEAR QR RESPUESTA</button>
                 </div>
-                <p style="font-size: 10px; color: #888; margin: 5px 0;">Copia este código o genera QR:</p>
-                <textarea id="manualOfferOut" style="width: 100%; height: 60px; background: #000; color: #0f0; font-size: 9px; border: 1px solid #333;" readonly></textarea>
-                <button id="btnShowOfferQR" style="background: #444; color: white; border: none; padding: 5px; cursor: pointer; font-family: monospace; font-size: 10px; margin-top: 5px;">VER QR OFERTA</button>
+                <p class="manual-label">Copia este código o genera QR:</p>
+                <textarea id="manualOfferOut" class="manual-textarea readonly" readonly></textarea>
+                <button id="btnShowOfferQR" class="manual-qr-btn">VER QR OFERTA</button>
 
-                <p style="font-size: 10px; color: #888; margin: 10px 0 5px 0;">PASO 2: PEGA LA RESPUESTA DEL INVITADO:</p>
-                <textarea id="manualAnswerIn" style="width: 100%; height: 60px; background: #000; color: #fff; font-size: 9px; border: 1px solid #333;"></textarea>
-                <button id="btnProcesarResp" style="background: #28a745; color: white; border: none; padding: 8px; cursor: pointer; font-family: monospace; margin-top: 10px; width: 100%;">CONECTAR</button>
+                <p class="manual-label">PASO 2: PEGA LA RESPUESTA DEL INVITADO:</p>
+                <textarea id="manualAnswerIn" class="manual-textarea editable"></textarea>
+                <button id="btnProcesarResp" class="manual-connect-btn">CONECTAR</button>
             </div>
 
-            <div id="manualGuestSection" style="width: 100%; border: 1px solid #28a745; padding: 15px; border-radius: 5px; background: #111;">
-                <h3 style="margin-top: 0; color: #28a745; font-size: 14px;">COMO INVITADO (GUEST)</h3>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <button id="btnScanQROffer" style="background: #e67e22; color: white; border: none; padding: 8px; cursor: pointer; font-family: monospace; flex: 1;">ESCANEAR QR OFERTA</button>
+            <div id="manualGuestSection" class="manual-panel guest">
+                <h3>COMO INVITADO (GUEST)</h3>
+                <div class="manual-btn-row">
+                    <button id="btnScanQROffer" class="manual-btn orange">ESCANEAR QR OFERTA</button>
                 </div>
-                <p style="font-size: 10px; color: #888; margin: 5px 0;">PASO 1: PEGA LA OFERTA DEL ANFITRIÓN:</p>
-                <textarea id="manualOfferIn" style="width: 100%; height: 60px; background: #000; color: #fff; font-size: 9px; border: 1px solid #333;"></textarea>
-                <button id="btnProcesarOferta" style="background: #28a745; color: white; border: none; padding: 8px; cursor: pointer; font-family: monospace; margin-top: 10px; width: 100%;">GENERAR RESPUESTA</button>
+                <p class="manual-label">PASO 1: PEGA LA OFERTA DEL ANFITRIÓN:</p>
+                <textarea id="manualOfferIn" class="manual-textarea editable"></textarea>
+                <button id="btnProcesarOferta" class="manual-connect-btn">GENERAR RESPUESTA</button>
 
-                <p style="font-size: 10px; color: #888; margin: 10px 0 5px 0;">PASO 2: COPIA TU RESPUESTA O GENERA QR:</p>
-                <textarea id="manualAnswerOut" style="width: 100%; height: 60px; background: #000; color: #0f0; font-size: 9px; border: 1px solid #333;" readonly></textarea>
-                <button id="btnShowAnswerQR" style="background: #444; color: white; border: none; padding: 5px; cursor: pointer; font-family: monospace; font-size: 10px; margin-top: 5px;">VER QR RESPUESTA</button>
+                <p class="manual-label">PASO 2: COPIA TU RESPUESTA O GENERA QR:</p>
+                <textarea id="manualAnswerOut" class="manual-textarea readonly" readonly></textarea>
+                <button id="btnShowAnswerQR" class="manual-qr-btn">VER QR RESPUESTA</button>
             </div>
 
-            <button id="btnVolverLobbyManual" style="background: none; border: none; color: #888; text-decoration: underline; cursor: pointer; font-size: 12px;">VOLVER AL MENÚ</button>
+            <button id="btnVolverLobbyManual" class="btn-back-lobby">VOLVER AL MENÚ</button>
         </div>
 
-        <div id="lobbyFirebase" style="display: none; width: 100%; max-width: 600px; flex-direction: column; align-items: center;">
-            <div id="firebaseWarning" style="display: none; background: #500; color: #fff; padding: 10px; margin-bottom: 10px; border: 1px solid #f00; font-size: 11px;">
-                ⚠️ FIREBASE NO CONFIGURADO. Las credenciales son de ejemplo y no funcionarán.
+        <div id="lobbyFirebase" class="lobby-browser">
+            <div id="firebaseWarning" class="firebase-warning">
+                FIREBASE NO CONFIGURADO. Las credenciales son de ejemplo y no funcionarán.
             </div>
-            <h2 style="color: #28a745; margin-bottom: 10px;">PARTIDAS ACTIVAS</h2>
-            <div id="listaPartidas" style="width: 100%; max-height: 300px; overflow-y: auto; background: #111; border: 1px solid #333; border-radius: 5px; padding: 10px; margin-bottom: 15px;">
-                <p style="color: #666; font-style: italic;">Buscando partidas...</p>
+            <h2>PARTIDAS ACTIVAS</h2>
+            <div id="listaPartidas" class="game-list-container">
+                <p class="game-list-loading">Buscando partidas...</p>
             </div>
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button id="btnRefrescar" style="background: #444; color: #fff; border: none; padding: 5px 10px; cursor: pointer; font-family: monospace; font-size: 12px;">REFRESCAR</button>
-                <button id="btnVolverLobbyFirebase" style="background: none; border: none; color: #888; text-decoration: underline; cursor: pointer; font-size: 12px;">VOLVER AL MENÚ</button>
+            <div class="browser-actions">
+                <button id="btnRefrescar" class="btn-refresh">REFRESCAR</button>
+                <button id="btnVolverLobbyFirebase" class="btn-back-lobby">VOLVER AL MENÚ</button>
             </div>
-        </div>
-    </div>
-
-    <!-- Modal de Creación de Personaje -->
-    <div id="characterModal" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 40; color: white;">
-        <div style="background: #222; padding: 30px; border: 2px solid #e67e22; border-radius: 10px; width: 90%; max-width: 500px; position: relative;">
-            <h2 style="color: #e67e22; margin-top: 0; text-align: center;">CREAR TU HÉROE</h2>
-
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; font-size: 12px; color: #888; margin-bottom: 5px;">NOMBRE:</label>
-                <div style="display: flex; gap: 10px;">
-                    <input type="text" id="charNameInput" value="" maxlength="15" style="flex: 1; padding: 8px; background: #000; color: #fff; border: 1px solid #555; font-family: monospace;">
-                    <button id="btnRandomName" style="background: #444; color: white; border: none; padding: 8px; cursor: pointer; font-family: monospace;">RANDOM</button>
-                </div>
-            </div>
-
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; font-size: 12px; color: #888; margin-bottom: 5px;">COLOR:</label>
-                <input type="color" id="charColorInput" value="#007bff" style="width: 100%; height: 40px; background: #000; border: 1px solid #555; padding: 2px; cursor: pointer;">
-            </div>
-
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; font-size: 12px; color: #888; margin-bottom: 5px;">CLASE:</label>
-                <div style="display: flex; gap: 5px;">
-                    <button class="class-btn selected" data-class="guerrero" style="flex: 1; padding: 8px; background: #444; color: #fff; border: 1px solid #666; cursor: pointer; font-family: monospace; font-size: 10px;">GUERRERO<br><span style="font-size: 8px;">+3 FUE, +1 AGI</span></button>
-                    <button class="class-btn" data-class="explorador" style="flex: 1; padding: 8px; background: #444; color: #fff; border: 1px solid #666; cursor: pointer; font-family: monospace; font-size: 10px;">EXPLORADOR<br><span style="font-size: 8px;">+4 AGI</span></button>
-                    <button class="class-btn" data-class="mago" style="flex: 1; padding: 8px; background: #444; color: #fff; border: 1px solid #666; cursor: pointer; font-family: monospace; font-size: 10px;">MAGO<br><span style="font-size: 8px;">+6 INT</span></button>
-                </div>
-            </div>
-
-            <div style="background: #111; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                <p style="margin: 0 0 10px 0; font-size: 12px; text-align: center; color: #e67e22; font-weight: bold;">ESTADÍSTICAS</p>
-                <div style="display: flex; justify-content: space-around; text-align: center;">
-                    <div>
-                        <div style="font-size: 10px; color: #888;">FUE</div>
-                        <div id="charFue" style="font-size: 24px; font-weight: bold; color: #007bff;">-</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 10px; color: #888;">AGI</div>
-                        <div id="charAgi" style="font-size: 24px; font-weight: bold; color: #007bff;">-</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 10px; color: #888;">INT</div>
-                        <div id="charInt" style="font-size: 24px; font-weight: bold; color: #007bff;">-</div>
-                    </div>
-                </div>
-                <button id="btnCharReroll" style="display: block; width: 100%; margin-top: 15px; background: #333; color: white; border: 1px solid #444; padding: 5px; cursor: pointer; font-family: monospace; font-size: 10px;">TIRAR DADOS</button>
-            </div>
-
-            <button id="btnSaveCharacter" style="width: 100%; padding: 12px; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold; cursor: pointer; border-radius: 5px;">GUARDAR Y CONTINUAR</button>
         </div>
     </div>
 
-    <!-- Modal de Dificultad -->
-    <div id="difficultyModal" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 50; color: white;">
-        <div style="background: #222; padding: 30px; border: 2px solid #007bff; border-radius: 10px; width: 90%; max-width: 400px; text-align: center;">
-            <h2 style="color: #007bff; margin-top: 0;">ELIGE DIFICULTAD</h2>
-            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
-                <button class="diff-btn" data-diff="facil" style="padding: 15px; background: #28a745; color: white; border: none; cursor: pointer; font-family: monospace; font-weight: bold;">FÁCIL 😊</button>
-                <button class="diff-btn" data-diff="medio" style="padding: 15px; background: #f1c40f; color: #000; border: none; cursor: pointer; font-family: monospace; font-weight: bold;">NORMAL ⚔️</button>
-                <button class="diff-btn" data-diff="dificil" style="padding: 15px; background: #e67e22; color: white; border: none; cursor: pointer; font-family: monospace; font-weight: bold;">DIFÍCIL 💀</button>
-                <button class="diff-btn" data-diff="locura" style="padding: 15px; background: #c0392b; color: white; border: none; cursor: pointer; font-family: monospace; font-weight: bold;">LOCURA ☠️</button>
+    <div id="characterModal" class="lobby-modal-overlay">
+        <div class="character-modal-box">
+            <div class="modal-crest" aria-hidden="true">
+                <svg class="crest-svg small"><use href="#art-crest"/></svg>
             </div>
-            <button id="btnBackFromDiff" style="background: none; border: none; color: #888; text-decoration: underline; cursor: pointer; font-size: 12px; margin-top: 15px;">VOLVER</button>
+            <h2>CREAR TU HÉROE</h2>
+            <div id="modalPortrait" class="portrait-medallion" data-clase="guerrero" aria-hidden="true">
+                <svg class="portrait-icon" data-icon="guerrero"><use href="#art-sword"/></svg>
+                <svg class="portrait-icon" data-icon="explorador"><use href="#art-bow"/></svg>
+                <svg class="portrait-icon" data-icon="mago"><use href="#art-staff"/></svg>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">NOMBRE:</label>
+                <div class="form-row">
+                    <input type="text" id="charNameInput" class="char-name-input" value="" maxlength="15">
+                    <button id="btnRandomName" class="btn-random-name">RANDOM</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">COLOR:</label>
+                <input type="color" id="charColorInput" class="char-color-input" value="#007bff">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">CLASE:</label>
+                <div class="class-selector">
+                    <button class="class-btn selected" data-class="guerrero"><svg class="class-btn-icon" aria-hidden="true"><use href="#art-sword"/></svg>GUERRERO<br><span class="class-bonus">+3 FUE, +1 AGI</span></button>
+                    <button class="class-btn" data-class="explorador"><svg class="class-btn-icon" aria-hidden="true"><use href="#art-bow"/></svg>EXPLORADOR<br><span class="class-bonus">+4 AGI</span></button>
+                    <button class="class-btn" data-class="mago"><svg class="class-btn-icon" aria-hidden="true"><use href="#art-staff"/></svg>MAGO<br><span class="class-bonus">+6 INT</span></button>
+                </div>
+            </div>
+
+            <div class="stats-box">
+                <p class="stats-box-title">ESTADÍSTICAS</p>
+                <div class="stats-grid-display">
+                    <div>
+                        <div class="stat-display-label">FUE</div>
+                        <div id="charFue" class="stat-display-value">-</div>
+                    </div>
+                    <div>
+                        <div class="stat-display-label">AGI</div>
+                        <div id="charAgi" class="stat-display-value">-</div>
+                    </div>
+                    <div>
+                        <div class="stat-display-label">INT</div>
+                        <div id="charInt" class="stat-display-value">-</div>
+                    </div>
+                </div>
+                <button id="btnCharReroll" class="btn-reroll">TIRAR DADOS</button>
+            </div>
+
+            <button id="btnSaveCharacter" class="btn-save-character">GUARDAR Y CONTINUAR</button>
         </div>
     </div>
 
-    <!-- Modal de QR (para mostrar) -->
-    <div id="qrModal" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 60; color: white;">
-        <div style="background: #fff; padding: 20px; border-radius: 10px; text-align: center;">
-            <img id="modalQRImage" src="" alt="QR Code" style="width: 250px; height: 250px; display: block; margin: 0 auto;">
-            <p id="modalQRTitle" style="color: #000; margin-top: 15px; font-weight: bold; font-family: monospace;"></p>
-            <button id="btnCloseQRModal" style="margin-top: 10px; padding: 8px 15px; background: #444; color: white; border: none; cursor: pointer; font-family: monospace;">CERRAR</button>
+    <div id="difficultyModal" class="lobby-modal-overlay z-50">
+        <div class="difficulty-modal-box">
+            <h2>ELIGE DIFICULTAD</h2>
+            <div class="diff-btn-list">
+                <button class="diff-btn facil" data-diff="facil">FÁCIL</button>
+                <button class="diff-btn medio" data-diff="medio">NORMAL</button>
+                <button class="diff-btn dificil" data-diff="dificil">DIFÍCIL</button>
+                <button class="diff-btn locura" data-diff="locura">LOCURA</button>
+            </div>
+            <button id="btnBackFromDiff" class="btn-back-lobby" style="margin-top: 15px;">VOLVER</button>
+        </div>
+    </div>
+
+    <div id="qrModal" class="lobby-modal-overlay z-60">
+        <div class="qr-modal-box">
+            <img id="modalQRImage" src="" alt="QR Code">
+            <p id="modalQRTitle"></p>
+            <button id="btnCloseQRModal" class="btn-close-qr">CERRAR</button>
         </div>
     </div>
 

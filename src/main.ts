@@ -2394,6 +2394,7 @@ class Game implements IGame {
             }
             break;
         case 'object_spawned':
+            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.esHost) {
                 if (!this.enBurbujaSim(msg.f, msg.c)) break;
                 const celda = this.mapaLaberinto[msg.f][msg.c];
@@ -2584,27 +2585,28 @@ class Game implements IGame {
             }
             break;
         case 'food_consumed':
+            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
             const celdaFood = this.mapaLaberinto[msg.f][msg.c];
             celdaFood.alimento = null;
             this.renderer?.invalidarCacheLaberinto();
-            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'pick_collected':
+            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
             const celdaPick = this.mapaLaberinto[msg.f][msg.c];
             celdaPick.tienePico = false;
             this.renderer?.invalidarCacheLaberinto();
-            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'shield_collected':
+            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
             const celdaShield = this.mapaLaberinto[msg.f][msg.c];
             celdaShield.burbuja = null;
             this.renderer?.invalidarCacheLaberinto();
-            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'dig_completed':
+            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
             const celdaDig = this.mapaLaberinto[msg.f][msg.c];
             celdaDig.esTransitable = true;
@@ -2612,7 +2614,6 @@ class Game implements IGame {
             if (msg.fromF !== undefined && msg.fromC !== undefined) {
                 eliminarMurosEntre(this.mapaLaberinto[msg.fromF][msg.fromC], celdaDig);
             }
-            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'force_teleport':
             if (msg.id === this.network.idLocal) {

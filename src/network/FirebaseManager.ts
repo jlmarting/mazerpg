@@ -1,5 +1,6 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
+import { PersistenciaMundo } from '../world/PersistenciaMundo';
 
 const firebaseConfig = (window as any).FIREBASE_CONFIG || {
   apiKey: "API_KEY_PLACEHOLDER",
@@ -26,6 +27,11 @@ export class FirebaseManager {
 
   getDb() { return this.db; }
   isInitialized() { return this.initialized; }
+
+  crearPersistenciaMundo(idPartida: string): PersistenciaMundo | null {
+    if (!this.db) return null;
+    return new PersistenciaMundo(this.db, idPartida);
+  }
 
   async crearPartida(idPartida: string, hostId: string, hostNick: string) {
     if (!this.db) return;

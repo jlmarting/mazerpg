@@ -21,6 +21,8 @@ import {
     TIEMPO_DESVANECIMIENTO_NIEBLA
 } from './world/constants';
 import { dentroDeBurbuja, radioSimPorDefecto } from './world/burbuja';
+import { PersistenciaMundo } from './world/PersistenciaMundo';
+import type { DeltaMundo } from './world/mundo';
 
 declare global {
     interface Window {
@@ -68,6 +70,7 @@ class Game implements IGame {
   private heartbeatInterval: number | null = null;
   private npcSyncInterval: number | null = null;
   private guestPollingInterval: number | null = null;
+  private persistenciaMundo: PersistenciaMundo | null = null;
   private firebaseHeartbeatInterval: number | null = null;
   private firebaseNpcSyncInterval: number | null = null;
   public lobbyManager!: LobbyManager;
@@ -553,6 +556,7 @@ class Game implements IGame {
   async crearPartidaFirestore() {
     const id = generateSessionName();
     this.network.idPartidaActual = id;
+    this.persistenciaMundo = this.firebase.crearPersistenciaMundo(id);
     this.guardarSesion('host', id);
 
     const roomDisp = document.getElementById('roomDisplay');
@@ -870,6 +874,7 @@ class Game implements IGame {
         this.esHost = true;
         this.network.esHost = true;
         this.network.idPartidaActual = data.roomId;
+        this.persistenciaMundo = this.firebase.crearPersistenciaMundo(data.roomId);
         const hc = document.getElementById('hostControls');
         if (hc) hc.style.display = 'flex';
         (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
@@ -1584,6 +1589,11 @@ class Game implements IGame {
         }
     });
     return dentro;
+  }
+
+  async persistirDeltaMundo(delta: DeltaMundo): Promise<void> {
+    if (!this.esHost || !this.persistenciaMundo) return;
+    await this.persistenciaMundo.guardarDelta(delta);
   }
 
   resolverAccion(id: string, accion: any) {

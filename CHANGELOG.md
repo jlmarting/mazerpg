@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Píldoras LEARN de Renderizado y Sprites: fallback visual, fog of war y sprite mapping tool (`d57fa48`)
 - Píldoras LEARN de Generación de Mundos: BSP, serialización compacta y garantía de conectividad (`fb0e822`)
 - Píldoras LEARN de Tooling y TypeScript: multi-entry build, strict mode e inyección de configuración (`fb0e822`)
+- Wizard de lobby modo-primero: flujo modo → personaje → crear/unirse, con multijugador Firebase, cooperativo WebRTC manual, solo local y servidor local (`20d0b3a`)
 - Mundo persistente (fase 1): modelo de mundo jerárquico con `NodoMundo`/`ConectorMundo`/`DeltaMundo`, formato de delta `fmt=1` y resolución last-writer-wins (`e125ae8`)
 - Generadores de mundo versionados y deterministas por seed: mazmorra, abierto, planta y natural (`d1f713f`, `35e7c3f`)
 - `GestorMundo`: árbol de nodos, nodo activo y conectores entre mapas (`4b79f8c`)

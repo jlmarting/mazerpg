@@ -78,5 +78,5 @@ export interface IGame {
     unirseAPartidaFirestore(id: string): Promise<void>;
     obtenerEntidadPorNombre(nombre: string): IEntidadRPG | null;
     iniciarMotorJuego(): void;
-    nodoActivo?: NodoMundo;
+    nodoActivo: NodoMundo | null;
 }

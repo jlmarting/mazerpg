@@ -32,7 +32,7 @@ const TIPOS_NODO: ReadonlyArray<NodoMundo['tipo']> = [
   'personal',
 ];
 
-function tipoDesdeNombre(nombre: string): NodoMundo['tipo'] {
+export function tipoDesdeNombre(nombre: string): NodoMundo['tipo'] {
   return (TIPOS_NODO as string[]).includes(nombre)
     ? (nombre as NodoMundo['tipo'])
     : 'mazmorra';

@@ -10,7 +10,7 @@ import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
 import { NetworkManagerHttp } from './network/NetworkManagerHttp';
 import { SignalingClient, crearSignalingClient, getSignalingUrl } from './network/SignalingClient';
-import { generarLaberintoBSP, eliminarMurosEntre } from './world/generation';
+import { eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName, generateBubbleName } from './utils/session';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
@@ -23,7 +23,9 @@ import {
 import { dentroDeBurbuja, radioSimPorDefecto } from './world/burbuja';
 import { PersistenciaMundo } from './world/PersistenciaMundo';
 import { HousingLocal } from './world/housing';
-import type { ConectorMundo, DeltaMundo } from './world/mundo';
+import { GestorMundo } from './world/GestorMundo';
+import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad } from './world/integracion';
+import { FMT_DELTA, type ConectorMundo, type DeltaMundo, type GenSpec, type NodoMundo } from './world/mundo';
 
 declare global {
     interface Window {
@@ -32,7 +34,8 @@ declare global {
 }
 
 class Game implements IGame {
-  public mapaLaberinto: Celda[][] = [];
+  private _mapaLaberinto: Celda[][] = [];
+  public gestorMundo: GestorMundo = new GestorMundo();
   public protagonista: Jugador = new Jugador();
   public listaDeEnemigos: EnemigoNPC[] = [];
   public jugadoresRemotos: Map<string, any> = new Map();
@@ -85,6 +88,9 @@ class Game implements IGame {
   private diagTimer: number | null = null;
   private diagFrameCount: number = 0;
   private diagLastLog: number = 0;
+  private fundidoInicio: number = Number.NEGATIVE_INFINITY;
+  private readonly fundidoDuracion: number = 400;
+  private tickMundo: number = 0;
 
   constructor() {
     (window as any).game = this;
@@ -147,14 +153,22 @@ class Game implements IGame {
     }
   }
 
+  get mapaLaberinto(): Celda[][] {
+    return celdasCompatibilidad(this.gestorMundo, this._mapaLaberinto);
+  }
+
+  get nodoActivo(): NodoMundo | null {
+    return this.gestorMundo.mundo.get(this.gestorMundo.nodoActivoId) ?? null;
+  }
+
   initMap() {
-    this.mapaLaberinto = [];
+    this._mapaLaberinto = [];
     for (let fila = 0; fila < this.config.NUMERO_FILAS; fila++) {
       let filaCeldas = [];
       for (let columna = 0; columna < this.config.NUMERO_COLUMNAS; columna++) {
         filaCeldas.push(new Celda(fila, columna));
       }
-      this.mapaLaberinto.push(filaCeldas);
+      this._mapaLaberinto.push(filaCeldas);
     }
   }
 
@@ -573,6 +587,7 @@ class Game implements IGame {
     this.configurarIntervalosHost();
     this.ui.registrarLogConexion(`Partida creada: ${id}`);
     this.ui.ocultarLobby();
+    await this.prepararMundo();
     this.iniciarMotorJuego();
   }
 
@@ -891,6 +906,7 @@ class Game implements IGame {
 
         this.configurarIntervalosHost();
         this.ui.ocultarLobby();
+        await this.prepararMundo();
         this.iniciarMotorJuego();
     } else if (data.rol === 'guest') {
         this.unirseAPartidaFirestore(data.roomId);
@@ -925,7 +941,9 @@ class Game implements IGame {
     document.getElementById('actionsMenu')!.style.display = 'block';
 
     if (this.esHost || !this.network.multiplayerActivo) {
-        generarLaberintoBSP(this.mapaLaberinto);
+        if (!this.gestorMundo.nodoActivoId) {
+            this.gestorMundo.crearMundoInicial(this.crearGenRaiz(), this.config.NUMERO_FILAS, this.config.NUMERO_COLUMNAS);
+        }
         const pos = this.obtenerPosicionInicioAleatoria();
         this.protagonista.fila = pos.f;
         this.protagonista.columna = pos.c;
@@ -937,6 +955,20 @@ class Game implements IGame {
     this.ultimoFrameTime = performance.now();
     this.fpsBajoContador = 0;
     this.cicloDeJuego();
+  }
+
+  private crearGenRaiz(): GenSpec {
+    return { nombre: 'mazmorra', version: 1, seed: Date.now() >>> 0, params: {} };
+  }
+
+  private async prepararMundo(): Promise<void> {
+    await arrancarMundoGestor({
+      gestor: this.gestorMundo,
+      persistencia: this.persistenciaMundo,
+      filas: this.config.NUMERO_FILAS,
+      columnas: this.config.NUMERO_COLUMNAS,
+      genPorDefecto: this.crearGenRaiz(),
+    });
   }
 
   generarObjetos() {
@@ -1308,6 +1340,7 @@ class Game implements IGame {
 
     this.renderer.finalizarZoom();
 
+    this.dibujarFundido();
     this.renderer.dibujarMarcadoresMovimiento(this.config);
     this.renderer.dibujarUI(this);
 
@@ -1315,6 +1348,23 @@ class Game implements IGame {
       try { this.cicloDeJuego(); }
       catch (e) { console.error('[CICLO] Error en game loop:', e, (e as Error).stack); this.gameLoopId = requestAnimationFrame(() => this.cicloDeJuego()); }
     });
+  }
+
+  private iniciarFundido(): void {
+    this.fundidoInicio = performance.now();
+  }
+
+  private dibujarFundido(): void {
+    const transcurrido = performance.now() - this.fundidoInicio;
+    if (transcurrido < 0 || transcurrido > this.fundidoDuracion) return;
+    const t = transcurrido / this.fundidoDuracion;
+    const alpha = t < 0.5 ? t * 2 : (1 - t) * 2;
+    const ctx = this.renderer.getCtx();
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.restore();
   }
 
   detenerMotorJuego() {
@@ -1597,7 +1647,12 @@ class Game implements IGame {
 
   onlineIds(): Set<string> {
     const ids = new Set<string>([this.network.idLocal]);
-    this.network.jugadoresRemotos.forEach((_jugador, id) => ids.add(id));
+    if (this.network.idRealDelHost) ids.add(this.network.idRealDelHost);
+    this.network.jugadoresRemotos.forEach((jugador, id) => {
+        ids.add(id);
+        const idReal: unknown = jugador?.entidad?.id;
+        if (typeof idReal === 'string' && idReal.length > 0) ids.add(idReal);
+    });
     return ids;
   }
 
@@ -1607,18 +1662,53 @@ class Game implements IGame {
 
   portalesHousingInactivos(): Set<string> {
     const online = this.onlineIds();
+    const nodoActivo = this.gestorMundo.nodoActivoId;
     const inactivos = new Set<string>();
-    for (const conector of this.housing.portales()) {
+    const vistos = new Set<string>();
+    const considerar = (conector: ConectorMundo): void => {
+      if (conector.housingOwnerId === null) return;
+      if (nodoActivo && conector.nodoOrigenId !== nodoActivo) return;
+      if (vistos.has(conector.id)) return;
+      vistos.add(conector.id);
       if (!this.housing.portalDisponible(conector, online)) {
         inactivos.add(conector.id);
       }
-    }
+    };
+    for (const conector of this.housing.portales()) considerar(conector);
+    for (const conector of this.gestorMundo.conectores.values()) considerar(conector);
     return inactivos;
   }
 
   async persistirDeltaMundo(delta: DeltaMundo): Promise<void> {
     if (!this.esHost || !this.persistenciaMundo) return;
     await this.persistenciaMundo.guardarDelta(delta);
+  }
+
+  private siguienteTickMundo(): number {
+    this.tickMundo = Math.max(this.tickMundo + 1, Date.now());
+    return this.tickMundo;
+  }
+
+  private construirDelta(fila: number, columna: number, cambio: DeltaMundo['cambio'], autoria: string): DeltaMundo {
+    return {
+      fmt: FMT_DELTA,
+      nodoId: this.gestorMundo.nodoActivoId || 'raiz',
+      fila,
+      columna,
+      autoria: autoria || this.network.idLocal,
+      tick: this.siguienteTickMundo(),
+      cambio,
+    };
+  }
+
+  private aplicarDeltaAutorizado(delta: DeltaMundo): boolean {
+    return aplicarDeltaConPersistencia(
+      this.gestorMundo,
+      this.mapaLaberinto,
+      delta,
+      this.esHost,
+      (d) => void this.persistirDeltaMundo(d),
+    );
   }
 
   resolverAccion(id: string, accion: any) {
@@ -1733,8 +1823,8 @@ class Game implements IGame {
                 (entidad as any).ultimaCasillaAtacada = { f: sigFila, c: sigColumna };
             }
             if (celdaObjetivo.golpesCavar >= 5) {
-                celdaObjetivo.esTransitable = true;
                 celdaObjetivo.golpesCavar = 0;
+                this.aplicarDeltaAutorizado(this.construirDelta(sigFila, sigColumna, { tipo: 'cavar' }, id));
                 this.renderer.invalidarCacheLaberinto();
                 eliminarMurosEntre(this.mapaLaberinto[entidad.fila][entidad.columna], celdaObjetivo);
                 this.network.enviarMensaje({
@@ -1758,7 +1848,7 @@ class Game implements IGame {
 
             if (celdaNueva.tienePico) {
                 (entidad as any).tienePico = true;
-                celdaNueva.tienePico = false;
+                this.aplicarDeltaAutorizado(this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'tienePico', valor: false }, id));
                 this.renderer.invalidarCacheLaberinto();
                 this.network.enviarMensaje({ tipo: 'pick_collected', f: entidad.fila, c: entidad.columna });
             }
@@ -1767,12 +1857,12 @@ class Game implements IGame {
                 const CC = ((3 * entidad.fuerza) + (2 * entidad.agilidad) + (1 * entidad.inteligencia)) / 6;
                 const recuperacion = Math.floor(PC / CC);
                 entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + Math.max(1, recuperacion));
-                celdaNueva.alimento = null;
+                this.aplicarDeltaAutorizado(this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'alimento', valor: null }, id));
                 this.renderer.invalidarCacheLaberinto();
                 this.network.enviarMensaje({ tipo: 'food_consumed', f: entidad.fila, c: entidad.columna });
             }
             if (celdaNueva.burbuja) {
-                celdaNueva.burbuja = null;
+                this.aplicarDeltaAutorizado(this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'burbuja', valor: null }, id));
                 entidad.inmunidadHasta = Date.now() + 30000;
                 this.renderer.invalidarCacheLaberinto();
                 this.network.enviarMensaje({ tipo: 'shield_collected', f: entidad.fila, c: entidad.columna });
@@ -2140,7 +2230,7 @@ class Game implements IGame {
               { tipo: "Pescado", pc: 70 }
           ];
           const alimento = alimentos[Math.floor(Math.random() * alimentos.length)];
-          this.mapaLaberinto[f][c].alimento = alimento;
+          this.aplicarDeltaAutorizado(this.construirDelta(f, c, { tipo: 'objeto', campo: 'alimento', valor: alimento }, (emisor as any).id || this.network.idLocal));
           this.registrarEventoLog(`${emisor.nombre} ha creado ${alimento.tipo}.`);
           this.ui.crearTextoFlotanteEnCelda(f, c, "¡COMIDA!", "#ffcc00", this);
 
@@ -2241,6 +2331,43 @@ class Game implements IGame {
   }
 
   verificarPortal(entidad: any) {
+    const conector = this.gestorMundo.conectorEn(entidad.fila, entidad.columna);
+    if (conector) {
+        this.atravesarConector(entidad, conector);
+        return;
+    }
+    this.teleportarPortalClasico(entidad);
+  }
+
+  private atravesarConector(entidad: any, conector: ConectorMundo): void {
+    let aparicion: { fila: number; columna: number };
+    try {
+        aparicion = this.gestorMundo.atravesar(conector.id);
+    } catch (e) {
+        console.warn(`No se pudo atravesar el conector ${conector.id}; se usa el portal clásico.`, e);
+        this.teleportarPortalClasico(entidad);
+        return;
+    }
+    this.iniciarFundido();
+    entidad.fila = aparicion.fila;
+    entidad.columna = aparicion.columna;
+    entidad.visualFila = aparicion.fila;
+    entidad.visualColumna = aparicion.columna;
+    this.registrarEventoLog(`${entidad.nombre} ha atravesado un portal.`);
+    if (entidad === this.protagonista) {
+        this.ui.crearTextoFlotanteEnCelda(aparicion.fila, aparicion.columna, "¡PORTAL!", "#0000ff", this);
+        if (this.network && this.network.activo) {
+            this.network.enviarMensaje({
+                tipo: 'posicion',
+                f: aparicion.fila, c: aparicion.columna, cam: false,
+                id: this.network.idLocal, nick: this.protagonista.nombre,
+                hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
+            });
+        }
+    }
+  }
+
+  private teleportarPortalClasico(entidad: any): void {
     const celda = this.mapaLaberinto[entidad.fila][entidad.columna];
     if (celda.esPortal) {
         const todosLosPortales: {f: number, c: number}[] = [];
@@ -2432,8 +2559,9 @@ class Game implements IGame {
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.esHost) {
                 if (!this.enBurbujaSim(msg.f, msg.c)) break;
-                const celda = this.mapaLaberinto[msg.f][msg.c];
-                if (msg.a) celda.alimento = msg.a;
+                if (msg.a) {
+                    this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: msg.a }, idEmisor));
+                }
                 this.ui.crearTextoFlotanteEnCelda(msg.f, msg.c, "¡COMIDA!", "#ffcc00", this);
             }
             break;
@@ -2622,32 +2750,28 @@ class Game implements IGame {
         case 'food_consumed':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            const celdaFood = this.mapaLaberinto[msg.f][msg.c];
-            celdaFood.alimento = null;
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: null }, idEmisor));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'pick_collected':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            const celdaPick = this.mapaLaberinto[msg.f][msg.c];
-            celdaPick.tienePico = false;
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'tienePico', valor: false }, idEmisor));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'shield_collected':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            const celdaShield = this.mapaLaberinto[msg.f][msg.c];
-            celdaShield.burbuja = null;
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'burbuja', valor: null }, idEmisor));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'dig_completed':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            const celdaDig = this.mapaLaberinto[msg.f][msg.c];
-            celdaDig.esTransitable = true;
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'cavar' }, idEmisor));
             this.renderer?.invalidarCacheLaberinto();
             if (msg.fromF !== undefined && msg.fromC !== undefined) {
-                eliminarMurosEntre(this.mapaLaberinto[msg.fromF][msg.fromC], celdaDig);
+                eliminarMurosEntre(this.mapaLaberinto[msg.fromF][msg.fromC], this.mapaLaberinto[msg.f][msg.c]);
             }
             break;
         case 'force_teleport':

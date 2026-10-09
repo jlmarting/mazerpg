@@ -22,7 +22,8 @@ import {
 } from './world/constants';
 import { dentroDeBurbuja, radioSimPorDefecto } from './world/burbuja';
 import { PersistenciaMundo } from './world/PersistenciaMundo';
-import type { DeltaMundo } from './world/mundo';
+import { HousingLocal } from './world/housing';
+import type { ConectorMundo, DeltaMundo } from './world/mundo';
 
 declare global {
     interface Window {
@@ -39,6 +40,7 @@ class Game implements IGame {
   public ui: UIManager = new UIManager();
   public firebase: FirebaseManager = new FirebaseManager();
   public network: NetworkManager = new NetworkManager();
+  public housing: HousingLocal;
   public signaling: SignalingClient | null = null;
   public networkHttp: NetworkManagerHttp | null = null;
   private modoMultijugador: 'firebase' | 'http' | 'manual' = 'firebase';
@@ -88,6 +90,7 @@ class Game implements IGame {
     (window as any).game = this;
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas);
+    this.housing = new HousingLocal(this.network.idLocal);
     this.inicializarAssets();
     this.setupEntity(this.protagonista);
     this.initMap();
@@ -1208,6 +1211,7 @@ class Game implements IGame {
     const offset = this.renderer.obtenerOffsetCamara(this.protagonista, this.config);
 
     this.renderer.aplicarZoom(this.config);
+    this.renderer.setPortalesHousingInactivos(this.portalesHousingInactivos());
     this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config);
 
     let persistence = this.config.TIEMPO_DESVANECIMIENTO_NIEBLA;
@@ -1589,6 +1593,27 @@ class Game implements IGame {
         }
     });
     return dentro;
+  }
+
+  onlineIds(): Set<string> {
+    const ids = new Set<string>([this.network.idLocal]);
+    this.network.jugadoresRemotos.forEach((_jugador, id) => ids.add(id));
+    return ids;
+  }
+
+  portalDisponible(conector: ConectorMundo): boolean {
+    return this.housing.portalDisponible(conector, this.onlineIds());
+  }
+
+  portalesHousingInactivos(): Set<string> {
+    const online = this.onlineIds();
+    const inactivos = new Set<string>();
+    for (const conector of this.housing.portales()) {
+      if (!this.housing.portalDisponible(conector, online)) {
+        inactivos.add(conector.id);
+      }
+    }
+    return inactivos;
   }
 
   async persistirDeltaMundo(delta: DeltaMundo): Promise<void> {

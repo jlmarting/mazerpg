@@ -1,7 +1,14 @@
 import { Celda } from './Celda';
 import { generarNodo } from './generadores';
 import { eliminarMurosEntre } from './generation';
-import type { ConectorMundo, GenSpec, NodoMundo } from './mundo';
+import { puedeEditarNodo } from './housing';
+import {
+  aplicarDelta as aplicarDeltaEnCeldas,
+  type ConectorMundo,
+  type DeltaMundo,
+  type GenSpec,
+  type NodoMundo,
+} from './mundo';
 
 interface Vecino {
   df: number;
@@ -113,6 +120,27 @@ export class GestorMundo {
     ) {
       celdas[conector.filaO][conector.columnaO].conectorId = conector.id;
     }
+  }
+
+  registrarPortalPersonal(conector: ConectorMundo): void {
+    this.registrarConector(conector);
+
+    const nodoOrigen = this.mundo.get(conector.nodoOrigenId);
+    if (!nodoOrigen) return;
+    const celdas = nodoOrigen.celdas;
+    if (
+      conector.filaO >= 0 && conector.filaO < celdas.length &&
+      conector.columnaO >= 0 && conector.columnaO < celdas[conector.filaO].length
+    ) {
+      celdas[conector.filaO][conector.columnaO].esPortal = true;
+    }
+  }
+
+  aplicarDelta(delta: DeltaMundo): boolean {
+    const nodo = this.mundo.get(delta.nodoId);
+    if (!nodo) return false;
+    if (!puedeEditarNodo(nodo, delta.autoria)) return false;
+    return aplicarDeltaEnCeldas(nodo.celdas, delta);
   }
 
   private materializarDestino(conector: ConectorMundo): NodoMundo {

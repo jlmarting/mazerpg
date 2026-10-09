@@ -14,6 +14,7 @@ export class Renderer {
   private mazeCache: HTMLCanvasElement | null = null;
   private mazeCacheCtx: CanvasRenderingContext2D | null = null;
   private mazeCacheValida: boolean = false;
+  private portalesHousingInactivos: Set<string> = new Set();
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -760,6 +761,9 @@ export class Renderer {
         }
 
         if (celda.esPortal) {
+          const atenuado =
+            celda.conectorId !== null && this.portalesHousingInactivos.has(celda.conectorId);
+          ctx.globalAlpha = atenuado ? 0.25 : 1;
           ctx.fillStyle = 'rgba(0, 0, 255, 0.4)';
           ctx.beginPath();
           ctx.moveTo(x + TAMANO_CELDA / 2, y + 5);
@@ -770,6 +774,7 @@ export class Renderer {
           ctx.fill();
           ctx.strokeStyle = '#0000ff';
           ctx.stroke();
+          ctx.globalAlpha = 1;
         }
 
         if (celda.alimento) {
@@ -905,6 +910,20 @@ export class Renderer {
 
   invalidarCacheLaberinto() {
     this.mazeCacheValida = false;
+  }
+
+  setPortalesHousingInactivos(ids: ReadonlySet<string>): void {
+    let cambia = ids.size !== this.portalesHousingInactivos.size;
+    if (!cambia) {
+      for (const id of ids) {
+        if (!this.portalesHousingInactivos.has(id)) {
+          cambia = true;
+          break;
+        }
+      }
+    }
+    this.portalesHousingInactivos = new Set(ids);
+    if (cambia) this.mazeCacheValida = false;
   }
 
   private cacheMazeDibujar(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {

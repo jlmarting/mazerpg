@@ -1718,10 +1718,11 @@ class Game implements IGame {
                 this.network.enviarMensaje({ tipo: 'food_consumed', f: entidad.fila, c: entidad.columna });
             }
             if (celdaNueva.burbuja) {
-                const ahoraB = Date.now();
-                if (ahoraB > entidad.inmunidadHasta) {
-                    entidad.inmunidadHasta = ahoraB + 30000;
-                }
+                celdaNueva.burbuja = null;
+                entidad.inmunidadHasta = Date.now() + 30000;
+                this.renderer.invalidarCacheLaberinto();
+                this.network.enviarMensaje({ tipo: 'shield_collected', f: entidad.fila, c: entidad.columna });
+                this.registrarEventoLog(`${entidad.nombre} recoge escudo: inmunidad 30 s.`);
             }
             this.verificarPortal(entidad);
 
@@ -2571,6 +2572,12 @@ class Game implements IGame {
         case 'pick_collected':
             const celdaPick = this.mapaLaberinto[msg.f][msg.c];
             celdaPick.tienePico = false;
+            this.renderer?.invalidarCacheLaberinto();
+            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            break;
+        case 'shield_collected':
+            const celdaShield = this.mapaLaberinto[msg.f][msg.c];
+            celdaShield.burbuja = null;
             this.renderer?.invalidarCacheLaberinto();
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;

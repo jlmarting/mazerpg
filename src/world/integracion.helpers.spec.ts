@@ -95,7 +95,7 @@ async function main(): Promise<void> {
 
   // Partida sin mundos: un único nodo BSP, comportamiento actual
   const gestorNuevo = new GestorMundo();
-  const raizSinMundos = await arrancarMundoGestor({
+  const { nodo: raizSinMundos, cargado: cargadoSinMundos } = await arrancarMundoGestor({
     gestor: gestorNuevo,
     persistencia: null,
     filas: 10,
@@ -103,6 +103,7 @@ async function main(): Promise<void> {
     genPorDefecto: GEN_RAIZ,
   });
   assert(raizSinMundos.id === 'raiz', 'sin mundos la raíz creada tiene id raiz');
+  assert(cargadoSinMundos === false, 'un mundo recién creado se marca como no cargado');
   assert(raizSinMundos.padreId === null, 'sin mundos la raíz no tiene padre');
   assert(raizSinMundos.tipo === 'mazmorra', 'sin mundos la raíz es tipo mazmorra');
   assert(
@@ -135,13 +136,14 @@ async function main(): Promise<void> {
     deltas: [deltaAlimento(0, 0)],
   });
   const gestorPersist = new GestorMundo();
-  await arrancarMundoGestor({
+  const arranqueCargado = await arrancarMundoGestor({
     gestor: gestorPersist,
     persistencia: persistenciaLlena,
     filas: 10,
     columnas: 10,
     genPorDefecto: { nombre: 'mazmorra', version: 1, seed: 999, params: {} },
   });
+  assert(arranqueCargado.cargado === true, 'un mundo persistido se marca como cargado');
   assert(gestorPersist.nodoActivoId === 'raiz', 'con mundos el nodo persistido queda activo');
   const celdaCargada = gestorPersist.obtenerCeldas()[0][0];
   assert(
@@ -203,6 +205,44 @@ async function main(): Promise<void> {
     'un cliente no-host aplica el delta localmente',
   );
   assert(persistidos.length === 1, 'un cliente no-host no persiste el delta');
+
+  // Regresión Critical: conectorEn sin nodo activo no lanza (retrocompat)
+  const gestorSinNodo = new GestorMundo();
+  let lanzoConectorEn = false;
+  let conectorVacio: unknown = 'sin-asignar';
+  try {
+    conectorVacio = gestorSinNodo.conectorEn(0, 0);
+  } catch {
+    lanzoConectorEn = true;
+  }
+  assert(!lanzoConectorEn, 'conectorEn sin nodo activo no lanza');
+  assert(conectorVacio === null, 'conectorEn sin nodo activo devuelve null');
+
+  // Importante #3: un nodo compactado no se puede reconstruir en fase 1
+  const persistenciaCompactada = new PersistenciaMock();
+  persistenciaCompactada.nodos = ['raiz'];
+  persistenciaCompactada.porNodo.set('raiz', {
+    gen: GEN_RAIZ,
+    ownerId: null,
+    deltas: [],
+    snapshot: { celdas: 'x' },
+    ultimaCompactacionTick: 5,
+  });
+  const gestorCompactado = new GestorMundo();
+  let lanzoCompactado = false;
+  try {
+    await arrancarMundoGestor({
+      gestor: gestorCompactado,
+      persistencia: persistenciaCompactada,
+      filas: 10,
+      columnas: 10,
+      genPorDefecto: GEN_RAIZ,
+    });
+  } catch {
+    lanzoCompactado = true;
+  }
+  assert(lanzoCompactado, 'cargar un nodo compactado se rechaza (snapshot no soportado en fase 1)');
+  assert(gestorCompactado.nodoActivoId === '', 'un nodo compactado rechazado no deja nodo activo');
 
   console.log(`${ok}/${total} ok`);
 }

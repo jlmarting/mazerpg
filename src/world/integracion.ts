@@ -7,6 +7,8 @@ export interface NodoPersistidoLike {
   gen: GenSpec;
   ownerId: string | null;
   deltas: DeltaMundo[];
+  snapshot?: unknown;
+  ultimaCompactacionTick?: number;
 }
 
 export interface PersistenciaMundoLike {
@@ -24,6 +26,11 @@ export interface ArranqueMundoParams {
 }
 
 export type PlanArranque = { tipo: 'crear' } | { tipo: 'cargar'; nodoId: string };
+
+export interface ResultadoArranque {
+  nodo: NodoMundo;
+  cargado: boolean;
+}
 
 export function planificarArranque(nodos: string[]): PlanArranque {
   if (nodos.length === 0) return { tipo: 'crear' };
@@ -58,6 +65,12 @@ function materializarNodo(
   filas: number,
   columnas: number,
 ): NodoMundo {
+  // Fase 1: el formato del snapshot de compactación no está definido, así que un nodo
+  // compactado no se puede reconstruir. Se rechaza explícitamente en lugar de perder
+  // silenciosamente los cambios compactados (el llamador cae a un mundo nuevo).
+  if ((persistido.ultimaCompactacionTick ?? 0) > 0) {
+    throw new Error(`Nodo ${nodoId} compactado: snapshot no soportado en fase 1`);
+  }
   const celdas = generarNodo(persistido.gen, filas, columnas);
   for (const delta of persistido.deltas) {
     aplicarDelta(celdas, delta);
@@ -78,7 +91,7 @@ function materializarNodo(
   return nodo;
 }
 
-export async function arrancarMundoGestor(params: ArranqueMundoParams): Promise<NodoMundo> {
+export async function arrancarMundoGestor(params: ArranqueMundoParams): Promise<ResultadoArranque> {
   const { gestor, persistencia, filas, columnas, genPorDefecto } = params;
 
   if (persistencia) {
@@ -87,7 +100,7 @@ export async function arrancarMundoGestor(params: ArranqueMundoParams): Promise<
     if (plan.tipo === 'cargar') {
       const persistido = await persistencia.cargarNodo(plan.nodoId);
       if (persistido) {
-        return materializarNodo(gestor, plan.nodoId, persistido, filas, columnas);
+        return { nodo: materializarNodo(gestor, plan.nodoId, persistido, filas, columnas), cargado: true };
       }
     }
   }
@@ -96,5 +109,5 @@ export async function arrancarMundoGestor(params: ArranqueMundoParams): Promise<
   if (persistencia) {
     await persistencia.guardarNodo(raiz.id, raiz.gen, raiz.ownerId);
   }
-  return raiz;
+  return { nodo: raiz, cargado: false };
 }

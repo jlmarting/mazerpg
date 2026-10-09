@@ -82,7 +82,9 @@ export class GestorMundo {
   }
 
   conectorEn(fila: number, columna: number): ConectorMundo | null {
-    const celdas = this.obtenerCeldas();
+    const nodo = this.mundo.get(this.nodoActivoId);
+    if (!nodo) return null;
+    const celdas = nodo.celdas;
     if (fila < 0 || fila >= celdas.length) return null;
     const filaCeldas = celdas[fila];
     if (!filaCeldas || columna < 0 || columna >= filaCeldas.length) return null;

@@ -39,6 +39,8 @@ export interface NodoPersistido {
   gen: GenSpec;
   ownerId: string | null;
   deltas: DeltaMundo[];
+  snapshot: unknown;
+  ultimaCompactacionTick: number;
 }
 
 export class PersistenciaMundo {
@@ -100,7 +102,9 @@ export class PersistenciaMundo {
     });
 
     const ownerId = typeof datos.ownerId === 'string' ? datos.ownerId : null;
-    return { gen: datos.gen as GenSpec, ownerId, deltas };
+    const ultimaCompactacionTick =
+      typeof datos.ultimaCompactacionTick === 'number' ? datos.ultimaCompactacionTick : 0;
+    return { gen: datos.gen as GenSpec, ownerId, deltas, snapshot: datos.snapshot, ultimaCompactacionTick };
   }
 
   async listarNodos(): Promise<string[]> {

@@ -160,6 +160,12 @@ function main(): void {
   gestorVacio.nodoActivoId = 'fantasma';
   assertLanza(() => gestorVacio.obtenerNodoActivo(), 'obtenerNodoActivo lanza si el nodo no existe');
 
+  // conectorEn es defensivo: sin nodo activo devuelve null en vez de lanzar (retrocompat)
+  const gestorSinNodo = new GestorMundo();
+  assert(gestorSinNodo.conectorEn(0, 0) === null, 'conectorEn sin nodo activo devuelve null');
+  assert(gestorSinNodo.conectorEn(99, 99) === null, 'conectorEn sin nodo activo fuera de rango devuelve null');
+  assertLanza(() => gestorSinNodo.obtenerCeldas(), 'obtenerCeldas sigue lanzando sin nodo activo');
+
   // Destino fuera de rango: se rechaza (lanza), no se devuelve un spawn inválido
   const conectorFuera = conectorBase({
     id: 'con-fuera',

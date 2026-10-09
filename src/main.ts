@@ -91,6 +91,7 @@ class Game implements IGame {
   private fundidoInicio: number = Number.NEGATIVE_INFINITY;
   private readonly fundidoDuracion: number = 400;
   private tickMundo: number = 0;
+  private mundoCargado: boolean = false;
 
   constructor() {
     (window as any).game = this;
@@ -949,8 +950,10 @@ class Game implements IGame {
         this.protagonista.columna = pos.c;
         this.asustarMonstruosCercanos(pos.f, pos.c);
         this.generarEnemigos();
-        this.generarObjetos();
-        this.generarEscenarioDinamicoDemo();
+        if (!this.mundoCargado) {
+            this.generarObjetos();
+            this.generarEscenarioDinamicoDemo();
+        }
     }
     this.ultimoFrameTime = performance.now();
     this.fpsBajoContador = 0;
@@ -962,13 +965,22 @@ class Game implements IGame {
   }
 
   private async prepararMundo(): Promise<void> {
-    await arrancarMundoGestor({
-      gestor: this.gestorMundo,
-      persistencia: this.persistenciaMundo,
-      filas: this.config.NUMERO_FILAS,
-      columnas: this.config.NUMERO_COLUMNAS,
-      genPorDefecto: this.crearGenRaiz(),
-    });
+    try {
+      const resultado = await arrancarMundoGestor({
+        gestor: this.gestorMundo,
+        persistencia: this.persistenciaMundo,
+        filas: this.config.NUMERO_FILAS,
+        columnas: this.config.NUMERO_COLUMNAS,
+        genPorDefecto: this.crearGenRaiz(),
+      });
+      this.mundoCargado = resultado.cargado;
+    } catch (e) {
+      console.warn('No se pudo cargar el mundo persistido; se genera uno nuevo.', e);
+      this.mundoCargado = false;
+      if (!this.gestorMundo.nodoActivoId) {
+        this.gestorMundo.crearMundoInicial(this.crearGenRaiz(), this.config.NUMERO_FILAS, this.config.NUMERO_COLUMNAS);
+      }
+    }
   }
 
   generarObjetos() {
@@ -2331,7 +2343,9 @@ class Game implements IGame {
   }
 
   verificarPortal(entidad: any) {
-    const conector = this.gestorMundo.conectorEn(entidad.fila, entidad.columna);
+    const conector = this.gestorMundo.nodoActivoId
+        ? this.gestorMundo.conectorEn(entidad.fila, entidad.columna)
+        : null;
     if (conector) {
         this.atravesarConector(entidad, conector);
         return;

@@ -19,6 +19,7 @@ export class Celda {
   golpesCavar: number = 0;
   tipoEscenario: 'ninguno' | 'puerta' | 'trampa' = 'ninguno';
   estadoEscenario: string = 'idle';
+  conectorId: string | null = null;
 
   constructor(fila: number, columna: number) {
     this.fila = fila;

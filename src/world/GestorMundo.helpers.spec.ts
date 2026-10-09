@@ -84,6 +84,16 @@ function conectorBase(overrides: Partial<ConectorMundo>): ConectorMundo {
   };
 }
 
+function tieneSalida(celdas: Celda[][], fila: number, columna: number): boolean {
+  const celda = celdas[fila][columna];
+  if (!celda || !celda.esTransitable) return false;
+  if (fila > 0 && !celda.muros.superior && celdas[fila - 1][columna].esTransitable) return true;
+  if (fila + 1 < celdas.length && !celda.muros.inferior && celdas[fila + 1][columna].esTransitable) return true;
+  if (columna > 0 && !celda.muros.izquierdo && celdas[fila][columna - 1].esTransitable) return true;
+  if (columna + 1 < celdas[fila].length && !celda.muros.derecho && celdas[fila][columna + 1].esTransitable) return true;
+  return false;
+}
+
 function main(): void {
   const gestor = new GestorMundo();
 
@@ -122,6 +132,10 @@ function main(): void {
     destino.celdas[2][2].esTransitable === true,
     'atravesar garantiza una aparición transitable',
   );
+  assert(
+    tieneSalida(destino.celdas, 2, 2),
+    'la aparición no queda sellada: tiene un muro abierto hacia celda transitable',
+  );
   assert(gestor.obtenerCeldas() === destino.celdas, 'obtenerCeldas sigue al nodo activo tras atravesar');
 
   // Conmutación de vuelta
@@ -145,6 +159,27 @@ function main(): void {
   const gestorVacio = new GestorMundo();
   gestorVacio.nodoActivoId = 'fantasma';
   assertLanza(() => gestorVacio.obtenerNodoActivo(), 'obtenerNodoActivo lanza si el nodo no existe');
+
+  // Destino fuera de rango: se rechaza (lanza), no se devuelve un spawn inválido
+  const conectorFuera = conectorBase({
+    id: 'con-fuera',
+    nodoOrigenId: raiz.id,
+    filaO: 1,
+    columnaO: 1,
+    nodoDestinoId: destino.id,
+    filaD: 999,
+    columnaD: 0,
+  });
+  gestor.registrarConector(conectorFuera);
+  gestor.nodoActivoId = raiz.id;
+  assertLanza(
+    () => gestor.atravesar('con-fuera'),
+    'atravesar rechaza una aparición fuera de rango',
+  );
+  assert(
+    gestor.nodoActivoId === raiz.id,
+    'tras rechazar una aparición inválida el nodo activo no cambia',
+  );
 
   // Materialización perezosa: destino ausente => generarNodo determinista
   const crearGestorLazily = (): GestorMundo => {
@@ -179,6 +214,10 @@ function main(): void {
   assert(
     resA.nodo.celdas[5][6].esTransitable === true,
     'la aparición del nodo materializado es transitable',
+  );
+  assert(
+    tieneSalida(resA.nodo.celdas, 5, 6),
+    'la aparición del nodo materializado no queda sellada (muro abierto a celda transitable)',
   );
 
   const gB = crearGestorLazily();

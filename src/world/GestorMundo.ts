@@ -1,6 +1,21 @@
 import { Celda } from './Celda';
 import { generarNodo } from './generadores';
+import { eliminarMurosEntre } from './generation';
 import type { ConectorMundo, GenSpec, NodoMundo } from './mundo';
+
+interface Vecino {
+  df: number;
+  dc: number;
+  muro: 'superior' | 'derecho' | 'inferior' | 'izquierdo';
+  opuesto: 'superior' | 'derecho' | 'inferior' | 'izquierdo';
+}
+
+const VECINOS: ReadonlyArray<Vecino> = [
+  { df: -1, dc: 0, muro: 'superior', opuesto: 'inferior' },
+  { df: 1, dc: 0, muro: 'inferior', opuesto: 'superior' },
+  { df: 0, dc: -1, muro: 'izquierdo', opuesto: 'derecho' },
+  { df: 0, dc: 1, muro: 'derecho', opuesto: 'izquierdo' },
+];
 
 const TIPOS_NODO: ReadonlyArray<NodoMundo['tipo']> = [
   'mazmorra',
@@ -80,16 +95,10 @@ export class GestorMundo {
 
     this.mundo.set(nodoDestino.id, nodoDestino);
 
-    const celdas = nodoDestino.celdas;
-    if (
-      conector.filaD >= 0 && conector.filaD < celdas.length &&
-      conector.columnaD >= 0 && conector.columnaD < celdas[conector.filaD].length
-    ) {
-      celdas[conector.filaD][conector.columnaD].esTransitable = true;
-    }
+    const aparicion = this.prepararAparicion(nodoDestino, conector.filaD, conector.columnaD);
 
     this.nodoActivoId = nodoDestino.id;
-    return { nodo: nodoDestino, fila: conector.filaD, columna: conector.columnaD };
+    return { nodo: nodoDestino, fila: aparicion.fila, columna: aparicion.columna };
   }
 
   registrarConector(conector: ConectorMundo): void {
@@ -133,5 +142,57 @@ export class GestorMundo {
     };
     this.mundo.set(nodo.id, nodo);
     return nodo;
+  }
+
+  private enRango(celdas: Celda[][], fila: number, columna: number): boolean {
+    if (fila < 0 || fila >= celdas.length) return false;
+    const filaCeldas = celdas[fila];
+    return !!filaCeldas && columna >= 0 && columna < filaCeldas.length;
+  }
+
+  private prepararAparicion(
+    nodo: NodoMundo,
+    fila: number,
+    columna: number,
+  ): { fila: number; columna: number } {
+    const celdas = nodo.celdas;
+    if (!this.enRango(celdas, fila, columna)) {
+      throw new Error(`Aparición fuera de rango en ${nodo.id}: (${fila}, ${columna})`);
+    }
+
+    const celda = celdas[fila][columna];
+    celda.esTransitable = true;
+
+    const vecinosEnRango = VECINOS.map((v) => ({
+      v,
+      fila: fila + v.df,
+      columna: columna + v.dc,
+    })).filter(({ fila: nf, columna: nc }) => this.enRango(celdas, nf, nc));
+
+    const yaConectada = vecinosEnRango.some(({ v, fila: nf, columna: nc }) => {
+      const vecino = celdas[nf][nc];
+      return (
+        vecino.esTransitable &&
+        celda.muros[v.muro] === false &&
+        vecino.muros[v.opuesto] === false
+      );
+    });
+    if (yaConectada) return { fila, columna };
+
+    const vecinoTransitable = vecinosEnRango.find(
+      ({ fila: nf, columna: nc }) => celdas[nf][nc].esTransitable,
+    );
+    if (vecinoTransitable) {
+      eliminarMurosEntre(celda, celdas[vecinoTransitable.fila][vecinoTransitable.columna]);
+      return { fila, columna };
+    }
+
+    const vecinoLibre = vecinosEnRango[0];
+    if (vecinoLibre) {
+      const vecino = celdas[vecinoLibre.fila][vecinoLibre.columna];
+      vecino.esTransitable = true;
+      eliminarMurosEntre(celda, vecino);
+    }
+    return { fila, columna };
   }
 }

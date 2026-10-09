@@ -6,7 +6,7 @@ export interface AlmacenamientoLocal {
 }
 
 const CLAVE_PREFIJO = 'mazerpg.casa.';
-const NODO_GLOBAL_ID = 'global';
+const NODO_RAIZ_ID = 'raiz';
 
 function almacenamientoGlobal(): AlmacenamientoLocal | null {
   const global = globalThis as { localStorage?: AlmacenamientoLocal };
@@ -52,11 +52,12 @@ export class HousingLocal {
   crearPortalPersonal(
     miNodo: NodoMundo,
     destinoCelda: { fila: number; columna: number },
+    origenNodoId: string = NODO_RAIZ_ID,
   ): ConectorMundo {
     const conector: ConectorMundo = {
       id: `housing-portal-${this.idLocal}`,
       tipo: 'portal',
-      nodoOrigenId: NODO_GLOBAL_ID,
+      nodoOrigenId: origenNodoId,
       filaO: 0,
       columnaO: 0,
       nodoDestinoId: miNodo.id,

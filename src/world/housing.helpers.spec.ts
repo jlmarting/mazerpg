@@ -223,6 +223,36 @@ function main(): void {
     'registrarPortalPersonal enlaza conectorId en la celda',
   );
 
+  // --- El portal producido por crearPortalPersonal se engancha a la raíz real ---
+  const gestorReal = new GestorMundo();
+  const raizReal = gestorReal.crearMundoInicial(
+    { nombre: 'mazmorra', version: 1, seed: 5, params: {} },
+    3,
+    3,
+  );
+  const portalReal = housing.crearPortalPersonal(casa, { fila: 1, columna: 2 });
+  assert(
+    portalReal.nodoOrigenId === raizReal.id,
+    'crearPortalPersonal engancha el portal a la raíz real (sin reescribir nodoOrigenId)',
+  );
+  gestorReal.registrarPortalPersonal(portalReal);
+  assert(
+    gestorReal.conectores.get(portalReal.id) === portalReal,
+    'el portal de crearPortalPersonal queda registrado y recuperable',
+  );
+  assert(
+    raizReal.celdas[portalReal.filaO][portalReal.columnaO].conectorId === portalReal.id,
+    'registrarPortalPersonal marca conectorId en la celda de origen real',
+  );
+  assert(
+    raizReal.celdas[portalReal.filaO][portalReal.columnaO].esPortal === true,
+    'registrarPortalPersonal marca esPortal en la celda de origen real',
+  );
+  assert(
+    gestorReal.conectorEn(portalReal.filaO, portalReal.columnaO) === portalReal,
+    'conectorEn recupera el portal personal desde la celda de origen',
+  );
+
   console.log(`${ok}/${total} ok`);
 }
 

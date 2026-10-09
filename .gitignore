@@ -68,3 +68,6 @@ node_modules/
 # dataconnect generated files
 .dataconnect
 dist/
+
+# Agentic execution scratch (superpowers workspaces, ledgers)
+.superpowers/

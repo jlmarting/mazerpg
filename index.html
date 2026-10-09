@@ -9,9 +9,9 @@
             apiKey: "__FIREBASE_API_KEY__",
             authDomain: "__FIREBASE_AUTH_DOMAIN__",
             projectId: "__FIREBASE_PROJECT_ID__",
-            storageBucket: "__FIREBASE_STORAGE_BUCKET__",
+            storageBucket: "__FIREBASE_PROJECT_ID__.firebasestorage.app",
             messagingSenderId: "__FIREBASE_MESSAGING_SENDER_ID__",
-            appId: "__FIREBASE_APP_ID__"
+            appId: "1:__FIREBASE_MESSAGING_SENDER_ID__:web:bf974ede30cb1097ce8350"
         };
     </script>
 </head>
@@ -113,7 +113,20 @@
         <input type="hidden" id="nickInput" value="Héroe">
 
         <div id="lobbyInitial">
-            <div id="characterPreview" class="character-preview">
+            <div id="lobbyModo">
+                <h2>ELIGE MODO DE PARTIDA</h2>
+                <div class="modo-cards">
+                    <button id="btnModoSolo" class="modo-card" data-mode="solo">UN JUGADOR<br><span class="modo-desc">En solitario, sin red</span></button>
+                    <button id="btnModoFirebase" class="modo-card" data-mode="firebase">MULTIJUGADOR<br><span class="modo-desc">Online vía Firebase</span></button>
+                    <button id="btnModoHttp" class="modo-card" data-mode="http">SERVIDOR LOCAL<br><span class="modo-desc">Online vía servidor propio</span></button>
+                    <button id="btnModoCoop" class="modo-card" data-mode="cooperativo">COOPERATIVO<br><span class="modo-desc">Conexión manual WebRTC</span></button>
+                </div>
+                <button id="btnReanudar" class="btn-resume">REANUDAR PARTIDA</button>
+            </div>
+
+            <div id="lobbyPersonaje" style="display: none;">
+                <h2>TU HÉROE</h2>
+                <div id="characterPreview" class="character-preview">
                 <div class="character-preview-header">
                     <div id="previewPortrait" class="portrait-medallion small" data-clase="guerrero" aria-hidden="true">
                         <svg class="portrait-icon" data-icon="guerrero"><use href="#art-sword"/></svg>
@@ -139,24 +152,26 @@
             <div id="charCreationSection" class="char-creation-section">
                 <button id="btnOpenCharacterModal" class="btn-create-character">CREAR PERSONAJE</button>
             </div>
+                <button id="btnContinuarPersonaje" class="btn-save-character">CONTINUAR</button>
+                <button id="btnVolverModo" class="btn-back-lobby">VOLVER</button>
+            </div>
 
-            <div id="gameOptions" class="game-options">
-                <button id="btnReanudar" class="btn-resume">REANUDAR PARTIDA</button>
-
-                <div id="serverModeSelector" class="server-mode-toggle">
-                    <button id="btnServidorFirebase" class="btn-server-mode active">FIREBASE</button>
-                    <button id="btnServidorHttp" class="btn-server-mode">SERVIDOR LOCAL</button>
+            <div id="lobbyAccion" style="display: none;">
+                <p id="firebaseAccionWarning" class="firebase-warning" style="display: none;">
+                    FIREBASE NO CONFIGURADO. Usa UN JUGADOR o COOPERATIVO.
+                </p>
+                <div id="accionSolo">
+                    <button id="btnSolo" class="btn-solo">EMPEZAR</button>
                 </div>
-                <p id="serverModeInfo" class="server-mode-info">Modo: Firebase</p>
-
-                <div class="game-main-actions">
-                    <button id="btnCrearPartida" class="btn-create-game">CREAR PARTIDA</button>
-                    <button id="btnUnirseLobby" class="btn-join-lobby">UNIRSE A PARTIDA</button>
+                <div id="accionOnline">
+                    <button id="btnCrearPartida" class="btn-create-game">NUEVA PARTIDA</button>
+                    <button id="btnUnirseLobby" class="btn-join-lobby">UNIRSE</button>
                 </div>
-                <div class="game-secondary-actions">
-                    <button id="btnSolo" class="btn-solo">MODO UN JUGADOR</button>
-                    <button id="btnLobbyManual" class="btn-manual-mode">CONEXIÓN MANUAL</button>
+                <div id="accionCoop">
+                    <button id="btnCoopHost" class="btn-create-game">SER HOST</button>
+                    <button id="btnCoopGuest" class="btn-join-lobby">SOY INVITADO</button>
                 </div>
+                <button id="btnVolverPersonaje" class="btn-back-lobby">VOLVER</button>
             </div>
         </div>
 
@@ -203,6 +218,11 @@
             <div id="listaPartidas" class="game-list-container">
                 <p class="game-list-loading">Buscando partidas...</p>
             </div>
+            <div id="joinCodeRow" class="join-code-row">
+                <input type="text" id="joinCodeInput" class="join-code-input" placeholder="Código: perro-valiente" maxlength="40">
+                <button id="btnJoinByCode" class="btn-refresh">UNIRSE POR CÓDIGO</button>
+            </div>
+            <p id="joinCodeError" class="join-error" style="display: none;"></p>
             <div class="browser-actions">
                 <button id="btnRefrescar" class="btn-refresh">REFRESCAR</button>
                 <button id="btnVolverLobbyFirebase" class="btn-back-lobby">VOLVER AL MENÚ</button>

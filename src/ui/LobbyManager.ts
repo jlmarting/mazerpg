@@ -1,4 +1,4 @@
-type LobbyView = 'initial' | 'manual' | 'browser' | 'connecting';
+export type LobbyMode = 'solo' | 'firebase' | 'http' | 'cooperativo';
 
 export interface CharacterData {
   nombre: string;
@@ -17,12 +17,11 @@ export interface LobbyDelegate {
   onHostGame(modo: 'firebase' | 'http' | 'manual', dificultad: string): void;
   onJoinGame(partidaId: string, modo: 'firebase' | 'http'): void;
   onResumeSession(): void;
-  onSwitchServerMode(modo: 'firebase' | 'http'): void;
+  onSelectMode(modo: LobbyMode): void;
   onCancelConnect(): void;
   getCharacterData(): CharacterData;
   hasSavedSession(): boolean;
   getGameList(modo: 'firebase' | 'http'): Promise<any[]>;
-  getCurrentServerMode(): 'firebase' | 'http';
   getSignalingUrlLabel(): string;
   isFirebaseConfigured(): boolean;
 }
@@ -37,64 +36,112 @@ const FANTASY_NAMES = [
 
 export class LobbyManager {
   private delegate: LobbyDelegate;
-  private currentView: LobbyView = 'initial';
-  private selectedServerMode: 'firebase' | 'http' = 'firebase';
+  private selectedMode: LobbyMode = 'firebase';
   private pendingDificultadCallback: ((dif: string) => void) | null = null;
 
   constructor(delegate: LobbyDelegate) {
     this.delegate = delegate;
-    this.selectedServerMode = delegate.getCurrentServerMode();
     this.setupEventListeners();
-    this.updateView();
+    this.showModo();
   }
 
   setDelegate(delegate: LobbyDelegate): void {
     this.delegate = delegate;
   }
 
+  getSelectedServerMode(): 'firebase' | 'http' {
+    return this.selectedMode === 'http' ? 'http' : 'firebase';
+  }
+
+  selectMode(modo: LobbyMode): void {
+    this.selectedMode = modo;
+    this.delegate.onSelectMode(modo);
+    this.showPersonaje();
+  }
+
   updateView(): void {
     const char = this.delegate.getCharacterData();
     const hasChar = char.personajeCreado || char.nombre !== "Jugador";
-    const hasSession = this.delegate.hasSavedSession();
 
     if (hasChar) {
       this.showElement('characterPreview');
       this.hideElement('charCreationSection');
-      this.showElement('gameOptions', 'flex');
       this.fillCharacterPreview(char);
-      this.showElement('btnReanudar', 'block', hasSession);
+      const btnContinuar = document.getElementById('btnContinuarPersonaje');
+      if (btnContinuar) {
+        btnContinuar.style.display = 'block';
+        btnContinuar.textContent = `CONTINUAR CON ${char.nombre.toUpperCase()}`;
+      }
     } else {
       this.hideElement('characterPreview');
       this.showElement('charCreationSection');
-      this.hideElement('gameOptions');
+      this.hideElement('btnContinuarPersonaje');
     }
-    this.updateServerModeButtons();
   }
 
-  showInitialView(): void {
-    this.currentView = 'initial';
+  showModo(): void {
     this.hideAllLobbyViews();
-    this.showElement('lobbyInitial', 'block');
     this.showElement('lobby', 'flex');
+    this.showElement('lobbyInitial', 'block');
+    this.showElement('lobbyModo', 'flex');
+    this.hideCanvas();
+    this.showElement('btnReanudar', 'block', this.delegate.hasSavedSession());
+  }
+
+  showPersonaje(): void {
+    this.hideAllLobbyViews();
+    this.showElement('lobby', 'flex');
+    this.showElement('lobbyInitial', 'block');
+    this.showElement('lobbyPersonaje', 'flex');
     this.hideCanvas();
     this.updateView();
   }
 
+  showAccion(): void {
+    this.hideAllLobbyViews();
+    this.showElement('lobby', 'flex');
+    this.showElement('lobbyInitial', 'block');
+    this.showElement('lobbyAccion', 'flex');
+    this.hideCanvas();
+    const online = this.selectedMode === 'firebase' || this.selectedMode === 'http';
+    this.showElement('accionSolo', 'flex', this.selectedMode === 'solo');
+    this.showElement('accionOnline', 'flex', online);
+    this.showElement('accionCoop', 'flex', this.selectedMode === 'cooperativo');
+    this.applyFirebaseGate();
+  }
+
+  private applyFirebaseGate(): void {
+    const firebaseOk = this.selectedMode !== 'firebase' || this.delegate.isFirebaseConfigured();
+    const btnCrear = document.getElementById('btnCrearPartida') as HTMLButtonElement | null;
+    const btnUnirse = document.getElementById('btnUnirseLobby') as HTMLButtonElement | null;
+    const warn = document.getElementById('firebaseAccionWarning');
+    if (btnCrear) {
+      btnCrear.disabled = !firebaseOk;
+      btnCrear.title = firebaseOk ? '' : 'Firebase sin configurar: usa UN JUGADOR o COOPERATIVO';
+    }
+    if (btnUnirse) {
+      btnUnirse.disabled = !firebaseOk;
+      btnUnirse.title = firebaseOk ? '' : 'Firebase sin configurar: usa UN JUGADOR o COOPERATIVO';
+    }
+    if (warn) warn.style.display = this.selectedMode === 'firebase' && !firebaseOk ? 'block' : 'none';
+  }
+
+  showInitialView(): void {
+    this.showModo();
+  }
+
   showManualMode(): void {
-    this.currentView = 'manual';
     this.hideElement('lobbyInitial');
     this.showElement('lobbyManual', 'flex');
   }
 
   showGameBrowser(): void {
-    this.currentView = 'browser';
     this.hideElement('lobbyInitial');
     this.showElement('lobbyFirebase', 'flex');
     this.loadGameList();
   }
 
   showConnecting(message: string): void {
-    this.currentView = 'connecting';
     let overlay = document.getElementById('connectingOverlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -113,15 +160,16 @@ export class LobbyManager {
     }
     overlay.querySelector('.connecting-message')!.textContent = message;
     overlay.style.display = 'flex';
-    const buttons = document.querySelectorAll('#lobby button, #gameOptions button');
+    const buttons = document.querySelectorAll('#lobby button:not(.connecting-cancel)');
     buttons.forEach(b => ((b as HTMLButtonElement).disabled = true));
   }
 
   hideConnecting(): void {
     const overlay = document.getElementById('connectingOverlay');
     if (overlay) overlay.style.display = 'none';
-    const buttons = document.querySelectorAll('#lobby button, #gameOptions button');
+    const buttons = document.querySelectorAll('#lobby button:not(.connecting-cancel)');
     buttons.forEach(b => ((b as HTMLButtonElement).disabled = false));
+    this.applyFirebaseGate();
   }
 
   openCharacterModal(): void {
@@ -148,7 +196,7 @@ export class LobbyManager {
     const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
     this.delegate.onSaveCharacter(name, color, selectedClass);
     this.closeCharacterModal();
-    this.updateView();
+    this.showAccion();
   }
 
   showDifficultyModal(callback: (diff: string) => void): void {
@@ -172,7 +220,8 @@ export class LobbyManager {
     const listaContainer = document.getElementById('listaPartidas')!;
     listaContainer.innerHTML = '<p class="game-list-loading">Buscando partidas...</p>';
     const firebaseWarning = document.getElementById('firebaseWarning')!;
-    const isFirebase = this.selectedServerMode === 'firebase';
+    const serverMode = this.getSelectedServerMode();
+    const isFirebase = serverMode === 'firebase';
 
     if (isFirebase && !this.delegate.isFirebaseConfigured()) {
       firebaseWarning.style.display = 'block';
@@ -181,19 +230,36 @@ export class LobbyManager {
     }
 
     try {
-      const partidas = await this.delegate.getGameList(this.selectedServerMode);
+      const partidas = await this.delegate.getGameList(serverMode);
       this.renderGameList(partidas);
     } catch {
       listaContainer.innerHTML = '<p class="game-list-empty">Error al cargar partidas.</p>';
     }
   }
 
-  toggleServerMode(modo: 'firebase' | 'http'): void {
-    this.selectedServerMode = modo;
-    this.delegate.onSwitchServerMode(modo);
-    this.updateServerModeButtons();
-    if (this.currentView === 'browser') {
-      this.loadGameList();
+  async joinByCode(): Promise<void> {
+    const input = document.getElementById('joinCodeInput') as HTMLInputElement;
+    const err = document.getElementById('joinCodeError')!;
+    const codigo = input.value.trim().toLowerCase();
+    if (!codigo) {
+      err.textContent = 'Escribe un código.';
+      err.style.display = 'block';
+      return;
+    }
+    const modo = this.getSelectedServerMode();
+    try {
+      const partidas = await this.delegate.getGameList(modo);
+      const match = partidas.find((p) => ((p.id || '') as string).toLowerCase() === codigo);
+      if (!match) {
+        err.textContent = 'No se encontró la partida, pulsa REFRESCAR.';
+        err.style.display = 'block';
+        return;
+      }
+      err.style.display = 'none';
+      this.delegate.onJoinGame(match.id, modo);
+    } catch {
+      err.textContent = 'Error al buscar la partida.';
+      err.style.display = 'block';
     }
   }
 
@@ -274,22 +340,11 @@ export class LobbyManager {
     if (modalPortrait) modalPortrait.dataset.clase = clase;
   }
 
-  private updateServerModeButtons(): void {
-    const btnFirebase = document.getElementById('btnServidorFirebase');
-    const btnHttp = document.getElementById('btnServidorHttp');
-    const info = document.getElementById('serverModeInfo');
-    if (!btnFirebase || !btnHttp || !info) return;
-    const isFirebase = this.selectedServerMode === 'firebase';
-    btnFirebase.classList.toggle('active', isFirebase);
-    btnHttp.classList.toggle('active', !isFirebase);
-    info.textContent = isFirebase ? 'Modo: Firebase' : `Modo: Servidor Local (${this.delegate.getSignalingUrlLabel()})`;
-  }
-
   private renderGameList(partidas: any[]): void {
     const listaContainer = document.getElementById('listaPartidas')!;
     listaContainer.innerHTML = "";
     if (partidas.length === 0) {
-      listaContainer.innerHTML = `<p class="game-list-empty">No hay partidas disponibles (modo ${this.selectedServerMode}).</p>`;
+      listaContainer.innerHTML = `<p class="game-list-empty">No hay partidas disponibles (modo ${this.getSelectedServerMode()}).</p>`;
       return;
     }
     partidas.forEach((p) => {
@@ -308,13 +363,15 @@ export class LobbyManager {
     listaContainer.querySelectorAll('.join-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const id = (e.currentTarget as HTMLElement).getAttribute('data-id')!;
-        this.delegate.onJoinGame(id, this.selectedServerMode);
+        this.delegate.onJoinGame(id, this.getSelectedServerMode());
       });
     });
   }
 
   private hideAllLobbyViews(): void {
-    this.hideElement('lobbyInitial');
+    this.hideElement('lobbyModo');
+    this.hideElement('lobbyPersonaje');
+    this.hideElement('lobbyAccion');
     this.hideElement('lobbyManual');
     this.hideElement('lobbyFirebase');
   }
@@ -330,7 +387,8 @@ export class LobbyManager {
 
   private showElement(id: string, display: string = 'block', condition: boolean = true): void {
     const el = document.getElementById(id);
-    if (el && condition) el.style.display = display;
+    if (!el) return;
+    el.style.display = condition ? display : 'none';
   }
 
   private hideElement(id: string): void {
@@ -350,19 +408,34 @@ export class LobbyManager {
       this.showDifficultyModal((diff) => this.delegate.onStartSolo(diff));
     });
     document.getElementById('btnCrearPartida')?.addEventListener('click', () => {
-      this.showDifficultyModal((diff) => this.delegate.onHostGame(this.selectedServerMode, diff));
+      this.showDifficultyModal((diff) => this.delegate.onHostGame(this.getSelectedServerMode(), diff));
     });
     document.getElementById('btnGenOferta')?.addEventListener('click', () => {
       this.showDifficultyModal((diff) => this.delegate.onHostGame('manual', diff));
     });
+    document.getElementById('btnCoopHost')?.addEventListener('click', () => {
+      this.showDifficultyModal((diff) => {
+        this.delegate.onHostGame('manual', diff);
+        this.showManualMode();
+      });
+    });
+    document.getElementById('btnCoopGuest')?.addEventListener('click', () => this.showManualMode());
+
+    document.querySelectorAll('.modo-card').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const modo = (e.currentTarget as HTMLElement).getAttribute('data-mode') as LobbyMode;
+        this.selectMode(modo);
+      });
+    });
+    document.getElementById('btnContinuarPersonaje')?.addEventListener('click', () => this.showAccion());
+    document.getElementById('btnVolverModo')?.addEventListener('click', () => this.showModo());
+    document.getElementById('btnVolverPersonaje')?.addEventListener('click', () => this.showPersonaje());
 
     document.getElementById('btnUnirseLobby')?.addEventListener('click', () => this.showGameBrowser());
-    document.getElementById('btnLobbyManual')?.addEventListener('click', () => this.showManualMode());
-    document.getElementById('btnVolverLobbyFirebase')?.addEventListener('click', () => this.showInitialView());
-    document.getElementById('btnVolverLobbyManual')?.addEventListener('click', () => this.showInitialView());
+    document.getElementById('btnVolverLobbyFirebase')?.addEventListener('click', () => this.showAccion());
+    document.getElementById('btnVolverLobbyManual')?.addEventListener('click', () => this.showAccion());
 
-    document.getElementById('btnServidorFirebase')?.addEventListener('click', () => this.toggleServerMode('firebase'));
-    document.getElementById('btnServidorHttp')?.addEventListener('click', () => this.toggleServerMode('http'));
+    document.getElementById('btnJoinByCode')?.addEventListener('click', () => this.joinByCode());
 
     document.getElementById('btnRefrescar')?.addEventListener('click', () => this.loadGameList());
 

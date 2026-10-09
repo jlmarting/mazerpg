@@ -5,7 +5,7 @@ import { JugadorRemoto } from './entities/JugadorRemoto';
 import { EnemigoNPC } from './entities/EnemigoNPC';
 import { Renderer } from './core/Renderer';
 import { UIManager } from './ui/UIManager';
-import { LobbyManager } from './ui/LobbyManager';
+import { LobbyManager, type LobbyMode } from './ui/LobbyManager';
 import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
 import { NetworkManagerHttp } from './network/NetworkManagerHttp';
@@ -355,13 +355,20 @@ class Game implements IGame {
     this.registrarEventoLog("Estadísticas recalculadas.");
   }
 
-  onJoinGame(partidaId: string, modo: 'firebase' | 'http'): void {
+  async onJoinGame(partidaId: string, modo: 'firebase' | 'http'): Promise<void> {
     this.lobbyManager.showConnecting('Conectando a la partida...');
-    if (modo === 'http') {
-      this.iniciarModoHttp();
-      this.unirseAPartidaHttp(partidaId);
-    } else {
-      this.unirseAPartidaFirestore(partidaId);
+    try {
+      if (modo === 'http') {
+        this.iniciarModoHttp();
+        await this.unirseAPartidaHttp(partidaId);
+      } else {
+        await this.unirseAPartidaFirestore(partidaId);
+      }
+    } catch (e) {
+      console.error('Fallo al unirse a la partida:', e);
+      this.registrarEventoLog(`No se pudo unir a la partida ${partidaId}.`);
+      this.lobbyManager.hideConnecting();
+      this.lobbyManager.showGameBrowser();
     }
   }
 
@@ -369,15 +376,24 @@ class Game implements IGame {
     this.reanudarPartida();
   }
 
-  onSwitchServerMode(modo: 'firebase' | 'http'): void {
-    this.modoMultijugador = modo;
-    if (modo === 'http') {
+  onSelectMode(modo: LobbyMode): void {
+    if (modo === 'firebase') {
+      this.modoMultijugador = 'firebase';
+    } else if (modo === 'http') {
+      this.modoMultijugador = 'http';
       this.iniciarModoHttp();
+    } else if (modo === 'cooperativo') {
+      this.modoMultijugador = 'manual';
+    } else if (modo === 'solo') {
+      this.modoMultijugador = 'firebase';
+      this.signaling?.desconectar();
+      this.networkHttp?.desconectar();
+      this.networkHttp = null;
     }
   }
 
   onCancelConnect(): void {
-    this.lobbyManager.showInitialView();
+    this.lobbyManager.showGameBrowser();
   }
 
   getCharacterData(): import('./ui/LobbyManager').CharacterData {
@@ -394,10 +410,6 @@ class Game implements IGame {
 
   hasSavedSession(): boolean {
     return localStorage.getItem('mazeRPG_lastSession') !== null;
-  }
-
-  getCurrentServerMode(): 'firebase' | 'http' {
-    return this.modoMultijugador === 'manual' ? 'firebase' : this.modoMultijugador;
   }
 
   getSignalingUrlLabel(): string {
@@ -452,6 +464,7 @@ class Game implements IGame {
     
     if (!resultado) {
         this.registrarEventoLog("Error: No se pudo crear la partida en el servidor HTTP.");
+        alert(`No se pudo conectar al servidor local (${getSignalingUrl()}). Arranca el servidor de signaling y reintenta.`);
         return;
     }
 

@@ -43,6 +43,17 @@ function columnasDe(mapa: Celda[][]): number {
   return mapa.length > 0 ? mapa[0].length : 0;
 }
 
+function hayTransitable(mapa: Celda[][]): boolean {
+  for (const fila of mapa) {
+    for (const celda of fila) {
+      if (celda.esTransitable) return true;
+    }
+  }
+  return false;
+}
+
+const NOMBRES = ['mazmorra', 'abierto', 'planta', 'natural'] as const;
+
 function main(): void {
   // mulberry32: determinista por seed
   const rngA = mulberry32(42);
@@ -82,6 +93,17 @@ function main(): void {
     const uno = generarNodo({ nombre, version: 1, seed: 7, params: {} }, 30, 30);
     const dos = generarNodo({ nombre, version: 1, seed: 7, params: {} }, 30, 30);
     assert(mapasIguales(uno, dos), `generarNodo ${nombre} seed 7 es determinista`);
+  }
+
+  // Sensibilidad a seed + no degeneración en cada generador
+  for (const nombre of NOMBRES) {
+    const seed42 = generarNodo({ nombre, version: 1, seed: 42, params: {} }, 30, 30);
+    const seed43 = generarNodo({ nombre, version: 1, seed: 43, params: {} }, 30, 30);
+    assert(
+      !mapasIguales(seed42, seed43),
+      `generarNodo ${nombre} seed 42 difiere de seed 43`,
+    );
+    assert(hayTransitable(seed42), `generarNodo ${nombre} produce celdas transitables`);
   }
 
   // Versión desconocida falla explícitamente

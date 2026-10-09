@@ -20,6 +20,7 @@ import {
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
     TIEMPO_DESVANECIMIENTO_NIEBLA
 } from './world/constants';
+import { dentroDeBurbuja, radioSimPorDefecto } from './world/burbuja';
 
 declare global {
     interface Window {
@@ -42,6 +43,7 @@ class Game implements IGame {
   public config: GameConfig = {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
+    radioSim: radioSimPorDefecto(RADIO_VISION),
     TIEMPO_DESVANECIMIENTO_NIEBLA,
     CELDAS_VISIBLES_X: 10,
     CELDAS_VISIBLES_Y: 10,
@@ -1570,6 +1572,20 @@ class Game implements IGame {
     return j ? j.entidad : null;
   }
 
+  enBurbujaSim(fila: number, columna: number): boolean {
+    const radio = this.config.radioSim;
+    if (dentroDeBurbuja(fila, columna, this.protagonista.fila, this.protagonista.columna, radio)) {
+        return true;
+    }
+    let dentro = false;
+    this.network.jugadoresRemotos.forEach(j => {
+        if (j.entidad && dentroDeBurbuja(fila, columna, j.entidad.fila, j.entidad.columna, radio)) {
+            dentro = true;
+        }
+    });
+    return dentro;
+  }
+
   resolverAccion(id: string, accion: any) {
     const entidad = this.obtenerEntidadPorId(id);
     if (!entidad) {
@@ -1578,6 +1594,9 @@ class Game implements IGame {
     }
     if (!entidad.estaVivo) {
         console.warn(`resolverAccion: La entidad ${entidad.nombre} está muerta`);
+        return;
+    }
+    if (!this.enBurbujaSim(entidad.fila, entidad.columna)) {
         return;
     }
 
@@ -2376,6 +2395,7 @@ class Game implements IGame {
             break;
         case 'object_spawned':
             if (!this.esHost) {
+                if (!this.enBurbujaSim(msg.f, msg.c)) break;
                 const celda = this.mapaLaberinto[msg.f][msg.c];
                 if (msg.a) celda.alimento = msg.a;
                 this.ui.crearTextoFlotanteEnCelda(msg.f, msg.c, "¡COMIDA!", "#ffcc00", this);
@@ -2564,24 +2584,28 @@ class Game implements IGame {
             }
             break;
         case 'food_consumed':
+            if (!this.enBurbujaSim(msg.f, msg.c)) break;
             const celdaFood = this.mapaLaberinto[msg.f][msg.c];
             celdaFood.alimento = null;
             this.renderer?.invalidarCacheLaberinto();
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'pick_collected':
+            if (!this.enBurbujaSim(msg.f, msg.c)) break;
             const celdaPick = this.mapaLaberinto[msg.f][msg.c];
             celdaPick.tienePico = false;
             this.renderer?.invalidarCacheLaberinto();
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'shield_collected':
+            if (!this.enBurbujaSim(msg.f, msg.c)) break;
             const celdaShield = this.mapaLaberinto[msg.f][msg.c];
             celdaShield.burbuja = null;
             this.renderer?.invalidarCacheLaberinto();
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             break;
         case 'dig_completed':
+            if (!this.enBurbujaSim(msg.f, msg.c)) break;
             const celdaDig = this.mapaLaberinto[msg.f][msg.c];
             celdaDig.esTransitable = true;
             this.renderer?.invalidarCacheLaberinto();

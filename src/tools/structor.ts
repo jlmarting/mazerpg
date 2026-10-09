@@ -1050,6 +1050,7 @@ class Structor {
             ALTO_UI_TOP: 0,
             ALTO_UI_BOTTOM: 0,
             RADIO_VISION: 20,
+            radioSim: 2,
             TIEMPO_DESVANECIMIENTO_NIEBLA: 0,
             CELDAS_VISIBLES_X: 12,
             CELDAS_VISIBLES_Y: 10,

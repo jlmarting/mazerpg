@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Píldoras LEARN de Renderizado y Sprites: fallback visual, fog of war y sprite mapping tool (`d57fa48`)
 - Píldoras LEARN de Generación de Mundos: BSP, serialización compacta y garantía de conectividad (`fb0e822`)
 - Píldoras LEARN de Tooling y TypeScript: multi-entry build, strict mode e inyección de configuración (`fb0e822`)
+- Mundo persistente (fase 1): modelo de mundo jerárquico con `NodoMundo`/`ConectorMundo`/`DeltaMundo`, formato de delta `fmt=1` y resolución last-writer-wins (`e125ae8`)
+- Generadores de mundo versionados y deterministas por seed: mazmorra, abierto, planta y natural (`d1f713f`, `35e7c3f`)
+- `GestorMundo`: árbol de nodos, nodo activo y conectores entre mapas (`4b79f8c`)
+- Burbuja de realidad de doble radio: `radioSim` (simulación y sincronía) vs `radioVis` (render) (`704a1fd`)
+- Persistencia retrocompatible del mundo en Firestore: subcolección `partidas/{id}/mundos/{nodoId}` con deltas versionados (`beae01c`)
+- Housing local: nodo personal con dueño y portal estricto (visitable solo con el dueño online) (`18227f5`, `2d295e8`)
+- Arranque del mundo vía `GestorMundo` con getter de compatibilidad `game.mapaLaberinto` (`ff30371`)
+- Runner de tests `pnpm test` para los specs de mundo, generadores y persistencia (`e784b67`)
+- Demo desplegada en GitHub Pages (base relativa + workflow) (`2fb27b4`, `2eca656`)
 
 ### Changed
 - Estandarización de configuración de sprites a formato basado en puntos (`e0c31e7`)
@@ -39,8 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Asignación de sprites a jugadores (`90dcd59`, `38480ef`, `96b3eec`)
 - Ajustes varios de configuración de sprites (`03cadbb`, `d867863`, `b4e8044`)
 - Migración de npm a pnpm y actualización de AGENTS.md (`6be78ee`)
+- Arte del laberinto: autotile, muros con cuerpo y viñeta; sprites de 41 a 0 errores (`54e43e0`)
+- Firebase unificado al proyecto `mazerpg-b2aa4` (`.firebaserc`, `projectId` y service account) (`0a354b4`)
 
 ### Fixed
 - Fallos de interacción de invitados y optimización de suavizado de cámara (`7c17fa9`)
 - Desincronización multijugador y problemas de sprite fallback en NPCs (`438e7c4`)
 - Corrección de estado de respawn (`7c874ca`)
+- Escudos-burbuja recogibles: consumen la burbuja, otorgan 30 s de inmunidad, se sincronizan y avisan en el log (`22d1d8a`)
+- Lobby: los dados se tiran sobre el protagonista vivo (rescate del refactor de lobby) (`57bfc9b`)
+- El invitado HTTP ya no siembra un mundo local (guard de autoridad por modo) (`896cf28`)

@@ -4,6 +4,7 @@ import {
   aplicarDeltaConPersistencia,
   arrancarMundoGestor,
   celdasCompatibilidad,
+  esLadoAutoritativo,
   planificarArranque,
   sembrarMundoBase,
   type NodoPersistidoLike,
@@ -90,6 +91,32 @@ function crearNodoPersonal(id: string, ownerId: string | null, filas: number, co
 }
 
 async function main(): Promise<void> {
+  // Gate autoritativo por modo activo (regresion: invitado HTTP no siembra)
+  assert(
+    esLadoAutoritativo({ modo: 'firebase', esHost: false, firebaseMpActivo: false, httpMpActivo: false }) === true,
+    'solo (sin multiplayer activo) es lado autoritativo',
+  );
+  assert(
+    esLadoAutoritativo({ modo: 'manual', esHost: false, firebaseMpActivo: false, httpMpActivo: false }) === true,
+    'manual es lado autoritativo',
+  );
+  assert(
+    esLadoAutoritativo({ modo: 'firebase', esHost: true, firebaseMpActivo: true, httpMpActivo: false }) === true,
+    'host firebase es lado autoritativo',
+  );
+  assert(
+    esLadoAutoritativo({ modo: 'firebase', esHost: false, firebaseMpActivo: true, httpMpActivo: false }) === false,
+    'invitado firebase no es lado autoritativo',
+  );
+  assert(
+    esLadoAutoritativo({ modo: 'http', esHost: true, firebaseMpActivo: false, httpMpActivo: true }) === true,
+    'host http es lado autoritativo',
+  );
+  assert(
+    esLadoAutoritativo({ modo: 'http', esHost: false, firebaseMpActivo: false, httpMpActivo: true }) === false,
+    'invitado http no es lado autoritativo (no siembra mundo local)',
+  );
+
   // Decisión pura de arranque
   assert(planificarArranque([]).tipo === 'crear', 'sin nodos persistidos se decide crear la raíz');
   const conRaiz = planificarArranque(['raiz']);

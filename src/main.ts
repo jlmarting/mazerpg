@@ -24,7 +24,7 @@ import { dentroDeBurbuja, radioSimPorDefecto } from './world/burbuja';
 import { PersistenciaMundo } from './world/PersistenciaMundo';
 import { HousingLocal } from './world/housing';
 import { GestorMundo } from './world/GestorMundo';
-import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, sembrarMundoBase } from './world/integracion';
+import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
 import { ArbitroDeltas } from './world/ArbitroDeltas';
 import { FMT_DELTA, type ConectorMundo, type DeltaMundo, type GenSpec, type NodoMundo } from './world/mundo';
 
@@ -938,6 +938,15 @@ class Game implements IGame {
     }, 10000);
   }
 
+  private esLadoAutoritativo(): boolean {
+    return esLadoAutoritativo({
+      modo: this.modoMultijugador,
+      esHost: this.esHost,
+      firebaseMpActivo: this.network?.multiplayerActivo ?? false,
+      httpMpActivo: this.networkHttp?.multiplayerActivo ?? false,
+    });
+  }
+
   iniciarMotorJuego() {
     if (this.motorIniciado) return;
     this.motorIniciado = true;
@@ -947,7 +956,7 @@ class Game implements IGame {
     document.getElementById('topMenu')!.style.display = 'block';
     document.getElementById('actionsMenu')!.style.display = 'block';
 
-    if (this.esHost || !this.network.multiplayerActivo) {
+    if (this.esLadoAutoritativo()) {
         if (!this.gestorMundo.nodoActivoId) {
             this.gestorMundo.crearMundoInicial(this.crearGenRaiz(), this.config.NUMERO_FILAS, this.config.NUMERO_COLUMNAS);
         }
@@ -969,6 +978,7 @@ class Game implements IGame {
   private sembrarMundoBase(): void {
     // Solo el lado autoritativo (host/solo/manual) crea el árbol y el housing;
     // los guests reciben el mapa serializado del host y usan el portal clásico.
+    if (!this.esLadoAutoritativo()) return;
     if (!this.gestorMundo.nodoActivoId) return;
     if (this.gestorMundo.conectores.size > 0) return;
     const sembrado = sembrarMundoBase({

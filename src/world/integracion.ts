@@ -10,6 +10,27 @@ import {
   type NodoMundo,
 } from './mundo';
 
+export type ModoMultijugador = 'firebase' | 'http' | 'manual';
+
+export interface EntornoAutoridad {
+  modo: ModoMultijugador;
+  esHost: boolean;
+  firebaseMpActivo: boolean;
+  httpMpActivo: boolean;
+}
+
+/**
+ * Decide si el lado local es autoritativo (debe crear/sembrar el mundo) segun el
+ * gestor de red del modo activo. Solo cede el invitado de un multiplayer activo:
+ * firebase e http consultan su propio gestor; manual/solo siempre es autoritativo.
+ */
+export function esLadoAutoritativo(entorno: EntornoAutoridad): boolean {
+  const { modo, esHost, firebaseMpActivo, httpMpActivo } = entorno;
+  if (modo === 'http') return esHost || !httpMpActivo;
+  if (modo === 'manual') return true;
+  return esHost || !firebaseMpActivo;
+}
+
 export interface NodoPersistidoLike {
   gen: GenSpec;
   ownerId: string | null;

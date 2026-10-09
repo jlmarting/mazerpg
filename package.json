@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node scripts/test.mjs"
+    "signaling": "node server/signaling.mjs",
+    "test": "node scripts/test.mjs",
+    "test:server": "node server/signaling.spec.mjs"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

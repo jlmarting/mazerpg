@@ -1,3 +1,4 @@
+import { Celda } from './Celda';
 import type { ConectorMundo, NodoMundo } from './mundo';
 
 export interface AlmacenamientoLocal {
@@ -17,6 +18,31 @@ export function puedeEditarNodo(nodo: NodoMundo, autoria: string): boolean {
   if (nodo.tipo !== 'personal') return true;
   if (nodo.ownerId === null) return true;
   return nodo.ownerId === autoria;
+}
+
+function rehidratarNodo(bruto: NodoMundo): NodoMundo {
+  const celdasBrutas = (bruto.celdas as unknown as Array<Array<Partial<Celda>>> | undefined) ?? [];
+  const celdas: Celda[][] = celdasBrutas.map((fila, f) =>
+    fila.map((datos, c) => {
+      const celda = new Celda(f, c);
+      if (datos && typeof datos === 'object') {
+        celda.ultimoAvistamiento = datos.ultimoAvistamiento ?? 0;
+        celda.esTransitable = datos.esTransitable ?? false;
+        if (datos.muros) celda.muros = { ...celda.muros, ...datos.muros };
+        celda.visitada = datos.visitada ?? false;
+        celda.alimento = datos.alimento ?? null;
+        celda.burbuja = datos.burbuja ?? null;
+        celda.esPortal = datos.esPortal ?? false;
+        celda.tienePico = datos.tienePico ?? false;
+        celda.golpesCavar = datos.golpesCavar ?? 0;
+        celda.tipoEscenario = datos.tipoEscenario ?? 'ninguno';
+        celda.estadoEscenario = datos.estadoEscenario ?? 'idle';
+        celda.conectorId = datos.conectorId ?? null;
+      }
+      return celda;
+    }),
+  );
+  return { ...bruto, celdas };
 }
 
 export class HousingLocal {
@@ -43,7 +69,7 @@ export class HousingLocal {
     const bruto = this.almacen.getItem(this.claveCasa());
     if (bruto === null) return null;
     try {
-      return JSON.parse(bruto) as NodoMundo;
+      return rehidratarNodo(JSON.parse(bruto) as NodoMundo);
     } catch {
       return null;
     }
@@ -53,13 +79,14 @@ export class HousingLocal {
     miNodo: NodoMundo,
     destinoCelda: { fila: number; columna: number },
     origenNodoId: string = NODO_RAIZ_ID,
+    origenCelda: { fila: number; columna: number } = { fila: 0, columna: 0 },
   ): ConectorMundo {
     const conector: ConectorMundo = {
       id: `housing-portal-${this.idLocal}`,
       tipo: 'portal',
       nodoOrigenId: origenNodoId,
-      filaO: 0,
-      columnaO: 0,
+      filaO: origenCelda.fila,
+      columnaO: origenCelda.columna,
       nodoDestinoId: miNodo.id,
       filaD: destinoCelda.fila,
       columnaD: destinoCelda.columna,

@@ -12,7 +12,7 @@ import { NetworkManagerHttp } from './network/NetworkManagerHttp';
 import { SignalingClient, crearSignalingClient, getSignalingUrl } from './network/SignalingClient';
 import { eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
-import { generateSessionName, generateBubbleName } from './utils/session';
+import { generateSessionName } from './utils/session';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import {
@@ -24,7 +24,8 @@ import { dentroDeBurbuja, radioSimPorDefecto } from './world/burbuja';
 import { PersistenciaMundo } from './world/PersistenciaMundo';
 import { HousingLocal } from './world/housing';
 import { GestorMundo } from './world/GestorMundo';
-import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad } from './world/integracion';
+import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, sembrarMundoBase } from './world/integracion';
+import { ArbitroDeltas } from './world/ArbitroDeltas';
 import { FMT_DELTA, type ConectorMundo, type DeltaMundo, type GenSpec, type NodoMundo } from './world/mundo';
 
 declare global {
@@ -92,6 +93,10 @@ class Game implements IGame {
   private readonly fundidoDuracion: number = 400;
   private tickMundo: number = 0;
   private mundoCargado: boolean = false;
+  private readonly arbitroDeltas: ArbitroDeltas = new ArbitroDeltas();
+  private portalesInactivosCache: Set<string> = new Set();
+  private portalesInactivosRecalculadoEn: number = Number.NEGATIVE_INFINITY;
+  private readonly INTERVALO_PORTALES_MS: number = 250;
 
   constructor() {
     (window as any).game = this;
@@ -615,6 +620,7 @@ class Game implements IGame {
 
   cambiarModoServidor(modo: 'firebase' | 'http') {
     this.modoMultijugador = modo;
+    this.mundoCargado = false;
     if (modo === 'http') {
       this.iniciarModoHttp();
     }
@@ -949,15 +955,34 @@ class Game implements IGame {
         this.protagonista.fila = pos.f;
         this.protagonista.columna = pos.c;
         this.asustarMonstruosCercanos(pos.f, pos.c);
+        this.sembrarMundoBase();
         this.generarEnemigos();
         if (!this.mundoCargado) {
-            this.generarObjetos();
             this.generarEscenarioDinamicoDemo();
         }
     }
     this.ultimoFrameTime = performance.now();
     this.fpsBajoContador = 0;
     this.cicloDeJuego();
+  }
+
+  private sembrarMundoBase(): void {
+    // Solo el lado autoritativo (host/solo/manual) crea el árbol y el housing;
+    // los guests reciben el mapa serializado del host y usan el portal clásico.
+    if (!this.gestorMundo.nodoActivoId) return;
+    if (this.gestorMundo.conectores.size > 0) return;
+    const sembrado = sembrarMundoBase({
+      gestor: this.gestorMundo,
+      housing: this.housing,
+      idLocal: this.network.idLocal,
+      filas: this.config.NUMERO_FILAS,
+      columnas: this.config.NUMERO_COLUMNAS,
+    });
+    if (sembrado) {
+      this.registrarEventoLog(
+        'Mundo conectado: salida a zona y portal de casa personal registrados.',
+      );
+    }
   }
 
   private crearGenRaiz(): GenSpec {
@@ -980,97 +1005,6 @@ class Game implements IGame {
       if (!this.gestorMundo.nodoActivoId) {
         this.gestorMundo.crearMundoInicial(this.crearGenRaiz(), this.config.NUMERO_FILAS, this.config.NUMERO_COLUMNAS);
       }
-    }
-  }
-
-  generarObjetos() {
-    // Generar comida
-    const alimentos = [
-        { tipo: "Manzana", pc: 5 },
-        { tipo: "Plátano", pc: 8 },
-        { tipo: "Kiwi", pc: 10 },
-        { tipo: "Brócoli", pc: 25 },
-        { tipo: "Muslo de pollo", pc: 35 },
-        { tipo: "Chuleta", pc: 40 },
-        { tipo: "Pescado", pc: 70 }
-    ];
-
-    for (let i = 0; i < 30; i++) {
-        let f, c;
-        let s = 0;
-        do {
-            f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
-            c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
-            s++;
-        } while (!this.mapaLaberinto[f][c].esTransitable && s < 1000);
-
-        if (this.mapaLaberinto[f][c].esTransitable) {
-            this.mapaLaberinto[f][c].alimento = alimentos[Math.floor(Math.random() * alimentos.length)];
-        }
-    }
-
-    // Generar burbujas (máximo 5)
-    const burbujas: {f: number, c: number, nombre: string}[] = [];
-    const nombresBurbujas = new Set<string>();
-    for (let i = 0; i < 5; i++) {
-        let f, c;
-        let s = 0;
-        do {
-            f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
-            c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
-            s++;
-        } while ((!this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].burbuja) && s < 1000);
-
-        if (this.mapaLaberinto[f][c].esTransitable) {
-            let nombre = "";
-            let intentosNombre = 0;
-            do {
-                nombre = generateBubbleName();
-                intentosNombre++;
-            } while (nombresBurbujas.has(nombre) && intentosNombre < 100);
-
-            nombresBurbujas.add(nombre);
-            burbujas.push({ f, c, nombre });
-        }
-    }
-
-    for (let i = 0; i < burbujas.length; i++) {
-        const b = burbujas[i];
-        const destino = burbujas[(i + 1) % burbujas.length].nombre;
-        this.mapaLaberinto[b.f][b.c].burbuja = { nombreSecreto: b.nombre, destino: destino };
-    }
-
-    // Generar portales (0, 2 o 5)
-    const opcionesPortales = [0, 2, 5];
-    const numPortales = opcionesPortales[Math.floor(Math.random() * opcionesPortales.length)];
-    for (let i = 0; i < numPortales; i++) {
-        let f, c;
-        let s = 0;
-        do {
-            f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
-            c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
-            s++;
-        } while ((!this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].burbuja || this.mapaLaberinto[f][c].esPortal) && s < 1000);
-
-        if (this.mapaLaberinto[f][c].esTransitable) {
-            this.mapaLaberinto[f][c].esPortal = true;
-        }
-    }
-
-    // Generar picos (0 a 10)
-    const numPicos = Math.floor(Math.random() * 11);
-    for (let i = 0; i < numPicos; i++) {
-        let f, c;
-        let s = 0;
-        do {
-            f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
-            c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
-            s++;
-        } while ((!this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].burbuja || this.mapaLaberinto[f][c].esPortal || this.mapaLaberinto[f][c].tienePico) && s < 1000);
-
-        if (this.mapaLaberinto[f][c].esTransitable) {
-            this.mapaLaberinto[f][c].tienePico = true;
-        }
     }
   }
 
@@ -1673,6 +1607,20 @@ class Game implements IGame {
   }
 
   portalesHousingInactivos(): Set<string> {
+    const ahora = performance.now();
+    if (ahora - this.portalesInactivosRecalculadoEn < this.INTERVALO_PORTALES_MS) {
+      return this.portalesInactivosCache;
+    }
+    this.portalesInactivosRecalculadoEn = ahora;
+    this.portalesInactivosCache = this.calcularPortalesHousingInactivos();
+    return this.portalesInactivosCache;
+  }
+
+  private invalidarPortalesHousing(): void {
+    this.portalesInactivosRecalculadoEn = Number.NEGATIVE_INFINITY;
+  }
+
+  private calcularPortalesHousingInactivos(): Set<string> {
     const online = this.onlineIds();
     const nodoActivo = this.gestorMundo.nodoActivoId;
     const inactivos = new Set<string>();
@@ -1714,13 +1662,22 @@ class Game implements IGame {
   }
 
   private aplicarDeltaAutorizado(delta: DeltaMundo): boolean {
-    return aplicarDeltaConPersistencia(
+    // Arbitraje last-writer-wins por celda: un delta de tick inferior al último
+    // aplicado en esa celda se descarta (evita divergencia permanente).
+    // Residual fase 1: la convergencia entre clientes se apoya además en que
+    // `cargarNodo` reproduce los deltas persistidos ordenados por tick; el reloj
+    // local puede rechazar temporalmente un delta propio con tick menor que uno
+    // remoto hasta que Date.now() lo supera.
+    if (!this.arbitroDeltas.puedeAplicar(delta)) return false;
+    const aplicado = aplicarDeltaConPersistencia(
       this.gestorMundo,
       this.mapaLaberinto,
       delta,
       this.esHost,
       (d) => void this.persistirDeltaMundo(d),
     );
+    if (aplicado) this.arbitroDeltas.registrar(delta);
+    return aplicado;
   }
 
   resolverAccion(id: string, accion: any) {
@@ -2363,6 +2320,7 @@ class Game implements IGame {
         return;
     }
     this.iniciarFundido();
+    this.invalidarPortalesHousing();
     entidad.fila = aparicion.fila;
     entidad.columna = aparicion.columna;
     entidad.visualFila = aparicion.fila;

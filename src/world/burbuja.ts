@@ -9,7 +9,7 @@ export function dentroDeBurbuja(
 ): boolean {
   const df = fila - f0;
   const dc = columna - c0;
-  return Math.sqrt(df * df + dc * dc) <= radio;
+  return df * df + dc * dc <= radio * radio;
 }
 
 export function radioSimPorDefecto(radioVis: number): number {

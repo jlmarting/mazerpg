@@ -99,8 +99,29 @@ export class GestorMundo {
       throw new Error(`Conector desconocido: ${conectorId}`);
     }
 
-    const nodoDestino = this.mundo.get(conector.nodoDestinoId) ??
-      this.materializarDestino(conector);
+    const nodoExistente = this.mundo.get(conector.nodoDestinoId) ?? null;
+    const origen = this.mundo.get(conector.nodoOrigenId) ?? null;
+    const filasDestino = nodoExistente ? nodoExistente.filas : origen ? origen.filas : 0;
+    const columnasDestino = nodoExistente
+      ? nodoExistente.columnas
+      : origen
+        ? origen.columnas
+        : 0;
+
+    // Comprobar el rango de aparición ANTES de materializar el destino:
+    // así un conector mal formado no deja un nodo huérfano en el mundo.
+    if (
+      conector.filaD < 0 ||
+      conector.filaD >= filasDestino ||
+      conector.columnaD < 0 ||
+      conector.columnaD >= columnasDestino
+    ) {
+      throw new Error(
+        `Aparición fuera de rango en ${conector.nodoDestinoId}: (${conector.filaD}, ${conector.columnaD})`,
+      );
+    }
+
+    const nodoDestino = nodoExistente ?? this.materializarDestino(conector);
 
     this.mundo.set(nodoDestino.id, nodoDestino);
 
@@ -114,7 +135,12 @@ export class GestorMundo {
     this.conectores.set(conector.id, conector);
 
     const nodoOrigen = this.mundo.get(conector.nodoOrigenId);
-    if (!nodoOrigen) return;
+    if (!nodoOrigen) {
+      console.warn(
+        `registrarConector: nodo origen ausente ${conector.nodoOrigenId}; el conector ${conector.id} queda sin celda.`,
+      );
+      return;
+    }
     const celdas = nodoOrigen.celdas;
     if (
       conector.filaO >= 0 && conector.filaO < celdas.length &&

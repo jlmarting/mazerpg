@@ -187,6 +187,47 @@ function main(): void {
     'tras rechazar una aparición inválida el nodo activo no cambia',
   );
 
+  // Fuera de rango en destino NO materializado: no deja nodo huérfano
+  const gestorLeak = new GestorMundo();
+  const raizLeak = gestorLeak.crearMundoInicial(
+    { nombre: 'mazmorra', version: 1, seed: 9, params: {} },
+    10,
+    10,
+  );
+  gestorLeak.registrarConector(
+    conectorBase({
+      id: 'con-leak',
+      nodoOrigenId: raizLeak.id,
+      nodoDestinoId: 'nodo-leak',
+      filaD: 50,
+      columnaD: 0,
+    }),
+  );
+  assertLanza(
+    () => gestorLeak.atravesar('con-leak'),
+    'atravesar rechaza una aparición fuera de rango antes de materializar',
+  );
+  assert(
+    gestorLeak.mundo.get('nodo-leak') === undefined,
+    'no queda nodo huérfano materializado tras rechazar la aparición',
+  );
+
+  // registrarConector avisa si el nodo origen no existe (en vez de no-op silencioso)
+  const gestorWarn = new GestorMundo();
+  const warns: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: any[]) => {
+    warns.push(args.map((a) => String(a)).join(' '));
+  };
+  gestorWarn.registrarConector(
+    conectorBase({ id: 'con-sin-origen', nodoOrigenId: 'ausente', nodoDestinoId: 'x' }),
+  );
+  console.warn = originalWarn;
+  assert(
+    warns.length === 1 && warns[0].includes('ausente'),
+    'registrarConector avisa si el nodo origen no existe',
+  );
+
   // Materialización perezosa: destino ausente => generarNodo determinista
   const crearGestorLazily = (): GestorMundo => {
     const g = new GestorMundo();

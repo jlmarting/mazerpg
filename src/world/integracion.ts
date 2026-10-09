@@ -1,7 +1,14 @@
 import { Celda } from './Celda';
 import { GestorMundo, tipoDesdeNombre } from './GestorMundo';
 import { generarNodo } from './generadores';
-import { aplicarDelta, type DeltaMundo, type GenSpec, type NodoMundo } from './mundo';
+import { HousingLocal } from './housing';
+import {
+  aplicarDelta,
+  type ConectorMundo,
+  type DeltaMundo,
+  type GenSpec,
+  type NodoMundo,
+} from './mundo';
 
 export interface NodoPersistidoLike {
   gen: GenSpec;
@@ -110,4 +117,154 @@ export async function arrancarMundoGestor(params: ArranqueMundoParams): Promise<
     await persistencia.guardarNodo(raiz.id, raiz.gen, raiz.ownerId);
   }
   return { nodo: raiz, cargado: false };
+}
+
+export interface SembradoMundo {
+  nodoActivoId: string;
+  nodoHijo: NodoMundo;
+  conectorInter: ConectorMundo;
+  casa: NodoMundo;
+  portalHousing: ConectorMundo;
+}
+
+function celdasTransitables(celdas: Celda[][]): Array<{ fila: number; columna: number }> {
+  const puntos: Array<{ fila: number; columna: number }> = [];
+  for (let f = 0; f < celdas.length; f++) {
+    const fila = celdas[f];
+    for (let c = 0; c < fila.length; c++) {
+      if (fila[c].esTransitable) puntos.push({ fila: f, columna: c });
+    }
+  }
+  return puntos;
+}
+
+function hashCadena(texto: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < texto.length; i++) {
+    hash ^= texto.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function semillaDerivada(base: number, etiqueta: string): number {
+  const seed = (base ^ hashCadena(etiqueta)) >>> 0;
+  return seed === base ? (seed + 1) >>> 0 : seed;
+}
+
+/**
+ * C1: siembra mínima y determinista de la fase 1 para que la travesía de nodos
+ * y el portal de housing sean alcanzables en el juego real:
+ *  - un conector de salida desde un celda transitable del nodo activo hacia un
+ *    nodo hijo generado con otro generador (`abierto`);
+ *  - un nodo personal (casa) del dueño local y su portal en el nodo activo.
+ * Ambos extremos quedan en celdas transitables. Idempotente por nodo/conector.
+ */
+export function sembrarMundoBase(params: {
+  gestor: GestorMundo;
+  housing: HousingLocal;
+  idLocal: string;
+  filas: number;
+  columnas: number;
+}): SembradoMundo | null {
+  const { gestor, housing, idLocal, filas, columnas } = params;
+  const raiz = gestor.mundo.get(gestor.nodoActivoId);
+  if (!raiz) return null;
+
+  const origenTransitables = celdasTransitables(raiz.celdas);
+  if (origenTransitables.length === 0) return null;
+  if (filas <= 0 || columnas <= 0) return null;
+
+  const celdaOrigen = origenTransitables[0];
+
+  let celdaOrigenCasa = origenTransitables[origenTransitables.length - 1];
+  if (celdaOrigenCasa.fila === celdaOrigen.fila && celdaOrigenCasa.columna === celdaOrigen.columna) {
+    const alternativas = [
+      { fila: 0, columna: 0 },
+      { fila: 0, columna: columnas - 1 },
+      { fila: filas - 1, columna: 0 },
+      { fila: filas - 1, columna: columnas - 1 },
+    ];
+    celdaOrigenCasa =
+      alternativas.find((p) => p.fila !== celdaOrigen.fila || p.columna !== celdaOrigen.columna) ??
+      { fila: 0, columna: 0 };
+    raiz.celdas[celdaOrigenCasa.fila][celdaOrigenCasa.columna].esTransitable = true;
+  }
+
+  const idHijo = 'zona-abierto-1';
+  let hijo = gestor.mundo.get(idHijo);
+  if (!hijo) {
+    const genHijo: GenSpec = {
+      nombre: 'abierto',
+      version: 1,
+      seed: semillaDerivada(raiz.gen.seed, idHijo),
+      params: {},
+    };
+    hijo = {
+      id: idHijo,
+      padreId: raiz.id,
+      transform: { df: 0, dc: 0 },
+      filas,
+      columnas,
+      tipo: 'abierto',
+      gen: genHijo,
+      celdas: generarNodo(genHijo, filas, columnas),
+      ownerId: null,
+    };
+    gestor.mundo.set(hijo.id, hijo);
+  }
+
+  const destinoTransitables = celdasTransitables(hijo.celdas);
+  const celdaDestinoInter = destinoTransitables[0] ?? { fila: 0, columna: 0 };
+
+  const conectorInter: ConectorMundo = {
+    id: 'conector-zona-abierto-1',
+    tipo: 'salida',
+    nodoOrigenId: raiz.id,
+    filaO: celdaOrigen.fila,
+    columnaO: celdaOrigen.columna,
+    nodoDestinoId: hijo.id,
+    filaD: celdaDestinoInter.fila,
+    columnaD: celdaDestinoInter.columna,
+    housingOwnerId: null,
+  };
+  gestor.registrarConector(conectorInter);
+  raiz.celdas[celdaOrigen.fila][celdaOrigen.columna].esPortal = true;
+
+  const idCasa = `casa-${idLocal}`;
+  let casa = gestor.mundo.get(idCasa);
+  if (!casa) {
+    const genCasa: GenSpec = {
+      nombre: 'planta',
+      version: 1,
+      seed: semillaDerivada(raiz.gen.seed, idCasa),
+      params: {},
+    };
+    casa = {
+      id: idCasa,
+      padreId: raiz.id,
+      transform: { df: 0, dc: 0 },
+      filas,
+      columnas,
+      tipo: 'personal',
+      gen: genCasa,
+      celdas: generarNodo(genCasa, filas, columnas),
+      ownerId: idLocal,
+    };
+    gestor.mundo.set(casa.id, casa);
+  }
+
+  const casaTransitables = celdasTransitables(casa.celdas);
+  const celdaDestinoCasa = casaTransitables[0] ?? { fila: 0, columna: 0 };
+
+  const portalHousing = housing.crearPortalPersonal(
+    casa,
+    celdaDestinoCasa,
+    raiz.id,
+    celdaOrigenCasa,
+  );
+  gestor.registrarPortalPersonal(portalHousing);
+  housing.guardarCasa(casa);
+
+  return { nodoActivoId: raiz.id, nodoHijo: hijo, conectorInter, casa, portalHousing };
 }

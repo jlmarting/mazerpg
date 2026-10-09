@@ -277,6 +277,23 @@ async function main(): Promise<void> {
   );
   assert(datosNodo.gen !== undefined, 'compactarNodo no borra el gen del nodo');
 
+  const antesReguardar = (
+    await db.collection('partidas').doc('p1').collection('mundos').doc('raiz').get()
+  ).data()!;
+  await persistencia.guardarNodo('raiz', gen, null);
+  const despuesReguardar = (
+    await db.collection('partidas').doc('p1').collection('mundos').doc('raiz').get()
+  ).data()!;
+  assert(
+    despuesReguardar.createdAt === antesReguardar.createdAt,
+    'guardarNodo no clobbera createdAt de un nodo existente (merge)',
+  );
+  assert(
+    despuesReguardar.ultimaCompactacionTick === 5,
+    'guardarNodo no clobbera ultimaCompactacionTick de un nodo existente (merge)',
+  );
+  assert(despuesReguardar.gen !== undefined, 'guardarNodo sobre un nodo existente conserva el gen');
+
   await persistencia.guardarNodo('nodo-2', { nombre: 'abierto', version: 1, seed: 2, params: {} }, 'jugador-3');
   const varios = await persistencia.listarNodos();
   assert(

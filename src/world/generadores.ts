@@ -1,5 +1,6 @@
 import { Celda } from './Celda';
 import { generarLaberintoBSP, mulberry32 } from './generation';
+import { poblarObjetosAmbiente } from './objetosAmbiente';
 import type { GenSpec } from './mundo';
 
 export { mulberry32 };
@@ -153,7 +154,7 @@ export function generarNatural(
   return mapa;
 }
 
-export const GENERADORES: Record<string, Record<number, GeneradorFn>> = {
+export const GENERADORES: Readonly<Record<string, Readonly<Record<number, GeneradorFn>>>> = {
   mazmorra: { 1: generarMazmorra },
   abierto: { 1: generarAbierto },
   planta: { 1: generarPlanta },
@@ -169,5 +170,8 @@ export function generarNodo(gen: GenSpec, filas: number, columnas: number): Celd
   if (!generador) {
     throw new Error(`Versión no soportada para ${gen.nombre}: ${gen.version}`);
   }
-  return generador(mulberry32(gen.seed), filas, columnas, gen.params);
+  const rng = mulberry32(gen.seed);
+  const celdas = generador(rng, filas, columnas, gen.params);
+  poblarObjetosAmbiente(celdas, rng);
+  return celdas;
 }

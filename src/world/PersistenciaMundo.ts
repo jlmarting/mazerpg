@@ -65,14 +65,21 @@ export class PersistenciaMundo {
   }
 
   async guardarNodo(nodoId: string, gen: GenSpec, ownerId: string | null): Promise<void> {
+    const ref = this.nodoRef(nodoId);
     const ahora = Date.now();
-    await this.nodoRef(nodoId).set({
-      gen,
-      ownerId: ownerId ?? null,
-      createdAt: ahora,
-      updatedAt: ahora,
-      ultimaCompactacionTick: 0,
-    });
+    const snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set({
+        gen,
+        ownerId: ownerId ?? null,
+        createdAt: ahora,
+        updatedAt: ahora,
+        ultimaCompactacionTick: 0,
+      });
+      return;
+    }
+    // merge: no clobberar createdAt ni ultimaCompactacionTick ya persistidos
+    await ref.set({ gen, ownerId: ownerId ?? null, updatedAt: ahora }, { merge: true });
   }
 
   async guardarDelta(delta: DeltaMundo): Promise<void> {

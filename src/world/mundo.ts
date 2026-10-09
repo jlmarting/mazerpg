@@ -68,15 +68,48 @@ export function aplicarDelta(celdas: Celda[][], delta: DeltaMundo): boolean {
       return true;
     case 'objeto':
       switch (cambio.campo) {
-        case 'alimento':
-          celda.alimento = cambio.valor as Celda['alimento'];
-          return true;
+        case 'alimento': {
+          const valor = cambio.valor;
+          if (valor === null) {
+            celda.alimento = null;
+            return true;
+          }
+          if (
+            typeof valor === 'object' &&
+            typeof (valor as { tipo?: unknown }).tipo === 'string' &&
+            typeof (valor as { pc?: unknown }).pc === 'number'
+          ) {
+            celda.alimento = {
+              tipo: (valor as { tipo: string }).tipo,
+              pc: (valor as { pc: number }).pc,
+            };
+            return true;
+          }
+          return false;
+        }
         case 'tienePico':
-          celda.tienePico = cambio.valor as boolean;
+          if (typeof cambio.valor !== 'boolean') return false;
+          celda.tienePico = cambio.valor;
           return true;
-        case 'burbuja':
-          celda.burbuja = cambio.valor as Celda['burbuja'];
-          return true;
+        case 'burbuja': {
+          const valor = cambio.valor;
+          if (valor === null) {
+            celda.burbuja = null;
+            return true;
+          }
+          if (
+            typeof valor === 'object' &&
+            typeof (valor as { nombreSecreto?: unknown }).nombreSecreto === 'string' &&
+            typeof (valor as { destino?: unknown }).destino === 'string'
+          ) {
+            celda.burbuja = {
+              nombreSecreto: (valor as { nombreSecreto: string }).nombreSecreto,
+              destino: (valor as { destino: string }).destino,
+            };
+            return true;
+          }
+          return false;
+        }
       }
       return true;
     case 'conector':

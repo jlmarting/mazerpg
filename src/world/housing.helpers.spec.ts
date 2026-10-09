@@ -95,6 +95,14 @@ function main(): void {
     'el roundtrip conserva gen (nombre, seed, version)',
   );
   assert(cargada?.tipo === 'personal', 'el roundtrip conserva el tipo personal');
+  assert(
+    cargada?.celdas[0][0] instanceof Celda,
+    'cargarCasa rehidrata las celdas como instancias de Celda',
+  );
+  assert(
+    typeof cargada?.celdas[0][0].muros?.superior === 'boolean',
+    'cargarCasa deja .muros disponible en las celdas rehidratadas',
+  );
 
   const housingVacio = new HousingLocal('L2', new AlmacenMock());
   assert(housingVacio.cargarCasa() === null, 'cargarCasa sin entrada devuelve null');
@@ -124,6 +132,22 @@ function main(): void {
   );
   assert(portal.id.length > 0, 'el conector tiene id no vacío');
   assert(portal.housingOwnerId !== null, 'housingOwnerId no es null en un portal personal');
+
+  const portalConOrigen = housing.crearPortalPersonal(
+    casa,
+    { fila: 1, columna: 2 },
+    'raiz',
+    { fila: 3, columna: 4 },
+  );
+  assert(
+    portalConOrigen.filaO === 3 && portalConOrigen.columnaO === 4,
+    'crearPortalPersonal acepta un origen explícito (celda transitable del nodo activo)',
+  );
+  const portalOrigenDefecto = housing.crearPortalPersonal(casa, { fila: 1, columna: 2 }, 'raiz');
+  assert(
+    portalOrigenDefecto.filaO === 0 && portalOrigenDefecto.columnaO === 0,
+    'crearPortalPersonal por defecto mantiene (0,0) como origen (retrocompat)',
+  );
 
   // --- Disponibilidad estricta (fase 1) ---
   const portalSinDueno: ConectorMundo = { ...portal, housingOwnerId: null };

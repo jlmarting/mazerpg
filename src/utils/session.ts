@@ -18,9 +18,13 @@ export function generateSessionName(): string {
   return `${animal}-${adjective}`;
 }
 
-export function generateBubbleName(): string {
-    const animal = animals[Math.floor(Math.random() * animals.length)];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+export function generarNombreBurbuja(rng: () => number): string {
+    const animal = animals[Math.floor(rng() * animals.length)];
+    const color = colors[Math.floor(rng() * colors.length)];
+    const adjective = adjectives[Math.floor(rng() * adjectives.length)];
     return `${animal}-${color}-${adjective}`;
+}
+
+export function generateBubbleName(): string {
+    return generarNombreBurbuja(Math.random);
 }

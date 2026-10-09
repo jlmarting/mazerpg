@@ -5,12 +5,24 @@ import {
   arrancarMundoGestor,
   celdasCompatibilidad,
   planificarArranque,
+  sembrarMundoBase,
   type NodoPersistidoLike,
   type PersistenciaMundoLike,
 } from './integracion';
+import { HousingLocal, type AlmacenamientoLocal } from './housing';
 import { FMT_DELTA, type DeltaMundo, type GenSpec, type NodoMundo } from './mundo';
 
 declare const process: { exit(codigo: number): void };
+
+class AlmacenTest implements AlmacenamientoLocal {
+  private readonly datos: Map<string, string> = new Map();
+  getItem(clave: string): string | null {
+    return this.datos.has(clave) ? (this.datos.get(clave) as string) : null;
+  }
+  setItem(clave: string, valor: string): void {
+    this.datos.set(clave, valor);
+  }
+}
 
 let ok = 0;
 let total = 0;
@@ -243,6 +255,89 @@ async function main(): Promise<void> {
   }
   assert(lanzoCompactado, 'cargar un nodo compactado se rechaza (snapshot no soportado en fase 1)');
   assert(gestorCompactado.nodoActivoId === '', 'un nodo compactado rechazado no deja nodo activo');
+
+  // C1: sembrado mínimo de mundo (conector alcanzable + portal de housing)
+  const almacenCasa = new AlmacenTest();
+  const housing = new HousingLocal('L1', almacenCasa);
+  const gestorSembrado = new GestorMundo();
+  const raizSembrada = gestorSembrado.crearMundoInicial(GEN_RAIZ, 20, 20);
+  const sembrado = sembrarMundoBase({
+    gestor: gestorSembrado,
+    housing,
+    idLocal: 'L1',
+    filas: 20,
+    columnas: 20,
+  });
+  assert(sembrado !== null, 'sembrarMundoBase produce el sembrado mínimo');
+  if (sembrado) {
+    assert(
+      gestorSembrado.conectores.size >= 2,
+      'sembrarMundoBase registra el conector de zona y el portal de housing',
+    );
+    assert(
+      sembrado.conectorInter.nodoOrigenId === raizSembrada.id,
+      'el conector de zona parte del nodo raíz',
+    );
+    assert(
+      sembrado.conectorInter.nodoDestinoId === sembrado.nodoHijo.id &&
+        sembrado.nodoHijo.tipo === 'abierto',
+      'el conector de zona apunta a un nodo hijo generado con otro generador (abierto)',
+    );
+    assert(
+      raizSembrada.celdas[sembrado.conectorInter.filaO][sembrado.conectorInter.columnaO].esTransitable,
+      'el origen del conector de zona es una celda transitable',
+    );
+    assert(
+      sembrado.nodoHijo.celdas[sembrado.conectorInter.filaD][sembrado.conectorInter.columnaD].esTransitable,
+      'el destino del conector de zona es una celda transitable',
+    );
+    assert(
+      gestorSembrado.conectorEn(sembrado.conectorInter.filaO, sembrado.conectorInter.columnaO) ===
+        sembrado.conectorInter,
+      'conectorEn localiza el conector de zona desde su celda',
+    );
+
+    assert(
+      gestorSembrado.conectorEn(sembrado.portalHousing.filaO, sembrado.portalHousing.columnaO) ===
+        sembrado.portalHousing,
+      'conectorEn localiza el portal de housing desde su celda',
+    );
+    assert(
+      sembrado.casa.ownerId === 'L1' && sembrado.portalHousing.housingOwnerId === 'L1',
+      'el portal de housing pertenece al jugador local',
+    );
+    assert(
+      sembrado.portalHousing.nodoDestinoId === sembrado.casa.id,
+      'el portal de housing apunta a la casa del dueño',
+    );
+    assert(
+      raizSembrada.celdas[sembrado.portalHousing.filaO][sembrado.portalHousing.columnaO].esTransitable,
+      'el origen del portal de housing es una celda transitable',
+    );
+    assert(
+      housing.portales().some((c) => c.id === sembrado.portalHousing.id),
+      'el portal de housing queda registrado en HousingLocal (fuente de atenuación)',
+    );
+    assert(
+      housing.portalDisponible(sembrado.portalHousing, new Set(['L1'])) === true,
+      'el portal de housing está activo con el dueño online',
+    );
+    assert(
+      housing.portalDisponible(sembrado.portalHousing, new Set<string>()) === false,
+      'el portal de housing queda inactivo con el dueño offline',
+    );
+    assert(
+      housing.cargarCasa()?.ownerId === 'L1',
+      'la casa sembrada queda persistida localmente para el dueño',
+    );
+
+    const aparicionSembrado = gestorSembrado.atravesar(sembrado.conectorInter.id);
+    assert(
+      aparicionSembrado.nodo.id === sembrado.nodoHijo.id &&
+        gestorSembrado.nodoActivoId === sembrado.nodoHijo.id,
+      'la travesía del conector de zona conmuta el nodo activo al hijo (alcanzable en runtime)',
+    );
+  }
 
   console.log(`${ok}/${total} ok`);
 }

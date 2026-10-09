@@ -73,6 +73,31 @@ function main(): void {
   assert(borraAlimento === true, "aplicarDelta objeto/alimento/valor null devuelve true");
   assert(celda.alimento === null, "aplicarDelta objeto/alimento/valor null borra alimento");
 
+  const alimentoInvalido = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 0, 0, { tipo: 'objeto', campo: 'alimento', valor: { malo: true } }, 1),
+  );
+  assert(alimentoInvalido === false, 'aplicarDelta rechaza un alimento con payload inválido');
+  assert(raiz.celdas[0][0].alimento === null, 'un alimento inválido no muta la celda');
+
+  const picoInvalido = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 0, 0, { tipo: 'objeto', campo: 'tienePico', valor: 'sí' }, 1),
+  );
+  assert(picoInvalido === false, 'aplicarDelta rechaza tienePico no booleano');
+
+  const burbujaInvalida = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 0, 0, { tipo: 'objeto', campo: 'burbuja', valor: { foo: 1 } }, 1),
+  );
+  assert(burbujaInvalida === false, 'aplicarDelta rechaza una burbuja con payload inválido');
+
+  const picoValido = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 0, 0, { tipo: 'objeto', campo: 'tienePico', valor: true }, 1),
+  );
+  assert(picoValido === true && raiz.celdas[0][0].tienePico === true, 'aplicarDelta acepta tienePico booleano');
+
   const fueraDeRango = aplicarDelta(
     raiz.celdas,
     deltaBase('raiz', 99, 99, { tipo: 'cavar' }, 1),

@@ -115,6 +115,15 @@ function main(): void {
   }
   assert(lanzo, 'generarNodo con versión desconocida lanza error');
 
+  // Nombre de generador desconocido falla explícitamente
+  let lanzoNombre = false;
+  try {
+    generarNodo({ nombre: 'generador-inexistente', version: 1, seed: 1, params: {} }, 5, 5);
+  } catch {
+    lanzoNombre = true;
+  }
+  assert(lanzoNombre, 'generarNodo con nombre de generador desconocido lanza error');
+
   // BSP sembrado: mismo seed => mismo mapa; distinto seed => difiere
   const crearMapa = (): Celda[][] => {
     const m: Celda[][] = [];

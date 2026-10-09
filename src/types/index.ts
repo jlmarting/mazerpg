@@ -1,4 +1,5 @@
 import { Celda } from '../world/Celda';
+import type { NodoMundo } from '../world/mundo';
 
 export interface GameConfig {
     NUMERO_FILAS: number;
@@ -76,4 +77,5 @@ export interface IGame {
     unirseAPartidaFirestore(id: string): Promise<void>;
     obtenerEntidadPorNombre(nombre: string): IEntidadRPG | null;
     iniciarMotorJuego(): void;
+    nodoActivo?: NodoMundo;
 }

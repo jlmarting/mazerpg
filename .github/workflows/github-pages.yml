@@ -1,0 +1,49 @@
+# Despliegue a GitHub Pages (demo estable).
+# Los secretos de Firebase se inyectan igual que en los workflows de Hosting.
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inyectar Secretos en el HTML
+        run: |
+          sed -i "s/__FIREBASE_API_KEY__/${{ secrets.FIREBASE_API_KEY }}/g" index.html
+          sed -i "s/__FIREBASE_AUTH_DOMAIN__/${{ secrets.FIREBASE_AUTH_DOMAIN }}/g" index.html
+          sed -i "s/__FIREBASE_PROJECT_ID__/${{ secrets.FIREBASE_PROJECT_ID }}/g" index.html
+          sed -i "s/__FIREBASE_STORAGE_BUCKET__/${{ secrets.FIREBASE_STORAGE_BUCKET }}/g" index.html
+          sed -i "s/__FIREBASE_MESSAGING_SENDER_ID__/${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}/g" index.html
+          sed -i "s/__FIREBASE_APP_ID__/${{ secrets.FIREBASE_APP_ID }}/g" index.html
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

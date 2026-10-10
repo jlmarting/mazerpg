@@ -1,6 +1,6 @@
 import { Celda } from './Celda';
 import { GestorMundo } from './GestorMundo';
-import type { ConectorMundo, NodoMundo } from './mundo';
+import type { ConectorMundo, DeltaMundo, NodoMundo } from './mundo';
 
 let ok = 0;
 let total = 0;
@@ -284,6 +284,42 @@ function main(): void {
   assert(
     gA.obtenerNodoActivo() === resA.nodo && resA.nodo.celdas[0][0].esTransitable === mapaAntes,
     'atravesar reutiliza el nodo ya materializado sin regenerarlo',
+  );
+
+  // Fase 2: política puedeEditarNodo probada — delta de visitante en nodo personal
+  const gestorCasa = new GestorMundo();
+  const casaVisitada = crearNodoTest('casa-visit', null, 5, 5, false);
+  casaVisitada.tipo = 'personal';
+  casaVisitada.ownerId = 'dueno-1';
+  gestorCasa.mundo.set(casaVisitada.id, casaVisitada);
+  gestorCasa.nodoActivoId = casaVisitada.id;
+
+  const deltaVisita: DeltaMundo = {
+    fmt: 1,
+    nodoId: 'casa-visit',
+    fila: 2,
+    columna: 2,
+    autoria: 'visita-1',
+    tick: 1,
+    cambio: { tipo: 'cavar' },
+  };
+  assert(
+    gestorCasa.aplicarDelta(deltaVisita) === false,
+    'delta de visitante (autoria != ownerId) sobre nodo personal se rechaza',
+  );
+  assert(
+    casaVisitada.celdas[2][2].esTransitable === false,
+    'la celda del nodo personal no queda cavada por el visitante',
+  );
+
+  const deltaDueno: DeltaMundo = { ...deltaVisita, autoria: 'dueno-1', tick: 2 };
+  assert(
+    gestorCasa.aplicarDelta(deltaDueno) === true,
+    'el dueño sí puede aplicar deltas sobre su nodo personal',
+  );
+  assert(
+    casaVisitada.celdas[2][2].esTransitable === true,
+    'el cavar del dueño se aplica en su nodo personal',
   );
 
   console.log(`${ok}/${total} ok`);

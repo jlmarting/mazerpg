@@ -26,7 +26,7 @@ import { HousingLocal } from './world/housing';
 import { GestorMundo } from './world/GestorMundo';
 import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
 import { ArbitroDeltas } from './world/ArbitroDeltas';
-import { conTickAutor, FMT_DELTA, type ConectorMundo, type DeltaMundo, type GenSpec, type NodoMundo } from './world/mundo';
+import { conTickAutor, FMT_DELTA, leerSnapshotNodo, restaurarEnemigos, type ConectorMundo, type DeltaMundo, type EnemigoFoto, type GenSpec, type NodoMundo } from './world/mundo';
 
 declare global {
     interface Window {
@@ -2454,6 +2454,7 @@ class Game implements IGame {
   }
 
   private atravesarConector(entidad: any, conector: ConectorMundo): void {
+    const nodoSalienteId = this.gestorMundo.nodoActivoId;
     let aparicion: { fila: number; columna: number };
     try {
         aparicion = this.gestorMundo.atravesar(conector.id);
@@ -2465,11 +2466,16 @@ class Game implements IGame {
     this.iniciarFundido();
     this.invalidarPortalesHousing();
     this.renderer.invalidarCacheLaberinto();
-    // Fase 1: los enemigos son por-nodo. Al conmutar, los del nodo anterior quedan
-    // fuera de la rejilla activa (p.ej. la casa contenida), así que se descartan.
-    // (Fase 2: persistencia de enemigos por nodo.)
+    // Fase 2: los enemigos son por-nodo y persistentes. Antes de descartar la
+    // lista activa se fotografía el nodo saliente (solo host/Firebase) y, tras
+    // conmutar, el destino se restaura desde su snapshot de enemigos; si no hay
+    // foto, la siembra por gen queda como está.
+    const fotoEnemigos = this.fotografiarEnemigos();
     if (this.listaDeEnemigos.length > 0) {
         this.listaDeEnemigos = [];
+    }
+    if (nodoSalienteId) {
+        this.conmutarSnapshotEnemigos(nodoSalienteId, fotoEnemigos);
     }
     entidad.fila = aparicion.fila;
     entidad.columna = aparicion.columna;
@@ -2488,6 +2494,59 @@ class Game implements IGame {
         }
         this.actualizarPanelAcciones();
     }
+  }
+
+  /** Foto fiel de la lista activa (id/fila/columna/nombre/tipo/vidas); null salvo host con Firebase y lista no vacía. */
+  private fotografiarEnemigos(): EnemigoFoto[] | null {
+    if (!this.esHost || !this.persistenciaMundo || this.listaDeEnemigos.length === 0) {
+        return null;
+    }
+    return this.listaDeEnemigos.map((e) => ({
+        id: String(e.id),
+        fila: e.fila,
+        columna: e.columna,
+        nombre: e.nombre,
+        tipo: e.tipo,
+        vidaActual: e.vidaActual,
+        vidaMaxima: e.vidaMaxima,
+    }));
+  }
+
+  /** Persiste la foto del nodo saliente y restaura la lista del destino desde su snapshot (async, patrón handler 'enemigos'). */
+  private conmutarSnapshotEnemigos(nodoSalienteId: string, fotoEnemigos: EnemigoFoto[] | null): void {
+    const persistencia = this.persistenciaMundo;
+    if (!this.esHost || !persistencia) {
+        return;
+    }
+    void (async () => {
+        try {
+            if (fotoEnemigos && fotoEnemigos.length > 0) {
+                await persistencia.guardarSnapshotParcial(nodoSalienteId, { enemigos: fotoEnemigos });
+            }
+            const destinoId = this.gestorMundo.nodoActivoId;
+            if (!destinoId) return;
+            const persistido = await persistencia.cargarNodo(destinoId);
+            const fotoDestino = leerSnapshotNodo(persistido?.snapshot);
+            if (!fotoDestino.enemigos) return; // sin foto: la siembra por gen queda como está
+            this.listaDeEnemigos = restaurarEnemigos(fotoDestino, (d) => this.reconstruirEnemigo(d));
+        } catch (e) {
+            console.warn('No se pudo sincronizar el snapshot de enemigos entre nodos.', e);
+        }
+    })();
+  }
+
+  /** Reconstrucción exacta de un enemigo desde su foto (constructor de fase 1 + vidas + setupEntity); los muertos siguen muertos. */
+  private reconstruirEnemigo(d: EnemigoFoto): EnemigoNPC {
+    const idNumerico = Number(d.id);
+    const id = Number.isFinite(idNumerico) && String(idNumerico) === d.id ? idNumerico : (d.id as unknown as number);
+    const e = new EnemigoNPC(d.fila, d.columna, d.nombre, d.tipo, id, this.config.dificultad);
+    e.vidaActual = d.vidaActual;
+    e.vidaMaxima = d.vidaMaxima;
+    if (d.vidaActual <= 0) {
+        e.estaVivo = false;
+    }
+    this.setupEntity(e);
+    return e;
   }
 
   private teleportarPortalClasico(entidad: any): void {

@@ -11,7 +11,15 @@ import {
   type PersistenciaMundoLike,
 } from './integracion';
 import { HousingLocal, type AlmacenamientoLocal } from './housing';
-import { FMT_DELTA, type DeltaMundo, type GenSpec, type NodoMundo } from './mundo';
+import {
+  FMT_DELTA,
+  leerSnapshotNodo,
+  restaurarEnemigos,
+  type DeltaMundo,
+  type EnemigoFoto,
+  type GenSpec,
+  type NodoMundo,
+} from './mundo';
 
 declare const process: { exit(codigo: number): void };
 
@@ -464,6 +472,99 @@ async function main(): Promise<void> {
       'no se genera la casa nueva cuando hay casaPrevia',
     );
   }
+
+  // --- Fase 2: restauración fiel de enemigos desde el snapshot del nodo ---
+  const fotoRestaurar: EnemigoFoto[] = [
+    { id: '3', fila: 2, columna: 3, nombre: 'Orco de la sala', tipo: 'Orco', vidaActual: 4, vidaMaxima: 10 },
+    { id: '8', fila: 7, columna: 8, nombre: 'Esqueleto', tipo: 'Esqueleto', vidaActual: 0, vidaMaxima: 8 },
+    { id: '5', fila: 9, columna: 1, nombre: 'Goblin', tipo: 'Goblin', vidaActual: 3, vidaMaxima: 6 },
+  ];
+  const reconstruidos = restaurarEnemigos(
+    { formato: 1, enemigos: fotoRestaurar },
+    (d) => ({ ...d, estaVivo: d.vidaActual > 0 }),
+  );
+  assert(reconstruidos.length === 3, 'restaurarEnemigos reconstruye la foto completa');
+  assert(
+    reconstruidos[0].id === '3' &&
+      reconstruidos[0].fila === 2 &&
+      reconstruidos[0].columna === 3 &&
+      reconstruidos[0].nombre === 'Orco de la sala' &&
+      reconstruidos[0].tipo === 'Orco' &&
+      reconstruidos[0].vidaActual === 4 &&
+      reconstruidos[0].vidaMaxima === 10,
+    'restauración fiel: id/posición/nombre/tipo/vida quedan tal cual la foto',
+  );
+  assert(
+    reconstruidos[1].fila === 7 && reconstruidos[1].columna === 8,
+    'las posiciones se restauran tal cual (también para muertos)',
+  );
+  assert(
+    reconstruidos[1].estaVivo === false && reconstruidos[1].vidaActual === 0,
+    'los muertos siguen muertos al restaurar (vidaActual 0 -> estaVivo false)',
+  );
+  assert(
+    reconstruidos[0].estaVivo === true && reconstruidos[2].estaVivo === true,
+    'los vivos siguen vivos al restaurar',
+  );
+
+  assert(restaurarEnemigos(undefined, (d) => d).length === 0, 'sin snapshot no hay restauración');
+  assert(restaurarEnemigos(null, (d) => d).length === 0, 'snapshot null: restauración vacía');
+  assert(
+    restaurarEnemigos({ formato: 1 }, (d) => d).length === 0,
+    'snapshot sin enemigos: restauración vacía (el llamador deja la siembra)',
+  );
+  assert(
+    restaurarEnemigos(
+      { formato: 2, enemigos: [{ id: 'x', fila: 0, columna: 0, nombre: '?', tipo: '?', vidaActual: 1, vidaMaxima: 2 }] },
+      (d) => d,
+    ).length === 0,
+    'formato desconocido se ignora (forward-compat)',
+  );
+
+  const conInvalidez = {
+    formato: 1,
+    enemigos: [
+      { id: 'a', fila: 1, columna: 1, nombre: 'n', tipo: 'Orco', vidaActual: '5', vidaMaxima: 10 },
+      { id: 'b', fila: 2, columna: 2, nombre: 'n', tipo: 'Orco', vidaActual: 5, vidaMaxima: 10 },
+      { id: 'c', fila: -3, columna: 2, nombre: 'n', tipo: 'Orco', vidaActual: 5, vidaMaxima: 10 },
+    ],
+  };
+  assert(
+    restaurarEnemigos(conInvalidez, (d) => d).length === 1 &&
+      restaurarEnemigos(conInvalidez, (d) => d)[0].id === 'b',
+    'las entradas de foto corruptas se descartan (tolerancia a datos remotos)',
+  );
+
+  const clampeada = restaurarEnemigos(
+    { formato: 1, enemigos: [{ id: 'c', fila: 0, columna: 0, nombre: 'n', tipo: 't', vidaActual: 99, vidaMaxima: 10 }] },
+    (d) => d,
+  );
+  assert(
+    clampeada.length === 1 && clampeada[0].vidaActual === 10,
+    'la vida restaurada se acota a [0, vidaMaxima]',
+  );
+
+  const leido = leerSnapshotNodo({
+    formato: 1,
+    escenario: [{ fila: 0, columna: 0, tipoEscenario: 'puerta', estadoEscenario: 'cerrada' }],
+    celdas: [deltaAlimento(0, 0)],
+  });
+  assert(
+    leido.formato === 1 &&
+      leido.escenario?.length === 1 &&
+      leido.escenario[0].tipoEscenario === 'puerta' &&
+      leido.celdas?.length === 1 &&
+      leido.celdas[0].tick === 1,
+    'leerSnapshotNodo conserva las partes reconocidas del formato 1 (escenario/celdas)',
+  );
+  assert(
+    leerSnapshotNodo({ formato: 3, enemigos: fotoRestaurar }).enemigos === undefined,
+    'leerSnapshotNodo rechaza formato distinto de 1',
+  );
+  assert(
+    leerSnapshotNodo('basura').formato === 1 && !leerSnapshotNodo('basura').enemigos,
+    'leerSnapshotNodo tolera datos no-objeto (snapshot vacío normalizado)',
+  );
 
   console.log(`${ok}/${total} ok`);
 }

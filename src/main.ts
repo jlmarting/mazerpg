@@ -2518,14 +2518,20 @@ class Game implements IGame {
     if (!this.esHost || !persistencia) {
         return;
     }
+    // El destino se captura de forma síncrona: no depende de ningún await.
+    const destinoId = this.gestorMundo.nodoActivoId;
+    if (!destinoId) return;
     void (async () => {
         try {
+            // La foto escribe en el nodo saliente fijo (datos capturados de forma síncrona): sin carrera.
             if (fotoEnemigos && fotoEnemigos.length > 0) {
                 await persistencia.guardarSnapshotParcial(nodoSalienteId, { enemigos: fotoEnemigos });
             }
-            const destinoId = this.gestorMundo.nodoActivoId;
-            if (!destinoId) return;
             const persistido = await persistencia.cargarNodo(destinoId);
+            // Doble cruce rápido (A->B->C / A->B->A): si el nodo activo ya no es el
+            // destino de ESTA conmutación, la lista activa la gobierna la conmutación
+            // más reciente; restaurar aquí pisaría con una foto ajena.
+            if (this.gestorMundo.nodoActivoId !== destinoId) return;
             const fotoDestino = leerSnapshotNodo(persistido?.snapshot);
             if (!fotoDestino.enemigos) return; // sin foto: la siembra por gen queda como está
             this.listaDeEnemigos = restaurarEnemigos(fotoDestino, (d) => this.reconstruirEnemigo(d));

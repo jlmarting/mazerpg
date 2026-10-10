@@ -116,7 +116,10 @@ export function aplicarDelta(celdas: Celda[][], delta: DeltaMundo): boolean {
     case 'decor': {
       const valor = cambio.valor || null;
       if (cambio.campo === 'sueloDecor') {
-        celda.sueloDecor = valor as Celda['sueloDecor'];
+        if (valor !== null && valor !== 'madera' && valor !== 'baldosa' && valor !== 'alfombra') {
+          return false;
+        }
+        celda.sueloDecor = valor;
       } else {
         celda.mueble = valor;
       }

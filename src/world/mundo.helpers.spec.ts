@@ -143,6 +143,24 @@ function main(): void {
   assert(sueloReset === true, "aplicarDelta decor/sueloDecor valor null devuelve true");
   assert(raiz.celdas[2][0].sueloDecor === null, 'aplicarDelta decor/sueloDecor valor null resetea el suelo');
 
+  const sueloAlfombra = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 0, { tipo: 'decor', campo: 'sueloDecor', valor: 'alfombra' }, 1),
+  );
+  assert(sueloAlfombra === true && raiz.celdas[1][0].sueloDecor === 'alfombra', 'aplicarDelta decor/sueloDecor fija alfombra (preparación)');
+  const sueloPiedra = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 0, { tipo: 'decor', campo: 'sueloDecor', valor: 'piedra' }, 2),
+  );
+  assert(sueloPiedra === false, "aplicarDelta decor/sueloDecor rechaza material no válido ('piedra')");
+  assert(raiz.celdas[1][0].sueloDecor === 'alfombra', "aplicarDelta decor/sueloDecor con 'piedra' no muta la celda");
+  const sueloNulo = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 0, { tipo: 'decor', campo: 'sueloDecor', valor: null }, 3),
+  );
+  assert(sueloNulo === true, "aplicarDelta decor/sueloDecor valor null devuelve true");
+  assert(raiz.celdas[1][0].sueloDecor === null, 'aplicarDelta decor/sueloDecor valor null resetea el suelo');
+
   const conector: ConectorMundo = {
     id: 'con-1',
     tipo: 'portal',

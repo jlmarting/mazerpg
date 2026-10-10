@@ -694,6 +694,32 @@ async function main(): Promise<void> {
     'la vida restaurada se acota a [0, vidaMaxima]',
   );
 
+  // --- M3: la foto de enemigos se acota a las dims del destino ---
+  const fotoGrande: EnemigoFoto[] = [
+    { id: 'g1', fila: 30, columna: 24, nombre: 'Minotauro', tipo: 'Minotauro', vidaActual: 5, vidaMaxima: 10 },
+    { id: 'g2', fila: 5, columna: 8, nombre: 'Goblin', tipo: 'Goblin', vidaActual: 0, vidaMaxima: 8 },
+    { id: 'g3', fila: 8, columna: 15, nombre: 'Orco', tipo: 'Orco', vidaActual: 3, vidaMaxima: 10 },
+    { id: 'g4', fila: 0, columna: 16, nombre: 'Orco borde', tipo: 'Orco', vidaActual: 2, vidaMaxima: 10 },
+  ];
+  const acotada = restaurarEnemigos({ formato: 1, enemigos: fotoGrande }, (d) => ({ ...d, estaVivo: d.vidaActual > 0 }), { filas: 9, columnas: 16 });
+  const idsAcotados = acotada.map((e) => e.id).join(',');
+  assert(
+    acotada.length === 2 && idsAcotados === 'g2,g3',
+    'M3 dims: fila 30 sobre rejilla 9×16 se descarta (sin posiciones inventadas) y columna 16 = columnas también',
+  );
+  assert(
+    acotada.some((e) => e.id === 'g2' && e.estaVivo === false && e.vidaActual === 0),
+    'M3 dims: los muertos VÁLIDOS se conservan (siguen muertos)',
+  );
+  assert(
+    acotada.some((e) => e.id === 'g3' && e.fila === 8 && e.columna === 15 && e.estaVivo === true),
+    'M3 dims: la foto válida se conserva tal cual en el borde de rejilla (8,15)',
+  );
+  assert(
+    restaurarEnemigos({ formato: 1, enemigos: fotoGrande }, (d) => ({ ...d, estaVivo: d.vidaActual > 0 })).length === 4,
+    'M3: sin dims no hay filtro (compatibilidad con el llamador sin nodo activo)',
+  );
+
   const leido = leerSnapshotNodo({
     formato: 1,
     escenario: [{ fila: 0, columna: 0, tipoEscenario: 'puerta', estadoEscenario: 'cerrada' }],

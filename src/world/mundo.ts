@@ -132,17 +132,26 @@ export function leerSnapshotNodo(bruto: unknown): SnapshotNodo {
 /**
  * Restauración fiel de enemigos desde el snapshot del nodo: posiciones y vidas
  * tal cual (los muertos con vidaActual 0 siguen muertos para el llamador, que
- * es quien decide `estaVivo`). Devuelve [] si no hay foto; el llamador entonces
- * deja la siembra por gen como está.
+ * es quien decide `estaVivo`). Con `dims` (M3) se acota la foto a la rejilla
+ * del destino: las entradas fuera de rango se DESCARTAN (no se inventa
+ * posición — un enemigo fuera de rejilla no se reubica). Devuelve [] si no
+ * hay foto; el llamador entonces deja la siembra por gen como está.
  */
 export function restaurarEnemigos<T>(
   snapshot: unknown,
   crear: (foto: EnemigoFoto) => T,
+  dims?: { filas: number; columnas: number },
 ): T[] {
   const foto = leerSnapshotNodo(snapshot);
   if (!foto.enemigos) return [];
   const reconstruidos: T[] = [];
   for (const d of foto.enemigos) {
+    if (dims) {
+      const fuera =
+        d.fila < 0 || d.columna < 0 ||
+        d.fila >= dims.filas || d.columna >= dims.columnas;
+      if (fuera) continue;
+    }
     const vidaMaxima = Math.max(0, Math.floor(d.vidaMaxima));
     const vidaActual = Math.min(Math.max(0, Math.floor(d.vidaActual)), vidaMaxima);
     reconstruidos.push(

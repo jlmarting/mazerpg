@@ -23,10 +23,11 @@ import {
 import { dentroDeBurbuja, radioSimPorDefecto } from './world/burbuja';
 import { PersistenciaMundo } from './world/PersistenciaMundo';
 import { HousingLocal } from './world/housing';
+import { EspejoLocal, type DocNodoLocal } from './world/espejoLocal';
 import { GestorMundo } from './world/GestorMundo';
 import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
 import { ArbitroDeltas } from './world/ArbitroDeltas';
-import { conTickAutor, FMT_DELTA, leerSnapshotNodo, restaurarEnemigos, type ConectorMundo, type DeltaMundo, type EnemigoFoto, type GenSpec, type NodoMundo } from './world/mundo';
+import { conTickAutor, consolidarCeldasLWW, FMT_DELTA, leerSnapshotNodo, rehidratarHistoria, restaurarEnemigos, type ConectorMundo, type DeltaMundo, type EnemigoFoto, type GenSpec, type NodoMundo, type SnapshotNodo } from './world/mundo';
 
 declare global {
     interface Window {
@@ -78,6 +79,11 @@ class Game implements IGame {
   private guestPollingInterval: number | null = null;
   private persistenciaMundo: PersistenciaMundo | null = null;
   private housingDecision: 'usar' | 'nueva' | null = null;
+  /** Espejo local (mazerpg.mundo.*) de la casa: SU persistencia cuando no hay Firebase. */
+  private readonly espejo: EspejoLocal = new EspejoLocal();
+  private idCasaEspejo: string | null = null;
+  private deltasCasaPendientes: DeltaMundo[] = [];
+  private timerEspejoCasa: number | null = null;
   private firebaseHeartbeatInterval: number | null = null;
   private firebaseNpcSyncInterval: number | null = null;
   public lobbyManager!: LobbyManager;
@@ -98,6 +104,10 @@ class Game implements IGame {
   private portalesInactivosCache: Set<string> = new Set();
   private portalesInactivosRecalculadoEn: number = Number.NEGATIVE_INFINITY;
   private readonly INTERVALO_PORTALES_MS: number = 250;
+  /** Debounce del guardado del espejo de la casa (solo sin Firebase). */
+  private static readonly DEBOUNCE_ESPEJO_CASA_MS = 1500;
+  /** Límite de deltas acumulados en el doc del espejo antes de plegarlos en el snapshot. */
+  private static readonly LIMITE_DELTAS_ESPEJO = 100;
 
   constructor() {
     (window as any).game = this;
@@ -248,7 +258,10 @@ class Game implements IGame {
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
-    document.getElementById('btnSalir')?.addEventListener('click', () => window.location.reload());
+    document.getElementById('btnSalir')?.addEventListener('click', () => {
+      this.vaciarEspejoCasa();
+      window.location.reload();
+    });
     document.getElementById('btnAbandonar')?.addEventListener('click', () => this.abandonarPartida());
 
 
@@ -840,6 +853,7 @@ class Game implements IGame {
         this.detenerIntervalosFirebase();
         if (this.networkHttp) this.networkHttp.desconectar();
         this.signaling?.desconectar();
+        this.vaciarEspejoCasa();
         window.location.reload();
     }
   }
@@ -1028,6 +1042,9 @@ class Game implements IGame {
     if (this.housingDecision === 'usar') {
       casaPrevia = this.housing.cargarCasaPrevia();
     } else if (this.housingDecision === 'nueva') {
+      // CREAR UNA NUEVA: la casa descartada también suelta su historia en el espejo local.
+      const previa = this.housing.cargarCasaPrevia();
+      if (previa) this.espejo.borrarDoc(previa.id);
       this.housing.descartarCasasGuardadas();
     }
     this.housingDecision = null;
@@ -1041,6 +1058,12 @@ class Game implements IGame {
       casaPrevia,
     });
     if (sembrado) {
+      // Casa duradera (Solo): si el espejo local guarda historia de esta casa, la
+      // cava/el muebles/el escenario se rehidratan sobre la casa adoptada (sin
+      // regenerar); las celdas del nodo son las mismas que renderiza al entrar.
+      this.idCasaEspejo = sembrado.casa.id;
+      const doc = this.espejo.cargarDoc(sembrado.casa.id);
+      if (doc) rehidratarHistoria(sembrado.casa.celdas, doc);
       this.registrarEventoLog(
         'Mundo conectado: salida a zona y portal de casa personal registrados.',
       );
@@ -1793,8 +1816,98 @@ class Game implements IGame {
       this.esHost,
       (d) => void this.persistirDeltaMundo(d),
     );
-    if (aplicado) this.arbitroDeltas.registrar(delta);
+    if (aplicado) {
+      this.arbitroDeltas.registrar(delta);
+      this.programarGuardadoCasa(delta);
+    }
     return aplicado;
+  }
+
+  /**
+   * Casa duradera (Solo): sin Firebase el espejo local es la persistencia de la
+   * casa. Un delta aplicado en ella se acumula y programa un guardado con
+   * debounce; con Firebase va por persistenciaMundo (host) y el espejo no interviene.
+   */
+  private programarGuardadoCasa(delta: DeltaMundo): void {
+    if (this.persistenciaMundo) return;
+    if (!this.idCasaEspejo || delta.nodoId !== this.idCasaEspejo) return;
+    this.deltasCasaPendientes.push(delta);
+    if (this.timerEspejoCasa !== null) window.clearTimeout(this.timerEspejoCasa);
+    this.timerEspejoCasa = window.setTimeout(() => {
+      this.timerEspejoCasa = null;
+      this.vaciarEspejoCasa();
+    }, Game.DEBOUNCE_ESPEJO_CASA_MS);
+  }
+
+  /** Flush del espejo de la casa: acumula deltas (con compactación al superar el límite) y guarda. */
+  private vaciarEspejoCasa(): void {
+    if (this.timerEspejoCasa !== null) {
+      window.clearTimeout(this.timerEspejoCasa);
+      this.timerEspejoCasa = null;
+    }
+    if (this.persistenciaMundo) return; // con Firebase la casa persiste por Firestore
+    if (!this.idCasaEspejo) {
+      this.deltasCasaPendientes = [];
+      return;
+    }
+    const nodoCasa = this.gestorMundo.mundo.get(this.idCasaEspejo);
+    if (!nodoCasa) {
+      this.deltasCasaPendientes = [];
+      return;
+    }
+    const previo = this.espejo.cargarDoc(this.idCasaEspejo);
+    let deltas = [...(previo?.deltas ?? []), ...this.deltasCasaPendientes].sort(
+      (a, b) => a.tick - b.tick,
+    );
+    this.deltasCasaPendientes = [];
+
+    let snapshot: SnapshotNodo | null = previo?.snapshot ?? null;
+    let ultimaCompactacionTick = previo?.ultimaCompactacionTick ?? 0;
+    if (deltas.length > Game.LIMITE_DELTAS_ESPEJO) {
+      // Plegado tipo compactarNodo: celda a celda LWW, el snapshot previo nunca regresa.
+      const plegadas = consolidarCeldasLWW([snapshot?.celdas ?? [], deltas]);
+      const fusion: SnapshotNodo = { formato: 1 };
+      const celdas = plegadas.length > 0 ? plegadas : undefined;
+      if (celdas) fusion.celdas = celdas;
+      if (snapshot?.enemigos) fusion.enemigos = snapshot.enemigos;
+      if (snapshot?.escenario) fusion.escenario = snapshot.escenario;
+      snapshot = fusion;
+      if (deltas.length > 0) ultimaCompactacionTick = Math.max(ultimaCompactacionTick, deltas[deltas.length - 1].tick);
+      deltas = [];
+    }
+
+    const doc: DocNodoLocal = {
+      formato: 1,
+      gen: nodoCasa.gen,
+      ownerId: nodoCasa.ownerId,
+      deltas,
+      snapshot,
+      ultimaCompactacionTick,
+    };
+    this.espejo.guardarDoc(this.idCasaEspejo, doc);
+  }
+
+  /**
+   * Enemigos de la casa (Solo): al salir, la foto del nodo saliente se fusiona
+   * en el doc local con la misma semántica que PersistenciaMundo.
+   * guardarSnapshotParcial: read-modify que reemplaza `enemigos` y conserva el
+   * resto del snapshot del espejo.
+   */
+  private espejoEnemigosCasa(nodoSalienteId: string, fotoEnemigos: EnemigoFoto[] | null): void {
+    if (this.persistenciaMundo) return;
+    if (!this.idCasaEspejo || nodoSalienteId !== this.idCasaEspejo) return;
+    if (!fotoEnemigos || fotoEnemigos.length === 0) return;
+    this.vaciarEspejoCasa(); // los deltas pendientes viajan en el mismo doc antes de la fusión
+    const doc = this.espejo.cargarDoc(nodoSalienteId);
+    if (!doc) return;
+    const previo = leerSnapshotNodo(doc.snapshot);
+    doc.snapshot = {
+      formato: 1,
+      enemigos: fotoEnemigos,
+      ...(previo.escenario ? { escenario: previo.escenario } : {}),
+      ...(previo.celdas ? { celdas: previo.celdas } : {}),
+    };
+    this.espejo.guardarDoc(nodoSalienteId, doc);
   }
 
   resolverAccion(id: string, accion: any) {
@@ -2476,6 +2589,7 @@ class Game implements IGame {
     }
     if (nodoSalienteId) {
         this.conmutarSnapshotEnemigos(nodoSalienteId, fotoEnemigos);
+        this.espejoEnemigosCasa(nodoSalienteId, fotoEnemigos);
     }
     entidad.fila = aparicion.fila;
     entidad.columna = aparicion.columna;
@@ -2496,9 +2610,11 @@ class Game implements IGame {
     }
   }
 
-  /** Foto fiel de la lista activa (id/fila/columna/nombre/tipo/vidas); null salvo host con Firebase y lista no vacía. */
+  /** Foto fiel de la lista activa (id/fila/columna/nombre/tipo/vidas); null salvo lado autoritativo con lista no vacía. */
   private fotografiarEnemigos(): EnemigoFoto[] | null {
-    if (!this.esHost || !this.persistenciaMundo || this.listaDeEnemigos.length === 0) {
+    // Sin Firebase el espejo local usa esta foto para la casa (solo); el destino
+    // de la conmutación solo lo restaura la vía Firestore (conmutarSnapshotEnemigos).
+    if (!this.esLadoAutoritativo() || this.listaDeEnemigos.length === 0) {
         return null;
     }
     return this.listaDeEnemigos.map((e) => ({

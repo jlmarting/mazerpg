@@ -1,4 +1,5 @@
 import { Celda } from './Celda';
+import type { DocNodoLocal } from './espejoLocal';
 
 export const FMT_DELTA = 1;
 
@@ -267,4 +268,16 @@ export function conTickAutor(
   fallbackTick: number,
 ): DeltaMundo {
   return { ...base, tick: tickAutor ?? fallbackTick };
+}
+
+/**
+ * Rehidratación del espejo local (mismo ciclo que materializarNodo en
+ * Firebase): primero las celdas ya plegadas del snapshot (una por celda,
+ * consolidadas) y después los deltas del doc ordenados por tick, para que el
+ * último writer gane celda a celda. Los deltas fuera de rango se descartan.
+ */
+export function rehidratarHistoria(nodoCeldas: Celda[][], doc: DocNodoLocal): void {
+  for (const delta of doc.snapshot?.celdas ?? []) aplicarDelta(nodoCeldas, delta);
+  const deltas = (doc.deltas ?? []).slice().sort((a, b) => a.tick - b.tick);
+  for (const delta of deltas) aplicarDelta(nodoCeldas, delta);
 }

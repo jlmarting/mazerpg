@@ -161,6 +161,28 @@ function celdasTransitables(celdas: Celda[][]): Array<{ fila: number; columna: n
   return puntos;
 }
 
+/** Celda transitable más cercana al centro del mapa, distinta de `excluir`. */
+function celdaCentral(
+  puntos: Array<{ fila: number; columna: number }>,
+  excluir: { fila: number; columna: number },
+  filas: number,
+  columnas: number,
+): { fila: number; columna: number } {
+  const cf = (filas - 1) / 2;
+  const cc = (columnas - 1) / 2;
+  let mejor = puntos[0];
+  let mejorDist = Infinity;
+  for (const p of puntos) {
+    if (p.fila === excluir.fila && p.columna === excluir.columna) continue;
+    const d = Math.abs(p.fila - cf) + Math.abs(p.columna - cc);
+    if (d < mejorDist) {
+      mejorDist = d;
+      mejor = p;
+    }
+  }
+  return mejor;
+}
+
 function hashCadena(texto: string): number {
   let hash = 2166136261;
   for (let i = 0; i < texto.length; i++) {
@@ -202,19 +224,9 @@ export function sembrarMundoBase(params: {
 
   const celdaOrigen = origenTransitables[0];
 
-  let celdaOrigenCasa = origenTransitables[origenTransitables.length - 1];
-  if (celdaOrigenCasa.fila === celdaOrigen.fila && celdaOrigenCasa.columna === celdaOrigen.columna) {
-    const alternativas = [
-      { fila: 0, columna: 0 },
-      { fila: 0, columna: columnas - 1 },
-      { fila: filas - 1, columna: 0 },
-      { fila: filas - 1, columna: columnas - 1 },
-    ];
-    celdaOrigenCasa =
-      alternativas.find((p) => p.fila !== celdaOrigen.fila || p.columna !== celdaOrigen.columna) ??
-      { fila: 0, columna: 0 };
-    raiz.celdas[celdaOrigenCasa.fila][celdaOrigenCasa.columna].esTransitable = true;
-  }
+  // El portal de casa no debe caer en la salida del mapa (esquinas / marcador META):
+  // se elige la celda transitable más céntrica, distinta del origen del conector de zona.
+  const celdaOrigenCasa = celdaCentral(origenTransitables, celdaOrigen, filas, columnas);
 
   const idHijo = 'zona-abierto-1';
   let hijo = gestor.mundo.get(idHijo);

@@ -62,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Firebase unificado al proyecto `mazerpg-b2aa4` (`.firebaserc`, `projectId` y service account) (`0a354b4`)
 
 ### Fixed
+- El portal de casa ya no se coloca en la esquina META/salida del mapa: se ubica en una celda céntrica transitable (y el retorno desde la casa aterriza en el centro, no en la salida)
+- `teleportarPortalClasico` ya no crashea si la entidad queda fuera del nodo activo (guardas de límites)
 - El arranque ya no se tumba si `localStorage` está lleno (`QuotaExceededError`): `guardarCasa` degrada con aviso y la casa sigue viva en memoria
 - `sprites.json`: eliminada la entrada `food_apple -> sprites/apple.png` (fichero inexistente) que provocaba el falso aviso "Modo geométrico activo (Sprites faltantes)"
 - Enemigos por-nodo: al atravesar un conector se descartan los del nodo anterior (evita accesos fuera de la rejilla del nodo activo)

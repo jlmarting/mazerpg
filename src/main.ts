@@ -1733,10 +1733,8 @@ class Game implements IGame {
       this.registrarEventoLog('No hay portal de housing registrado.');
       return;
     }
-    this.protagonista.fila = conector.filaO;
-    this.protagonista.columna = conector.columnaO;
-    this.verificarPortal(this.protagonista);
-    this.actualizarPanelAcciones();
+    // Travesía real por el conector (conmuta de nodo con fundido/log, sin asumir el nodo actual).
+    this.atravesarConector(this.protagonista, conector);
   }
 
   private calcularPortalesHousingInactivos(): Set<string> {
@@ -2468,7 +2466,9 @@ class Game implements IGame {
   }
 
   private teleportarPortalClasico(entidad: any): void {
-    const celda = this.mapaLaberinto[entidad.fila][entidad.columna];
+    const fila = this.mapaLaberinto[entidad.fila];
+    if (fila === undefined || fila[entidad.columna] === undefined) return;
+    const celda = fila[entidad.columna];
     if (celda.esPortal) {
         const todosLosPortales: {f: number, c: number}[] = [];
         const dimsPortales = this.dimsActivo();

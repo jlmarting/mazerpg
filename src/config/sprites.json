@@ -5,7 +5,6 @@
     "sheet_static": "sprites/static.png",
     "sheet_dynamic": "sprites/dynamic.png",
     "sheet_food": "sprites/food.png",
-    "food_apple": "sprites/apple.png",
     "tool_pickaxe": "sprites/pickaxe.png",
     "hero_custom": "sprites/hero_custom.png"
   },

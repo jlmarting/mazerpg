@@ -2,6 +2,8 @@ import { Celda } from './Celda';
 import {
   aplicarDelta,
   conTickAutor,
+  consolidarCeldasLWW,
+  rehidratarHistoria,
   resolverLWW,
   FMT_DELTA,
   type NodoMundo,
@@ -206,6 +208,78 @@ function main(): void {
   assert(conAutor.autoria === 'jugador-2' && conAutor.cambio.tipo === 'cavar', 'conTickAutor conserva los campos del base');
   const conFallback = conTickAutor(base, null, 100);
   assert(conFallback.tick === 100, 'conTickAutor cae al fallback si tickAutor es null');
+
+  // C1: el plegado LWW conserva efectos ortogonales de la misma celda
+  // (cavar + objeto.alimento coexisten; la recarga reproduce ambos).
+  const plegadas1 = consolidarCeldasLWW([
+    [
+      deltaBase('raiz', 1, 1, { tipo: 'cavar' }, 5),
+      deltaBase('raiz', 1, 1, { tipo: 'objeto', campo: 'alimento', valor: { tipo: 'Manzana', pc: 5 } }, 7),
+    ],
+  ]);
+  assert(plegadas1.length === 2, 'C1: cavar + alimento en la misma celda no se pliegan entre sí');
+  const celdasC1 = crearNodoRaiz(2, 2).celdas;
+  for (const delta of plegadas1) aplicarDelta(celdasC1, delta);
+  assert(celdasC1[1][1].esTransitable === true, 'C1: aplicado el plegado sobre gen, la celda queda transitable');
+  assert(
+    celdasC1[1][1].alimento !== null &&
+    celdasC1[1][1].alimento?.tipo === 'Manzana' &&
+    celdasC1[1][1].alimento?.pc === 5,
+    'C1: aplicado el plegado sobre gen, la celda conserva el alimento',
+  );
+  const celdasRecarga = crearNodoRaiz(2, 2).celdas;
+  for (const delta of consolidarCeldasLWW([plegadas1])) aplicarDelta(celdasRecarga, delta);
+  assert(
+    celdasRecarga[1][1].esTransitable === celdasC1[1][1].esTransitable &&
+      celdasRecarga[1][1].alimento?.tipo === celdasC1[1][1].alimento?.tipo &&
+      celdasRecarga[1][1].alimento?.pc === celdasC1[1][1].alimento?.pc,
+    'C1: la recarga del plegado reproduce la celda idéntica (transitable y con alimento)',
+  );
+
+  // C1: dentro de la misma clave (celda+tipo) sigue mandando LWW entre sí.
+  const plegadasCavar = consolidarCeldasLWW([
+    [deltaBase('raiz', 1, 1, { tipo: 'cavar' }, 5), deltaBase('raiz', 1, 1, { tipo: 'cavar' }, 9)],
+  ]);
+  assert(plegadasCavar.length === 1 && plegadasCavar[0].tick === 9, "C1: dos 'cavar' de la misma celda se pliegan LWW (gana tick 9)");
+
+  // C1: campos del mismo tipo distintos coexisten (decor.sueloDecor + decor.mueble).
+  const plegadasDecor = consolidarCeldasLWW([
+    [
+      deltaBase('raiz', 0, 0, { tipo: 'decor', campo: 'sueloDecor', valor: 'madera' }, 5),
+      deltaBase('raiz', 0, 0, { tipo: 'decor', campo: 'mueble', valor: 'mesa' }, 6),
+    ],
+  ]);
+  assert(plegadasDecor.length === 2, 'C1: decor.sueloDecor + decor.mueble de la misma celda coexisten');
+
+  // C1: 'escenario' escribe un único (tipoEscenario+estado) por celda; el
+  // plegado conserva la pareja del último.
+  const plegadasEscenario = consolidarCeldasLWW([
+    [
+      deltaBase('raiz', 0, 1, { tipo: 'escenario', tipoEscenario: 'puerta', estado: 'cerrada' }, 8),
+      deltaBase('raiz', 0, 1, { tipo: 'escenario', tipoEscenario: 'trampa', estado: 'inactiva' }, 9),
+    ],
+  ]);
+  assert(plegadasEscenario.length === 1, 'C1: deltas de escenario de la misma celda se pliegan entre sí');
+  const cambioEscenario = plegadasEscenario[0].cambio;
+  assert(
+    cambioEscenario.tipo === 'escenario' && cambioEscenario.tipoEscenario === 'trampa' && cambioEscenario.estado === 'inactiva',
+    "C1: el escenario plegado conserva (tipoEscenario+estado) del último ('trampa inactiva')",
+  );
+
+  // rehidratarHistoria acepta historia cruda (Firebase) y aplica ciclo completo.
+  const nodoCrudol = crearNodoRaiz(2, 2);
+  rehidratarHistoria(nodoCrudol.celdas, {
+    snapshot: { formato: 1, celdas: [deltaBase('raiz', 0, 0, { tipo: 'cavar' }, 4)] },
+    deltas: [
+      deltaBase('raiz', 1, 1, { tipo: 'objeto', campo: 'alimento', valor: { tipo: 'Manzana', pc: 5 } }, 7),
+      deltaBase('raiz', 1, 1, { tipo: 'cavar' }, 6),
+    ],
+  });
+  assert(nodoCrudol.celdas[0][0].esTransitable === true, 'rehidratarHistoria aplica las celdas plegadas del snapshot crudo');
+  assert(
+    nodoCrudol.celdas[1][1].esTransitable === true && nodoCrudol.celdas[1][1].alimento?.tipo === 'Manzana',
+    'rehidratarHistoria aplica los deltas crudos ordenados por tick sobre el gen',
+  );
 
   console.log(`${ok}/${total} ok`);
 }

@@ -234,7 +234,7 @@ function main(): void {
 
   // --- Doc vacío: la rehidratación es un no-op seguro ---
   const intacto: Celda[][] = [[new Celda(0, 0)]];
-  rehidratarHistoria(intacto, { formato: 1, gen: docDes.gen, ownerId: null, deltas: [], snapshot: null, ultimaCompactacionTick: 0 });
+  rehidratarHistoria(intacto, { deltas: [], snapshot: null });
   assert(intacto[0][0].esTransitable === false, 'rehidratarHistoria con doc vacío no altera las celdas');
 
   console.log(`${ok}/${total} ok`);

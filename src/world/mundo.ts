@@ -1,5 +1,4 @@
 import { Celda } from './Celda';
-import type { DocNodoLocal } from './espejoLocal';
 
 export const FMT_DELTA = 1;
 
@@ -162,18 +161,43 @@ export function restaurarEnemigos<T>(
 }
 
 /**
- * Fusión LWW de listas de deltas por celda (fila:columna) usando resolverLWW:
- * la lista posterior pisa a la anterior solo con tick >= (empate -> entrante).
+ * Clave de plegado LWW: (fila, columna, tipo, campo). Los deltas del MISMO
+ * tipo+campo sobre la misma celda compiten entre sí; los tipos/campos DISTINTOS
+ * de la misma celda son ortogonales y coexisten (cavar + objeto.alimento +
+ * decor.mueble + escenario). Notas: dentro de 'objeto' (y 'decor') el campo es
+ * parte de la clave; 'cavar'/'conector' no tienen campo (clave solo tipo, un
+ * celda tiene un conector); 'escenario' escribe un único par (tipoEscenario,
+ * estado) por celda, así que todos sus deltas se pliegan entre sí y el ganador
+ * conserva la pareja del último.
+ */
+function clavePlegado(delta: DeltaMundo): string {
+  const cambio = delta.cambio;
+  switch (cambio.tipo) {
+    case 'objeto':
+    case 'decor':
+      return `${delta.fila}:${delta.columna}:${cambio.tipo}:${cambio.campo}`;
+    case 'cavar':
+    case 'escenario':
+    case 'conector':
+      return `${delta.fila}:${delta.columna}:${cambio.tipo}`;
+  }
+}
+
+/**
+ * Fusión LWW de listas de deltas con clave (fila, columna, tipo, campo) usando
+ * resolverLWW: la lista posterior pisa a la anterior solo con tick >= (empate
+ * -> entrante). Sin efectos ortogonales perdidos: al aplicar el plegado sobre
+ * el gen, cada campo/escenario de la celda recupera su último writer.
  */
 export function consolidarCeldasLWW(listas: DeltaMundo[][]): DeltaMundo[] {
-  const porCelda = new Map<string, DeltaMundo>();
+  const porClave = new Map<string, DeltaMundo>();
   for (const lista of listas) {
     for (const delta of lista) {
-      const clave = `${delta.fila}:${delta.columna}`;
-      porCelda.set(clave, resolverLWW(porCelda.get(clave) ?? null, delta));
+      const clave = clavePlegado(delta);
+      porClave.set(clave, resolverLWW(porClave.get(clave) ?? null, delta));
     }
   }
-  return Array.from(porCelda.values());
+  return Array.from(porClave.values());
 }
 
 export function aplicarDelta(celdas: Celda[][], delta: DeltaMundo): boolean {
@@ -271,13 +295,29 @@ export function conTickAutor(
 }
 
 /**
- * Rehidratación del espejo local (mismo ciclo que materializarNodo en
- * Firebase): primero las celdas ya plegadas del snapshot (una por celda,
- * consolidadas) y después los deltas del doc ordenados por tick, para que el
- * último writer gane celda a celda. Los deltas fuera de rango se descartan.
+ * Contrato mínimo de historia rehidratable: el doc del espejo local
+ * (DocNodoLocal) y el nodo persistido de Firestore (NodoPersistidoLike) lo
+ * cumplen estructuralmente. El `snapshot` viaja crudo (unknown) desde
+ * Firestore y se valida con la lectura tolerante.
  */
-export function rehidratarHistoria(nodoCeldas: Celda[][], doc: DocNodoLocal): void {
-  for (const delta of doc.snapshot?.celdas ?? []) aplicarDelta(nodoCeldas, delta);
-  const deltas = (doc.deltas ?? []).slice().sort((a, b) => a.tick - b.tick);
-  for (const delta of deltas) aplicarDelta(nodoCeldas, delta);
+export interface HistoriaNodo {
+  snapshot?: unknown;
+  deltas?: DeltaMundo[] | null;
+}
+
+/**
+ * Rehidratación de un nodo (espejo local y materialización tras cruce en
+ * Firebase, mismo ciclo que materializarNodo): primero las celdas ya plegadas
+ * del snapshot (una por celda+tipo+campo, consolidadas) y después los deltas
+ * no plegados ordenados por tick, para que el último writer gane por campo.
+ * Entradas malformadas se descartan y los fuera de rango se ignoran.
+ */
+export function rehidratarHistoria(
+  nodoCeldas: Celda[][],
+  historia: HistoriaNodo | null | undefined,
+): void {
+  const plegadas = leerSnapshotNodo(historia?.snapshot).celdas ?? [];
+  for (const delta of plegadas) aplicarDelta(nodoCeldas, delta);
+  const brutas = leerSnapshotNodo({ formato: FMT_DELTA, celdas: historia?.deltas ?? [] }).celdas ?? [];
+  for (const delta of brutas.slice().sort((a, b) => a.tick - b.tick)) aplicarDelta(nodoCeldas, delta);
 }

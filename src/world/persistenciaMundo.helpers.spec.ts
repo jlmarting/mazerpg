@@ -368,12 +368,19 @@ async function main(): Promise<void> {
     'compactarNodo conserva intacto el delta > hastaTick',
   );
   const snapLww = leerSnapshotNodo(lww!.snapshot);
-  const porCeldaLww = new Map(snapLww.celdas!.map((d) => [`${d.fila}:${d.columna}`, d.tick]));
+  // Clave de plegado (C1): (celda, tipo, campo) — los efectos ortogonales de
+  // la misma celda coexisten en el snapshot plegado.
+  const clavePlegadoSpec = (d: DeltaMundo): string =>
+    `${d.fila}:${d.columna}:${d.cambio.tipo}:${d.cambio.tipo === 'objeto' || d.cambio.tipo === 'decor' ? d.cambio.campo : ''}`;
+  const porClaveLww = new Map(snapLww.celdas!.map((d) => [clavePlegadoSpec(d), d.tick]));
   assert(
-    porCeldaLww.size === 2 && porCeldaLww.get('0:0') === 9 && porCeldaLww.get('1:1') === 8,
-    'el plegado fusiona snapshot previo + deltas: LWW por celda (tick 9 pisa 3; previo tick 8 sobrevive al plegado tick 5)',
+    snapLww.celdas!.length === 3 &&
+      porClaveLww.get('0:0:cavar:') === 9 &&
+      porClaveLww.get('1:1:cavar:') === 5 &&
+      porClaveLww.get('1:1:objeto:tienePico') === 8,
+    'el plegado fusiona snapshot previo + deltas: LWW por (celda,tipo,campo) — tick 9 pisa 3 en 0:0 y los efectos ortogonales de 1:1 (cavar t5 + objeto t8) coexisten',
   );
-  assert(!porCeldaLww.has('2:2'), 'el delta > hastaTick no se pliega en celdas');
+  assert(!porClaveLww.has('2:2:cavar:'), 'el delta > hastaTick no se pliega en celdas');
   assert(
     snapLww.enemigos?.length === 2 && snapLww.enemigos[0].id === 'e-1',
     'compactarNodo conserva la foto de enemigos del snapshot previo',
@@ -381,18 +388,25 @@ async function main(): Promise<void> {
   const docLww = (await db.collection('partidas').doc('p1').collection('mundos').doc('raiz-lww').get()).data()!;
   assert(docLww.ultimaCompactacionTick === 10, 'compactarNodo fija ultimaCompactacionTick del nodo plegado');
 
-  // --- Fase 2: empate de ticks en una misma celda -> gana el entrante ---
+  // --- Fase 2: empate de ticks en una misma clave (celda+tipo+campo) -> gana el entrante ---
   await persistencia.guardarNodo('raiz-tie', { nombre: 'mazmorra', version: 1, seed: 78, params: {} }, null);
-  await persistencia.guardarDelta(crearDelta('raiz-tie', 7, 0, 0));
   await persistencia.guardarDelta({
     ...crearDelta('raiz-tie', 7, 0, 0),
     cambio: { tipo: 'objeto', campo: 'tienePico', valor: true },
   });
+  await persistencia.guardarDelta({
+    ...crearDelta('raiz-tie', 7, 0, 0),
+    cambio: { tipo: 'objeto', campo: 'tienePico', valor: false },
+  });
   await persistencia.compactarNodo('raiz-tie', 7, {});
   const tie = leerSnapshotNodo((await persistencia.cargarNodo('raiz-tie'))!.snapshot);
+  const deltaTie = tie.celdas?.[0]?.cambio;
   assert(
-    tie.celdas?.length === 1 && tie.celdas[0].cambio.tipo === 'objeto',
-    'empate de tick en la misma celda: gana el entrante (resolverLWW)',
+    tie.celdas?.length === 1 &&
+      deltaTie?.tipo === 'objeto' &&
+      deltaTie.campo === 'tienePico' &&
+      deltaTie.valor === false,
+    'empate de tick en la misma clave (celda+tipo+campo): gana el entrante (resolverLWW)',
   );
 
   console.log(`${ok}/${total} ok`);

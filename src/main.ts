@@ -26,7 +26,7 @@ import { HousingLocal } from './world/housing';
 import { GestorMundo } from './world/GestorMundo';
 import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
 import { ArbitroDeltas } from './world/ArbitroDeltas';
-import { FMT_DELTA, type ConectorMundo, type DeltaMundo, type GenSpec, type NodoMundo } from './world/mundo';
+import { conTickAutor, FMT_DELTA, type ConectorMundo, type DeltaMundo, type GenSpec, type NodoMundo } from './world/mundo';
 
 declare global {
     interface Window {
@@ -1766,16 +1766,16 @@ class Game implements IGame {
     return this.tickMundo;
   }
 
-  private construirDelta(fila: number, columna: number, cambio: DeltaMundo['cambio'], autoria: string): DeltaMundo {
-    return {
+  private construirDelta(fila: number, columna: number, cambio: DeltaMundo['cambio'], autoria: string, tickAutor: number | null = null): DeltaMundo {
+    const base: Omit<DeltaMundo, 'tick'> = {
       fmt: FMT_DELTA,
       nodoId: this.gestorMundo.nodoActivoId || 'raiz',
       fila,
       columna,
       autoria: autoria || this.network.idLocal,
-      tick: this.siguienteTickMundo(),
       cambio,
     };
+    return conTickAutor(base, tickAutor, this.siguienteTickMundo());
   }
 
   private aplicarDeltaAutorizado(delta: DeltaMundo): boolean {
@@ -1910,7 +1910,8 @@ class Game implements IGame {
             }
             if (celdaObjetivo.golpesCavar >= 5) {
                 celdaObjetivo.golpesCavar = 0;
-                this.aplicarDeltaAutorizado(this.construirDelta(sigFila, sigColumna, { tipo: 'cavar' }, id));
+                const deltaCavar = this.construirDelta(sigFila, sigColumna, { tipo: 'cavar' }, id);
+                this.aplicarDeltaAutorizado(deltaCavar);
                 this.renderer.invalidarCacheLaberinto();
                 eliminarMurosEntre(this.mapaLaberinto[entidad.fila][entidad.columna], celdaObjetivo);
                 this.network.enviarMensaje({
@@ -1918,7 +1919,8 @@ class Game implements IGame {
                     f: sigFila,
                     c: sigColumna,
                     fromF: entidad.fila,
-                    fromC: entidad.columna
+                    fromC: entidad.columna,
+                    tick: deltaCavar.tick
                 });
             }
             return;
@@ -1934,24 +1936,27 @@ class Game implements IGame {
 
             if (celdaNueva.tienePico) {
                 (entidad as any).tienePico = true;
-                this.aplicarDeltaAutorizado(this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'tienePico', valor: false }, id));
+                const deltaPico = this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'tienePico', valor: false }, id);
+                this.aplicarDeltaAutorizado(deltaPico);
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'pick_collected', f: entidad.fila, c: entidad.columna });
+                this.network.enviarMensaje({ tipo: 'pick_collected', f: entidad.fila, c: entidad.columna, tick: deltaPico.tick });
             }
             if (celdaNueva.alimento) {
                 const PC = celdaNueva.alimento.pc;
                 const CC = ((3 * entidad.fuerza) + (2 * entidad.agilidad) + (1 * entidad.inteligencia)) / 6;
                 const recuperacion = Math.floor(PC / CC);
                 entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + Math.max(1, recuperacion));
-                this.aplicarDeltaAutorizado(this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'alimento', valor: null }, id));
+                const deltaAlimento = this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'alimento', valor: null }, id);
+                this.aplicarDeltaAutorizado(deltaAlimento);
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'food_consumed', f: entidad.fila, c: entidad.columna });
+                this.network.enviarMensaje({ tipo: 'food_consumed', f: entidad.fila, c: entidad.columna, tick: deltaAlimento.tick });
             }
             if (celdaNueva.burbuja) {
-                this.aplicarDeltaAutorizado(this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'burbuja', valor: null }, id));
+                const deltaEscudo = this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'burbuja', valor: null }, id);
+                this.aplicarDeltaAutorizado(deltaEscudo);
                 entidad.inmunidadHasta = Date.now() + 30000;
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'shield_collected', f: entidad.fila, c: entidad.columna });
+                this.network.enviarMensaje({ tipo: 'shield_collected', f: entidad.fila, c: entidad.columna, tick: deltaEscudo.tick });
                 this.registrarEventoLog(`${entidad.nombre} recoge escudo: inmunidad 30 s.`);
             }
             this.verificarPortal(entidad);
@@ -2317,14 +2322,16 @@ class Game implements IGame {
               { tipo: "Pescado", pc: 70 }
           ];
           const alimento = alimentos[Math.floor(Math.random() * alimentos.length)];
-          this.aplicarDeltaAutorizado(this.construirDelta(f, c, { tipo: 'objeto', campo: 'alimento', valor: alimento }, (emisor as any).id || this.network.idLocal));
+          const deltaComida = this.construirDelta(f, c, { tipo: 'objeto', campo: 'alimento', valor: alimento }, (emisor as any).id || this.network.idLocal);
+          this.aplicarDeltaAutorizado(deltaComida);
           this.registrarEventoLog(`${emisor.nombre} ha creado ${alimento.tipo}.`);
           this.ui.crearTextoFlotanteEnCelda(f, c, "¡COMIDA!", "#ffcc00", this);
 
           if (this.esHost && this.network.multiplayerActivo) {
               this.network.enviarMensaje({
                   tipo: 'object_spawned',
-                  f, c, a: alimento
+                  f, c, a: alimento,
+                  tick: deltaComida.tick
               });
           }
       }
@@ -2664,7 +2671,7 @@ class Game implements IGame {
             if (!this.esHost) {
                 if (!this.enBurbujaSim(msg.f, msg.c)) break;
                 if (msg.a) {
-                    this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: msg.a }, idEmisor));
+                    this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: msg.a }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
                 }
                 this.ui.crearTextoFlotanteEnCelda(msg.f, msg.c, "¡COMIDA!", "#ffcc00", this);
             }
@@ -2854,25 +2861,25 @@ class Game implements IGame {
         case 'food_consumed':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: null }, idEmisor));
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'pick_collected':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'tienePico', valor: false }, idEmisor));
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'tienePico', valor: false }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'shield_collected':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'burbuja', valor: null }, idEmisor));
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'burbuja', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'dig_completed':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'cavar' }, idEmisor));
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'cavar' }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             if (msg.fromF !== undefined && msg.fromC !== undefined) {
                 eliminarMurosEntre(this.mapaLaberinto[msg.fromF][msg.fromC], this.mapaLaberinto[msg.f][msg.c]);

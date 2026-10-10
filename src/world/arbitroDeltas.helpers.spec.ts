@@ -39,9 +39,14 @@ function main(): void {
     arbitro.puedeAplicar(delta('raiz', 1, 1, 11)),
     'un delta de tick superior se acepta',
   );
+  arbitro.registrar(delta('raiz', 1, 1, 11));
   assert(
-    arbitro.puedeAplicar(delta('raiz', 1, 1, 10)),
-    'en empate de tick gana el entrante (determinista)',
+    arbitro.puedeAplicar(delta('raiz', 1, 1, 11)),
+    'registrar + re-entrante con tick igual: gana el entrante (empate determinista)',
+  );
+  assert(
+    !arbitro.puedeAplicar(delta('raiz', 1, 1, 10)),
+    'un delta antiguo de tick menor tras uno mayor se rechaza (antiguo tras nuevo)',
   );
 
   assert(

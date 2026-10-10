@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Mundo persistente (fase 2): persistencia completa fuera de la burbuja — las ediciones válidas (cavar, objetos, decor y escenario) viajan como delta también fuera del radioSim (`4e1a7b2`, `b498d27`, `3aeb7ce`)
+- Snapshot por nodo (formato 1): foto de enemigos/escenario/celdas persistida y restauración fiel al travesar entre nodos, con guard anti-race de doble cruce (`e43cd8b`, `bdd98d5`, `6a30dfc`)
+- Casa duradera: espejo local del contrato de mundos (deltas + snapshot) como persistencia de la casa cuando no hay Firebase (`5e8584b`)
+- Serialización de mapa v2 (secciones dispersas + presupuesto): decor/escenario viajan al invitado — los huéspedes ven el arte de la casa (`8df8d6a`, `59990b7`)
+- Reglas de seguridad de Firestore versionadas y despliegue de reglas en CI solo en merge (`212f0d2`, `7fa4f2a`)
 - Smoke headless de 1 cliente sobre `dist/` (`scripts/smoke_headless.mjs`): arranque limpio con casa, travesía ida/vuelta por el conector real, recarga con casa duradera (espejo local); CDP con Chromium headless (binario Playwright del sistema)
 - Arte de la casa: suelos de madera/baldosa/alfombra, muros de interior (yeso + zócalo) y mobiliario (cama, chimenea, mesa, silla, estante) — `verification/gen_house.py` → `public/sprites/house.png` (grupo `escenario_casa` en `sprites.json`)
 - El portal de housing se dibuja como una casita que emite pulsos para llamar la atención
@@ -63,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Firebase unificado al proyecto `mazerpg-b2aa4` (`.firebaserc`, `projectId` y service account) (`0a354b4`)
 
 ### Fixed
+- Arbitraje LWW real: el tick del autor viaja por red y se respeta entre clientes (`67fe781`)
+- El plegado LWW por celda ya no pierde efectos ortogonales: la clave de plegado pasa a (celda, tipo, campo) — cavar + objeto/decor/escenario de la misma celda coexisten en el snapshot plegado (la recarga deja la celda transitable y con su objeto)
+- Firebase: la historia persistida del nodo destino (casa incluida) se rehidrata al travesar el conector en el lado con persistenciaMundo, antes de enviar el mapa al invitado
 - El portal de casa ya no se coloca en la esquina META/salida del mapa: se ubica en una celda céntrica transitable (y el retorno desde la casa aterriza en el centro, no en la salida)
 - `teleportarPortalClasico` ya no crashea si la entidad queda fuera del nodo activo (guardas de límites)
 - El arranque ya no se tumba si `localStorage` está lleno (`QuotaExceededError`): `guardarCasa` degrada con aviso y la casa sigue viva en memoria

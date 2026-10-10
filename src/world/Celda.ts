@@ -20,6 +20,10 @@ export class Celda {
   tipoEscenario: 'ninguno' | 'puerta' | 'trampa' = 'ninguno';
   estadoEscenario: string = 'idle';
   conectorId: string | null = null;
+  /** Material de suelo de interior (solo casa); null = dungeon. */
+  sueloDecor: 'madera' | 'baldosa' | 'alfombra' | null = null;
+  /** Mueble decorativo (solo casa); la celda con mueble es no transitable. */
+  mueble: string | null = null;
 
   constructor(fila: number, columna: number) {
     this.fila = fila;

@@ -6,7 +6,8 @@
     "sheet_dynamic": "sprites/dynamic.png",
     "sheet_food": "sprites/food.png",
     "tool_pickaxe": "sprites/pickaxe.png",
-    "hero_custom": "sprites/hero_custom.png"
+    "hero_custom": "sprites/hero_custom.png",
+    "sheet_house": "sprites/house.png"
   },
   "mapeo": {
     "jugadores": {
@@ -826,6 +827,181 @@
             }
           ],
           "imagen": "sheet_static"
+        }
+      }
+    },
+    "escenario_casa": {
+      "suelo": {
+        "normal": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "madera": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "baldosa": {
+          "puntos": [
+            {
+              "x": 32,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "alfombra": {
+          "puntos": [
+            {
+              "x": 64,
+              "y": 0,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        }
+      },
+      "muro": {
+        "normal": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 32,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "superior": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 32,
+              "w": 32,
+              "h": 6
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "inferior": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 58,
+              "w": 32,
+              "h": 6
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "izquierdo": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 32,
+              "w": 5,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "derecho": {
+          "puntos": [
+            {
+              "x": 27,
+              "y": 32,
+              "w": 5,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        }
+      },
+      "mueble": {
+        "cama": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 64,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "chimenea": {
+          "puntos": [
+            {
+              "x": 32,
+              "y": 64,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "mesa": {
+          "puntos": [
+            {
+              "x": 64,
+              "y": 64,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "silla": {
+          "puntos": [
+            {
+              "x": 96,
+              "y": 64,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        },
+        "estante": {
+          "puntos": [
+            {
+              "x": 128,
+              "y": 64,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
+        }
+      },
+      "portal": {
+        "casita": {
+          "puntos": [
+            {
+              "x": 0,
+              "y": 96,
+              "w": 32,
+              "h": 32
+            }
+          ],
+          "imagen": "sheet_house"
         }
       }
     }

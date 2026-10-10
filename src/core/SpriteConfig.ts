@@ -97,6 +97,7 @@ export function inicializarSpritesheets(sm: any) {
     procesarMapping(c.mapeo.npcs, 'npc');
     procesarMapping(c.mapeo.escenario_estatico, 'static');
     procesarMapping(c.mapeo.escenario_dinamico, 'dynamic');
+    procesarMapping((c.mapeo as any).escenario_casa, 'casa');
     procesarMapping((c.mapeo as any).vfx, 'vfx');
     procesarMapping((c.mapeo as any).food, 'food');
     procesarMapping((c.mapeo as any).items, ''); // Sin prefijo para que coincida con keys como 'pickaxe'

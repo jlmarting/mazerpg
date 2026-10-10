@@ -23,6 +23,15 @@ class AlmacenTest implements AlmacenamientoLocal {
   setItem(clave: string, valor: string): void {
     this.datos.set(clave, valor);
   }
+  removeItem(clave: string): void {
+    this.datos.delete(clave);
+  }
+  key(indice: number): string | null {
+    return Array.from(this.datos.keys())[indice] ?? null;
+  }
+  get length(): number {
+    return this.datos.size;
+  }
 }
 
 let ok = 0;
@@ -363,6 +372,96 @@ async function main(): Promise<void> {
       aparicionSembrado.nodo.id === sembrado.nodoHijo.id &&
         gestorSembrado.nodoActivoId === sembrado.nodoHijo.id,
       'la travesía del conector de zona conmuta el nodo activo al hijo (alcanzable en runtime)',
+    );
+
+    // --- M3: conectores espejo (vuelta) ---
+    assert(
+      sembrado.conectorInterVuelta.id !== sembrado.conectorInter.id &&
+        sembrado.conectorInterVuelta.tipo === 'entrada' &&
+        sembrado.conectorInterVuelta.nodoOrigenId === sembrado.nodoHijo.id &&
+        sembrado.conectorInterVuelta.nodoDestinoId === raizSembrada.id,
+      'el conector de zona registra un espejo de vuelta (hijo -> raíz)',
+    );
+    assert(
+      gestorSembrado.conectorEn(sembrado.conectorInter.filaD, sembrado.conectorInter.columnaD) ===
+        sembrado.conectorInterVuelta,
+      'conectorEn localiza el espejo en la celda de llegada del hijo',
+    );
+    assert(
+      sembrado.portalHousingVuelta.tipo === 'entrada' &&
+        sembrado.portalHousingVuelta.nodoOrigenId === sembrado.casa.id &&
+        sembrado.portalHousingVuelta.nodoDestinoId === raizSembrada.id,
+      'el portal de housing registra un espejo de vuelta (casa -> raíz)',
+    );
+    assert(
+      sembrado.casa.celdas[sembrado.portalHousingVuelta.filaO][sembrado.portalHousingVuelta.columnaO].esPortal,
+      'el espejo de vuelta marca esPortal en la celda de llegada de la casa',
+    );
+
+    // ida y vuelta reales por el conector de zona
+    const gestorIda = new GestorMundo();
+    const raizIda = gestorIda.crearMundoInicial(GEN_RAIZ, 20, 20);
+    const sembradoIda = sembrarMundoBase({
+      gestor: gestorIda,
+      housing: new HousingLocal('L1', new AlmacenTest()),
+      idLocal: 'L1',
+      filas: 20,
+      columnas: 20,
+    });
+    assert(sembradoIda !== null, 'el sembrado de ida/vuelta se produce');
+    if (sembradoIda) {
+      gestorIda.atravesar(sembradoIda.conectorInter.id);
+      assert(
+        gestorIda.nodoActivoId === sembradoIda.nodoHijo.id,
+        'ida: el nodo activo es el hijo generado',
+      );
+      const vuelta = gestorIda.atravesar(sembradoIda.conectorInterVuelta.id);
+      assert(gestorIda.nodoActivoId === raizIda.id, 'vuelta: el nodo activo regresa a la raíz');
+      assert(
+        vuelta.fila === sembradoIda.conectorInter.filaO &&
+          vuelta.columna === sembradoIda.conectorInter.columnaO,
+        'vuelta: se aterriza en la celda del conector de zona en la raíz',
+      );
+
+      gestorIda.atravesar(sembradoIda.portalHousing.id);
+      assert(gestorIda.nodoActivoId === sembradoIda.casa.id, 'ida: el nodo activo es la casa');
+      const casaVuelta = gestorIda.atravesar(sembradoIda.portalHousingVuelta.id);
+      assert(gestorIda.nodoActivoId === raizIda.id, 'vuelta: desde la casa se regresa a la raíz');
+      assert(
+        casaVuelta.fila === sembradoIda.portalHousing.filaO &&
+          casaVuelta.columna === sembradoIda.portalHousing.columnaO,
+        'vuelta: se aterriza en la celda del portal de housing en la raíz',
+      );
+    }
+  }
+
+  // --- M1: casaPrevia se adopta tal cual (no se regenera) ---
+  const gestorPrevio = new GestorMundo();
+  gestorPrevio.crearMundoInicial(GEN_RAIZ, 20, 20);
+  const casaPrevia = crearNodoPersonal('casa-prev', 'L1', 5, 5);
+  casaPrevia.celdas[0][0].tipoEscenario = 'puerta';
+  const sembradoPrevio = sembrarMundoBase({
+    gestor: gestorPrevio,
+    housing: new HousingLocal('L1', new AlmacenTest()),
+    idLocal: 'L1',
+    filas: 20,
+    columnas: 20,
+    casaPrevia,
+  });
+  assert(sembradoPrevio !== null, 'sembrarMundoBase acepta casaPrevia y produce sembrado');
+  if (sembradoPrevio) {
+    assert(
+      gestorPrevio.mundo.get('casa-prev') === casaPrevia,
+      'casaPrevia queda registrada en el gestor (no se regenera)',
+    );
+    assert(sembradoPrevio.casa.id === 'casa-prev', 'el sembrado usa la casa previa como casa');
+    assert(
+      sembradoPrevio.portalHousing.nodoDestinoId === 'casa-prev',
+      'el portal de housing apunta a la casa previa',
+    );
+    assert(
+      gestorPrevio.mundo.get('casa-L1') === undefined,
+      'no se genera la casa nueva cuando hay casaPrevia',
     );
   }
 

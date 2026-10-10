@@ -15,6 +15,10 @@ export class Renderer {
   private mazeCacheCtx: CanvasRenderingContext2D | null = null;
   private mazeCacheValida: boolean = false;
   private portalesHousingInactivos: Set<string> = new Set();
+  /** Portales de housing (todos: ida y vuelta) para dibujarlos como casita con pulso. */
+  private portalesHousing: Set<string> = new Set();
+  /** Ambiente del nodo activo: 'casa' cambia el tema de suelos/muros. */
+  private ambiente: 'dungeon' | 'casa' = 'dungeon';
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -87,7 +91,9 @@ export class Renderer {
     const { colOffset, filaOffset } = offset;
     const filaMeta = NUMERO_FILAS - 1;
     const colMeta = NUMERO_COLUMNAS - 1;
-    if (filaMeta >= filaOffset && filaMeta < filaOffset + config.CELDAS_VISIBLES_Y &&
+    const metaEnNodo = filaMeta < mapaLaberinto.length && colMeta < (mapaLaberinto[0]?.length ?? 0);
+    if (metaEnNodo &&
+        filaMeta >= filaOffset && filaMeta < filaOffset + config.CELDAS_VISIBLES_Y &&
         colMeta >= colOffset && colMeta < colOffset + config.CELDAS_VISIBLES_X) {
       this.ctx.fillStyle = 'rgba(0, 200, 0, 0.6)';
       this.ctx.fillRect((colMeta - colOffset) * TAMANO_CELDA + 2, (filaMeta - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2, TAMANO_CELDA - 4, TAMANO_CELDA - 4);
@@ -97,6 +103,37 @@ export class Renderer {
       this.ctx.fillText('META', (colMeta - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (filaMeta - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 4);
       this.ctx.textAlign = 'left';
     }
+
+    this.dibujarPulsoHousing(mapaLaberinto, offset, config);
+  }
+
+  /** Halo pulsante sobre los portalez de housing visibles, para llamar la atención. */
+  private dibujarPulsoHousing(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
+    if (this.portalesHousing.size === 0) return;
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+    const { colOffset, filaOffset } = offset;
+    const fase = (performance.now() % 1400) / 1400;
+    const alpha = Math.max(0, 0.75 * (1 - fase));
+    if (alpha <= 0) return;
+    const fInicio = Math.max(0, Math.floor(filaOffset));
+    const fFin = Math.min(mapaLaberinto.length, Math.ceil(filaOffset + CELDAS_VISIBLES_Y));
+    for (let fila = fInicio; fila < fFin; fila++) {
+      const filaCeldas = mapaLaberinto[fila];
+      const cInicio = Math.max(0, Math.floor(colOffset));
+      const cFin = Math.min(filaCeldas.length, Math.ceil(colOffset + CELDAS_VISIBLES_X));
+      for (let columna = cInicio; columna < cFin; columna++) {
+        const celda = filaCeldas[columna];
+        if (!celda.esPortal || celda.conectorId === null || !this.portalesHousing.has(celda.conectorId)) continue;
+        const cx = (columna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+        const cy = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+        const radio = TAMANO_CELDA * (0.3 + 0.55 * fase);
+        this.ctx.strokeStyle = `rgba(255, 210, 80, ${alpha})`;
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(cx, cy, radio, 0, Math.PI * 2);
+        this.ctx.stroke();
+      }
+    }
   }
 
   /**
@@ -105,8 +142,11 @@ export class Renderer {
   dibujarNiebla(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig, persistenceOverride?: number) {
     if (config.vistaDebugActivada) return;
     const { colOffset, filaOffset } = offset;
-    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, NUMERO_FILAS, NUMERO_COLUMNAS, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
     const fadeTime = persistenceOverride || TIEMPO_DESVANECIMIENTO_NIEBLA;
+    // Dimensiones reales del nodo activo (la casa contenida es menor que el mundo).
+    const filasNodo = mapaLaberinto.length;
+    const columnasNodo = filasNodo > 0 ? mapaLaberinto[0].length : 0;
 
     const tiempoActual = Date.now();
     const fInicio = Math.floor(filaOffset);
@@ -115,9 +155,9 @@ export class Renderer {
     const cFin = Math.ceil(colOffset + CELDAS_VISIBLES_X);
 
     for (let fila = fInicio; fila < fFin; fila++) {
-      if (fila < 0 || fila >= NUMERO_FILAS) continue;
+      if (fila < 0 || fila >= filasNodo) continue;
       for (let columna = cInicio; columna < cFin; columna++) {
-        if (columna < 0 || columna >= NUMERO_COLUMNAS) continue;
+        if (columna < 0 || columna >= columnasNodo) continue;
 
         const celda = mapaLaberinto[fila][columna];
         let opacidad = 1;
@@ -729,26 +769,32 @@ export class Renderer {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);
 
-    for (let fila = 0; fila < NUMERO_FILAS; fila++) {
-      for (let columna = 0; columna < NUMERO_COLUMNAS; columna++) {
-        const celda = mapaLaberinto[fila][columna];
+    // El nodo activo puede ser más pequeño que el mundo (p.ej. la casa contenida):
+    // iterar por las dimensiones reales del nodo para no leer celdas inexistentes.
+    const filasNodo = mapaLaberinto.length;
+    const columnasNodo = filasNodo > 0 ? mapaLaberinto[0].length : 0;
+
+    for (let fila = 0; fila < filasNodo; fila++) {
+      const filaCeldas = mapaLaberinto[fila];
+      for (let columna = 0; columna < filaCeldas.length; columna++) {
+        const celda = filaCeldas[columna];
         const x = columna * TAMANO_CELDA;
         const y = fila * TAMANO_CELDA;
 
         if (!celda.esTransitable) {
-          this.pintarBloqueMuro(ctx, mapaLaberinto, fila, columna, x, y, TAMANO_CELDA, NUMERO_FILAS, NUMERO_COLUMNAS);
+          this.pintarBloqueMuro(ctx, mapaLaberinto, fila, columna, x, y, TAMANO_CELDA, filasNodo, columnasNodo);
           continue;
         }
 
-        this.pintarSuelo(ctx, fila, columna, x, y, TAMANO_CELDA);
+        this.pintarSuelo(ctx, celda, fila, columna, x, y, TAMANO_CELDA);
 
         // Sombra interior en los bordes que dan a muro: profundidad barata (en caché)
         ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
         const banda = Math.max(3, Math.floor(TAMANO_CELDA * 0.12));
         if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) ctx.fillRect(x, y, TAMANO_CELDA, banda);
-        if (fila === NUMERO_FILAS - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) ctx.fillRect(x, y + TAMANO_CELDA - banda, TAMANO_CELDA, banda);
+        if (fila === filasNodo - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) ctx.fillRect(x, y + TAMANO_CELDA - banda, TAMANO_CELDA, banda);
         if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) ctx.fillRect(x, y, banda, TAMANO_CELDA);
-        if (columna === NUMERO_COLUMNAS - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) ctx.fillRect(x + TAMANO_CELDA - banda, y, banda, TAMANO_CELDA);
+        if (columna === columnasNodo - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) ctx.fillRect(x + TAMANO_CELDA - banda, y, banda, TAMANO_CELDA);
 
         if (celda.burbuja) {
           ctx.strokeStyle = '#87CEEB';
@@ -761,19 +807,26 @@ export class Renderer {
         }
 
         if (celda.esPortal) {
+          const esHousing =
+            celda.conectorId !== null && this.portalesHousing.has(celda.conectorId);
           const atenuado =
             celda.conectorId !== null && this.portalesHousingInactivos.has(celda.conectorId);
           ctx.globalAlpha = atenuado ? 0.25 : 1;
-          ctx.fillStyle = 'rgba(0, 0, 255, 0.4)';
-          ctx.beginPath();
-          ctx.moveTo(x + TAMANO_CELDA / 2, y + 5);
-          ctx.lineTo(x + TAMANO_CELDA - 5, y + TAMANO_CELDA / 2);
-          ctx.lineTo(x + TAMANO_CELDA / 2, y + TAMANO_CELDA - 5);
-          ctx.lineTo(x + 5, y + TAMANO_CELDA / 2);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = '#0000ff';
-          ctx.stroke();
+          if (esHousing && this.spriteManager.obtenerSprite('casa_portal_casita')) {
+            // El portal de housing se ve como una casita (el pulso se dibuja en la capa viva).
+            this.spriteManager.dibujarSprite(ctx, 'casa_portal_casita', x, y, TAMANO_CELDA, TAMANO_CELDA);
+          } else {
+            ctx.fillStyle = 'rgba(0, 0, 255, 0.4)';
+            ctx.beginPath();
+            ctx.moveTo(x + TAMANO_CELDA / 2, y + 5);
+            ctx.lineTo(x + TAMANO_CELDA - 5, y + TAMANO_CELDA / 2);
+            ctx.lineTo(x + TAMANO_CELDA / 2, y + TAMANO_CELDA - 5);
+            ctx.lineTo(x + 5, y + TAMANO_CELDA / 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#0000ff';
+            ctx.stroke();
+          }
           ctx.globalAlpha = 1;
         }
 
@@ -796,7 +849,16 @@ export class Renderer {
     this.mazeCacheValida = true;
   }
 
-  private pintarSuelo(ctx: CanvasRenderingContext2D, fila: number, columna: number, x: number, y: number, tam: number) {
+  private pintarSuelo(ctx: CanvasRenderingContext2D, celda: Celda, fila: number, columna: number, x: number, y: number, tam: number) {
+    // Tema casa: suelo según el material de la habitación (madera/baldosa/alfombra).
+    if (this.ambiente === 'casa') {
+      const material = celda.sueloDecor ?? 'madera';
+      const nombreCasa = `casa_suelo_${material}`;
+      if (this.spriteManager.obtenerSprite(nombreCasa)) {
+        this.spriteManager.dibujarSprite(ctx, nombreCasa, x, y, tam, tam);
+        return;
+      }
+    }
     const sprite = `static_suelo_${varianteSuelo(fila, columna)}`;
     if (this.spriteManager.obtenerSprite(sprite)) {
       this.spriteManager.dibujarSprite(ctx, sprite, x, y, tam, tam);
@@ -817,6 +879,33 @@ export class Renderer {
   }
 
   private pintarBloqueMuro(ctx: CanvasRenderingContext2D, mapa: Celda[][], fila: number, columna: number, x: number, y: number, tam: number, numFilas: number, numColumnas: number) {
+    if (this.ambiente === 'casa') {
+      const celda = mapa[fila][columna];
+      if (celda.mueble && this.spriteManager.obtenerSprite(`casa_mueble_${celda.mueble}`)) {
+        const mat = celda.sueloDecor;
+        if (mat && this.spriteManager.obtenerSprite(`casa_suelo_${mat}`)) {
+          this.spriteManager.dibujarSprite(ctx, `casa_suelo_${mat}`, x, y, tam, tam);
+        } else {
+          ctx.fillStyle = '#7a4a22';
+          ctx.fillRect(x, y, tam, tam);
+        }
+        this.spriteManager.dibujarSprite(ctx, `casa_mueble_${celda.mueble}`, x, y, tam, tam);
+        return;
+      }
+      // Muro de interior: yeso claro con zócalo (nada de piedra de dungeon).
+      ctx.fillStyle = '#cbb894';
+      ctx.fillRect(x, y, tam, tam);
+      const carasCasa = carasHaciaSuelo({
+        superior: fila > 0 && mapa[fila - 1][columna].esTransitable,
+        inferior: fila < numFilas - 1 && mapa[fila + 1][columna].esTransitable,
+        izquierdo: columna > 0 && mapa[fila][columna - 1].esTransitable,
+        derecho: columna < numColumnas - 1 && mapa[fila][columna + 1].esTransitable,
+      });
+      for (const lado of carasCasa) {
+        this.dibujarMuroCache(ctx, fila, columna, x, y, tam, lado, numFilas);
+      }
+      return;
+    }
     ctx.fillStyle = '#2b2f36';
     ctx.fillRect(x, y, tam, tam);
     // Vetado determinista de la piedra
@@ -838,12 +927,19 @@ export class Renderer {
   }
 
   private dibujarMuroCache(ctx: CanvasRenderingContext2D, _fila: number, _columna: number, x: number, y: number, tam: number, lado: string, _numFilas: number) {
-    const spriteNames: Record<string, string[]> = {
-      superior: ['static_muro_superior', 'static_muro_normal', 'wall_top'],
-      inferior: ['static_muro_inferior', 'wall_bottom'],
-      izquierdo: ['static_muro_izquierdo', 'wall_left'],
-      derecho: ['static_muro_derecho', 'wall_right'],
-    };
+    const spriteNames: Record<string, string[]> = this.ambiente === 'casa'
+      ? {
+          superior: ['casa_muro_superior', 'casa_muro_normal'],
+          inferior: ['casa_muro_inferior', 'casa_muro_normal'],
+          izquierdo: ['casa_muro_izquierdo', 'casa_muro_normal'],
+          derecho: ['casa_muro_derecho', 'casa_muro_normal'],
+        }
+      : {
+          superior: ['static_muro_superior', 'static_muro_normal', 'wall_top'],
+          inferior: ['static_muro_inferior', 'wall_bottom'],
+          izquierdo: ['static_muro_izquierdo', 'wall_left'],
+          derecho: ['static_muro_derecho', 'wall_right'],
+        };
     const names = spriteNames[lado] || [];
     const prof = Math.max(4, Math.floor(tam * 0.3));
     for (const name of names) {
@@ -924,6 +1020,26 @@ export class Renderer {
     }
     this.portalesHousingInactivos = new Set(ids);
     if (cambia) this.mazeCacheValida = false;
+  }
+
+  /** Portales de housing (ida y vuelta): se dibujan como casita con pulso. */
+  setPortalesHousing(ids: ReadonlySet<string>): void {
+    let cambia = ids.size !== this.portalesHousing.size;
+    if (!cambia) {
+      for (const id of ids) {
+        if (!this.portalesHousing.has(id)) { cambia = true; break; }
+      }
+    }
+    this.portalesHousing = new Set(ids);
+    if (cambia) this.mazeCacheValida = false;
+  }
+
+  /** Cambia el tema de render (dungeon vs casa). Invalida la caché al cambiar. */
+  setAmbiente(ambiente: 'dungeon' | 'casa'): void {
+    if (this.ambiente !== ambiente) {
+      this.ambiente = ambiente;
+      this.mazeCacheValida = false;
+    }
   }
 
   private cacheMazeDibujar(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {

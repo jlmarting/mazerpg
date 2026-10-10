@@ -23,8 +23,26 @@ class AlmacenMock implements AlmacenamientoLocal {
   setItem(clave: string, valor: string): void {
     this.datos.set(clave, valor);
   }
+  removeItem(clave: string): void {
+    this.datos.delete(clave);
+  }
+  key(indice: number): string | null {
+    return Array.from(this.datos.keys())[indice] ?? null;
+  }
+  get length(): number {
+    return this.datos.size;
+  }
   claves(): string[] {
     return Array.from(this.datos.keys());
+  }
+}
+
+/** Almacén que simula el storage lleno: setItem lanza, como el navegador. */
+class AlmacenLleno extends AlmacenMock {
+  override setItem(): void {
+    const err = new Error("Setting the value exceeded the quota.");
+    err.name = 'QuotaExceededError';
+    throw err;
   }
 }
 
@@ -81,8 +99,12 @@ function main(): void {
 
   housing.guardarCasa(casa);
   assert(
-    almacen.claves().includes('mazerpg.casa.L1'),
-    'guardarCasa escribe bajo la clave exacta mazerpg.casa.{idLocal}',
+    almacen.claves().includes('mazerpg.casa.local'),
+    'guardarCasa escribe bajo la clave fija mazerpg.casa.local (no por idLocal)',
+  );
+  assert(
+    almacen.claves().every((k) => k !== 'mazerpg.casa.L1'),
+    'guardarCasa no crea una clave nueva por idLocal (fin de la acumulación)',
   );
 
   const cargada = housing.cargarCasa();
@@ -108,7 +130,7 @@ function main(): void {
   assert(housingVacio.cargarCasa() === null, 'cargarCasa sin entrada devuelve null');
 
   const almacenRoto = new AlmacenMock();
-  almacenRoto.setItem('mazerpg.casa.L3', '{esto-no-es-json');
+  almacenRoto.setItem('mazerpg.casa.local', '{esto-no-es-json');
   assert(
     new HousingLocal('L3', almacenRoto).cargarCasa() === null,
     'cargarCasa con JSON corrupto devuelve null (no lanza)',
@@ -119,6 +141,70 @@ function main(): void {
   assert(
     housingSinStorage.cargarCasa() === null,
     'sin almacenamiento disponible no lanza ni devuelve datos',
+  );
+
+  // --- Storage lleno: no debe tumbar el arranque (QuotaExceededError) ---
+  const almacenLleno = new AlmacenLleno();
+  const housingLleno = new HousingLocal('L5', almacenLleno);
+  let lanzoGuardar = false;
+  try {
+    housingLleno.guardarCasa(casa);
+  } catch {
+    lanzoGuardar = true;
+  }
+  assert(!lanzoGuardar, 'guardarCasa no lanza cuando el almacenamiento está lleno');
+
+  // --- Detección de housing previo (clave fija y legacy) ---
+  const almacenDeteccion = new AlmacenMock();
+  const housingDeteccion = new HousingLocal('L6', almacenDeteccion);
+  assert(
+    housingDeteccion.hayCasaGuardada() === false,
+    'sin datos hayCasaGuardada es false (no se pregunta al usuario)',
+  );
+  housingDeteccion.guardarCasa(casa);
+  assert(
+    housingDeteccion.hayCasaGuardada() === true,
+    'con la clave fija escrita hayCasaGuardada es true',
+  );
+
+  const almacenLegacy = new AlmacenMock();
+  almacenLegacy.setItem('mazerpg.casa.VIEJO1', JSON.stringify(casa));
+  const housingLegacy = new HousingLocal('L7', almacenLegacy);
+  assert(
+    housingLegacy.hayCasaGuardada() === true,
+    'hayCasaGuardada detecta también casas legacy (clave por idLocal)',
+  );
+  const previaLegacy = housingLegacy.cargarCasaPrevia();
+  assert(
+    previaLegacy !== null && previaLegacy?.ownerId === 'L1',
+    'cargarCasaPrevia adopta la casa legacy cuando no hay clave fija',
+  );
+
+  // --- cargarCasaPrevia prefiere la clave fija sobre legacy ---
+  const almacenAmbas = new AlmacenMock();
+  const casaFija = crearNodo('casa-fija', 'personal', 'L1');
+  almacenAmbas.setItem('mazerpg.casa.local', JSON.stringify(casaFija));
+  almacenAmbas.setItem('mazerpg.casa.VIEJO1', JSON.stringify(casa));
+  assert(
+    new HousingLocal('L8', almacenAmbas).cargarCasaPrevia()?.id === 'casa-fija',
+    'cargarCasaPrevia prefiere la clave fija frente a legacy',
+  );
+
+  // --- descartarCasasGuardadas limpia clave fija y legacy (recupera quota) ---
+  const almacenDescarte = new AlmacenMock();
+  almacenDescarte.setItem('mazerpg.casa.local', JSON.stringify(casaFija));
+  almacenDescarte.setItem('mazerpg.casa.VIEJO1', JSON.stringify(casa));
+  almacenDescarte.setItem('mazerpg.casa.VIEJO2', JSON.stringify(casa));
+  almacenDescarte.setItem('otra.clave', 'no-tocar');
+  const housingDescarte = new HousingLocal('L9', almacenDescarte);
+  housingDescarte.descartarCasasGuardadas();
+  assert(
+    !almacenDescarte.claves().some((k) => k.startsWith('mazerpg.casa.')),
+    'descartarCasasGuardadas elimina la clave fija y todas las legacy',
+  );
+  assert(
+    almacenDescarte.getItem('otra.clave') === 'no-tocar',
+    'descartarCasasGuardadas no toca claves ajenas al housing',
   );
 
   // --- Creación del portal personal ---

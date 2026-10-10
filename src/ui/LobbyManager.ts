@@ -24,6 +24,10 @@ export interface LobbyDelegate {
   getGameList(modo: 'firebase' | 'http'): Promise<any[]>;
   getSignalingUrlLabel(): string;
   isFirebaseConfigured(): boolean;
+  /** ¿Hay una casa guardada que decide reutilizar o descartar antes de arrancar? */
+  hayHousingPrevio(): boolean;
+  /** Registra la decisión del usuario sobre el housing encontrado. */
+  resolverHousingPrevio(usar: boolean): void;
 }
 
 const CLASS_ICONS: Record<string, string> = { guerrero: '\u{1FA96}', explorador: '\u{1F3F9}', mago: '\u{1FA84}' };
@@ -38,6 +42,8 @@ export class LobbyManager {
   private delegate: LobbyDelegate;
   private selectedMode: LobbyMode = 'firebase';
   private pendingDificultadCallback: ((dif: string) => void) | null = null;
+  private pendingHousingStart: ((dif: string) => void) | null = null;
+  private pendingHousingDiff: string | null = null;
 
   constructor(delegate: LobbyDelegate) {
     this.delegate = delegate;
@@ -213,7 +219,25 @@ export class LobbyManager {
     this.hideElement('difficultyModal');
     const cb = this.pendingDificultadCallback;
     this.pendingDificultadCallback = null;
-    if (cb) cb(difficulty);
+    if (!cb) return;
+    if (this.delegate.hayHousingPrevio()) {
+      // Encadena el aviso de housing encontrado antes de arrancar la partida.
+      this.pendingHousingStart = cb;
+      this.pendingHousingDiff = difficulty;
+      this.showElement('housingModal', 'flex');
+      return;
+    }
+    cb(difficulty);
+  }
+
+  selectHousing(usar: boolean): void {
+    this.hideElement('housingModal');
+    this.delegate.resolverHousingPrevio(usar);
+    const start = this.pendingHousingStart;
+    const diff = this.pendingHousingDiff;
+    this.pendingHousingStart = null;
+    this.pendingHousingDiff = null;
+    if (start && diff !== null) start(diff);
   }
 
   async loadGameList(): Promise<void> {
@@ -440,6 +464,9 @@ export class LobbyManager {
     document.getElementById('btnRefrescar')?.addEventListener('click', () => this.loadGameList());
 
     document.getElementById('btnBackFromDiff')?.addEventListener('click', () => this.closeDifficultyModal());
+
+    document.getElementById('btnHousingUsar')?.addEventListener('click', () => this.selectHousing(true));
+    document.getElementById('btnHousingNueva')?.addEventListener('click', () => this.selectHousing(false));
 
     document.querySelectorAll('.diff-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {

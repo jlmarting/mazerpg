@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Arte de la casa: suelos de madera/baldosa/alfombra, muros de interior (yeso + zócalo) y mobiliario (cama, chimenea, mesa, silla, estante) — `verification/gen_house.py` → `public/sprites/house.png` (grupo `escenario_casa` en `sprites.json`)
+- El portal de housing se dibuja como una casita que emite pulsos para llamar la atención
+- Debug: botón "🏠 A MI CASA / AL MAPA" para teletransportarse al housing y volver (solo con modo desarrollo)
+- Housing contenido (fase 1): generador `planta` v2 crea un plano de vivienda (retícula de habitaciones con puertas, perímetro cerrado, sin exteriores) y la casa usa dimensiones propias
+- Aviso "HOUSING ENCONTRADO" en el lobby: permite reutilizar la casa guardada o crear una nueva
+- Conectores de vuelta (espejo tipo `entrada`) en el conector de zona y el portal de casa: ida y vuelta reales entre nodos
 - Sprite-based rendering engine y STRUCTOR tool v1 (`3a7f572`)
 - Integración de metadatos de sprites externos y mejora de lógica de carga (`2bc5c9d`)
 - Soporte para hojas de sprites servidor en STRUCTOR (`5a8bbd4`)
@@ -42,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo desplegada en GitHub Pages (base relativa + workflow) (`2fb27b4`, `2eca656`)
 
 ### Changed
+- Housing: persistencia bajo clave fija `mazerpg.casa.local` (una sola casa por dispositivo) y limpieza de casas legacy por `idLocal`
+- Renderer: dibuja por las dimensiones reales del nodo activo (soporta nodos menores que el mundo, p.ej. la casa contenida)
 - Estandarización de configuración de sprites a formato basado en puntos (`e0c31e7`)
 - Consolidación de configuración de sprites en un único JSON centralizado (`eaf31f4`)
 - Externalización de configuración de sprites y mejora de manejo de errores (`8202c84`)
@@ -54,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Firebase unificado al proyecto `mazerpg-b2aa4` (`.firebaserc`, `projectId` y service account) (`0a354b4`)
 
 ### Fixed
+- El arranque ya no se tumba si `localStorage` está lleno (`QuotaExceededError`): `guardarCasa` degrada con aviso y la casa sigue viva en memoria
+- `sprites.json`: eliminada la entrada `food_apple -> sprites/apple.png` (fichero inexistente) que provocaba el falso aviso "Modo geométrico activo (Sprites faltantes)"
+- Enemigos por-nodo: al atravesar un conector se descartan los del nodo anterior (evita accesos fuera de la rejilla del nodo activo)
 - Fallos de interacción de invitados y optimización de suavizado de cámara (`7c17fa9`)
 - Desincronización multijugador y problemas de sprite fallback en NPCs (`438e7c4`)
 - Corrección de estado de respawn (`7c874ca`)

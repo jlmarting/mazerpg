@@ -77,6 +77,7 @@ class Game implements IGame {
   private npcSyncInterval: number | null = null;
   private guestPollingInterval: number | null = null;
   private persistenciaMundo: PersistenciaMundo | null = null;
+  private housingDecision: 'usar' | 'nueva' | null = null;
   private firebaseHeartbeatInterval: number | null = null;
   private firebaseNpcSyncInterval: number | null = null;
   public lobbyManager!: LobbyManager;
@@ -277,6 +278,7 @@ class Game implements IGame {
     document.getElementById('btnGuardAction')?.addEventListener('click', () => this.teletransportarAliados(this.protagonista, true));
     document.getElementById('btnRadarAction')?.addEventListener('click', () => this.lanzarRadar(this.protagonista, true));
     document.getElementById('btnRestartAction')?.addEventListener('click', () => window.location.reload());
+    document.getElementById('btnTeleportHousing')?.addEventListener('click', () => this.teleportHousing());
 
     document.getElementById('zoomSlider')?.addEventListener('input', (e) => {
         this.config.targetZoom = parseFloat((e.target as HTMLInputElement).value);
@@ -561,8 +563,9 @@ class Game implements IGame {
             this.networkHttp.enviarMensaje({ tipo: 'npc_sync_all', lista: listaNpcs });
 
             const objetos: any[] = [];
-            for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
-                for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+            const dimsSync = this.dimsActivo();
+            for (let f = 0; f < dimsSync.filas; f++) {
+                for (let c = 0; c < dimsSync.columnas; c++) {
                     const celda = this.mapaLaberinto[f][c];
                     if (celda.alimento || celda.burbuja || celda.tienePico || celda.esPortal) {
                         objetos.push({ f, c, a: celda.alimento, b: celda.burbuja, p: celda.tienePico, pr: celda.esPortal });
@@ -767,8 +770,9 @@ class Game implements IGame {
 
             // Sincronizar objetos del mundo (fuente de verdad absoluta)
             const objetos: any[] = [];
-            for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
-                for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+            const dimsSync = this.dimsActivo();
+            for (let f = 0; f < dimsSync.filas; f++) {
+                for (let c = 0; c < dimsSync.columnas; c++) {
                     const celda = this.mapaLaberinto[f][c];
                     if (celda.alimento || celda.burbuja || celda.tienePico || celda.esPortal) {
                         objetos.push({ f, c, a: celda.alimento, b: celda.burbuja, p: celda.tienePico, pr: celda.esPortal });
@@ -849,6 +853,7 @@ class Game implements IGame {
       const btnFireball = document.getElementById('btnFireballAction');
       const btnGuard = document.getElementById('btnGuardAction');
       const btnRestart = document.getElementById('btnRestartAction');
+      const btnTeleportHousing = document.getElementById('btnTeleportHousing');
 
       if (btnWhirlwind) btnWhirlwind.style.display = this.protagonista.clase === 'guerrero' ? 'block' : 'none';
       if (btnFireball) btnFireball.style.display = (this.protagonista.clase === 'mago' || this.protagonista.clase === 'guerrero') ? 'block' : 'none';
@@ -858,6 +863,13 @@ class Game implements IGame {
       if (btnRadar) btnRadar.style.display = this.protagonista.clase === 'explorador' ? 'block' : 'none';
       if (btnGuard) btnGuard.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
       if (btnRestart) btnRestart.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
+      if (btnTeleportHousing) {
+        const enCasa = this.nodoActivo?.tipo === 'personal';
+        btnTeleportHousing.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
+        btnTeleportHousing.innerHTML = enCasa
+          ? '🏠 AL MAPA<div class="cooldown-overlay"></div>'
+          : '🏠 A MI CASA<div class="cooldown-overlay"></div>';
+      }
   }
 
   generarQR() {
@@ -960,6 +972,22 @@ class Game implements IGame {
     });
   }
 
+  /** Dimensiones reales del nodo activo (puede ser menor que el mundo, p.ej. la casa). */
+  private dimsActivo(): { filas: number; columnas: number } {
+    const celdas = this.mapaLaberinto;
+    return { filas: celdas.length, columnas: celdas.length > 0 ? celdas[0].length : 0 };
+  }
+
+  /** True si hay una casa guardada y el arranque debe preguntar al usuario. */
+  hayHousingPrevio(): boolean {
+    return this.esLadoAutoritativo() && this.housing.hayCasaGuardada();
+  }
+
+  /** Registra la decisión del modal de housing (usar la casa o crear una nueva). */
+  resolverHousingPrevio(usar: boolean): void {
+    this.housingDecision = usar ? 'usar' : 'nueva';
+  }
+
   iniciarMotorJuego() {
     if (this.motorIniciado) return;
     this.motorIniciado = true;
@@ -994,12 +1022,23 @@ class Game implements IGame {
     if (!this.esLadoAutoritativo()) return;
     if (!this.gestorMundo.nodoActivoId) return;
     if (this.gestorMundo.conectores.size > 0) return;
+
+    // Decisión del modal "Housing encontrado": reutilizar la casa guardada o descartarla.
+    let casaPrevia: NodoMundo | null = null;
+    if (this.housingDecision === 'usar') {
+      casaPrevia = this.housing.cargarCasaPrevia();
+    } else if (this.housingDecision === 'nueva') {
+      this.housing.descartarCasasGuardadas();
+    }
+    this.housingDecision = null;
+
     const sembrado = sembrarMundoBase({
       gestor: this.gestorMundo,
       housing: this.housing,
       idLocal: this.network.idLocal,
       filas: this.config.NUMERO_FILAS,
       columnas: this.config.NUMERO_COLUMNAS,
+      casaPrevia,
     });
     if (sembrado) {
       this.registrarEventoLog(
@@ -1107,9 +1146,10 @@ class Game implements IGame {
     for (let i = 0; i < cantidad; i++) {
         let f, c;
         let s = 0;
+        const dims = this.dimsActivo();
         do {
-            f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
-            c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
+            f = Math.floor(Math.random() * dims.filas);
+            c = Math.floor(Math.random() * dims.columnas);
             s++;
         } while (((f < 5 && c < 5) || !this.mapaLaberinto[f][c].esTransitable) && s < 1000);
         const t = tipos[i % tipos.length];
@@ -1120,17 +1160,30 @@ class Game implements IGame {
   }
 
   obtenerPosicionInicioAleatoria(): {f: number, c: number} {
+    const dims = this.dimsActivo();
+    if (dims.filas === 0 || dims.columnas === 0) return { f: 0, c: 0 };
     let f = 0, c = 0;
     let valid = false;
     let attempts = 0;
+    // Preferir una celda transitable lejos del extremo inferior-derecho del nodo.
     while (!valid && attempts < 1000) {
-        f = Math.floor(Math.random() * this.config.NUMERO_FILAS);
-        c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
-        const dist = Math.abs(f - (this.config.NUMERO_FILAS - 1)) + Math.abs(c - (this.config.NUMERO_COLUMNAS - 1));
-        if (this.mapaLaberinto[f][c].esTransitable && dist > 15) {
+        f = Math.floor(Math.random() * dims.filas);
+        c = Math.floor(Math.random() * dims.columnas);
+        const dist = Math.abs(f - (dims.filas - 1)) + Math.abs(c - (dims.columnas - 1));
+        if (this.mapaLaberinto[f][c].esTransitable && dist > Math.max(15, Math.floor((dims.filas + dims.columnas) / 4))) {
             valid = true;
         }
         attempts++;
+    }
+    if (!valid) {
+        // Nodo pequeño (p.ej. la casa): caer a la primera celda transitable disponible.
+        for (let ff = 0; ff < dims.filas && !valid; ff++) {
+            for (let cc = 0; cc < dims.columnas; cc++) {
+                if (this.mapaLaberinto[ff][cc].esTransitable) {
+                    f = ff; c = cc; valid = true; break;
+                }
+            }
+        }
     }
     return { f, c };
   }
@@ -1213,6 +1266,8 @@ class Game implements IGame {
 
     this.renderer.aplicarZoom(this.config);
     this.renderer.setPortalesHousingInactivos(this.portalesHousingInactivos());
+    this.renderer.setPortalesHousing(this.idsPortalesHousing());
+    this.renderer.setAmbiente(this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon');
     this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config);
 
     let persistence = this.config.TIEMPO_DESVANECIMIENTO_NIEBLA;
@@ -1255,7 +1310,7 @@ class Game implements IGame {
         const f = Math.floor(curY);
         const c = Math.floor(curX);
 
-        if (f >= 0 && f < this.config.NUMERO_FILAS && c >= 0 && c < this.config.NUMERO_COLUMNAS) {
+        if (f >= 0 && f < this.mapaLaberinto.length && c >= 0 && c < (this.mapaLaberinto[f]?.length ?? 0)) {
             if (!this.mapaLaberinto[f][c].esTransitable) {
                 this.registrarEventoLog("La bola de fuego impacta contra un muro.");
                 this.bolasDeFuego.splice(i, 1);
@@ -1518,8 +1573,9 @@ class Game implements IGame {
         r *= 1.2;
     }
 
-    for (let f = Math.max(0, this.protagonista.fila - Math.ceil(r)); f <= Math.min(this.config.NUMERO_FILAS - 1, this.protagonista.fila + Math.ceil(r)); f++) {
-        for (let c = Math.max(0, this.protagonista.columna - Math.ceil(r)); c <= Math.min(this.config.NUMERO_COLUMNAS - 1, this.protagonista.columna + Math.ceil(r)); c++) {
+    const dimsVista = this.dimsActivo();
+    for (let f = Math.max(0, this.protagonista.fila - Math.ceil(r)); f <= Math.min(dimsVista.filas - 1, this.protagonista.fila + Math.ceil(r)); f++) {
+        for (let c = Math.max(0, this.protagonista.columna - Math.ceil(r)); c <= Math.min(dimsVista.columnas - 1, this.protagonista.columna + Math.ceil(r)); c++) {
             if (Math.sqrt(Math.pow(f - this.protagonista.fila, 2) + Math.pow(c - this.protagonista.columna, 2)) <= r) {
                 this.mapaLaberinto[f][c].ultimoAvistamiento = ahora;
             }
@@ -1541,8 +1597,9 @@ class Game implements IGame {
     jInfo.dc.send(JSON.stringify({ tipo: 'enemigos', lista: enemigos }));
 
     const objetos: any[] = [];
-    for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
-        for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+    const dimsObjetos = this.dimsActivo();
+    for (let f = 0; f < dimsObjetos.filas; f++) {
+        for (let c = 0; c < dimsObjetos.columnas; c++) {
             const celda = this.mapaLaberinto[f][c];
             if (celda.alimento || celda.burbuja || celda.tienePico || celda.esPortal) {
                 objetos.push({ f, c, a: celda.alimento, b: celda.burbuja, p: celda.tienePico, pr: celda.esPortal });
@@ -1641,6 +1698,45 @@ class Game implements IGame {
 
   private invalidarPortalesHousing(): void {
     this.portalesInactivosRecalculadoEn = Number.NEGATIVE_INFINITY;
+  }
+
+  /** Ids de todos los portales de housing (ida y vuelta): se dibujan como casita. */
+  idsPortalesHousing(): Set<string> {
+    const ids = new Set<string>();
+    for (const c of this.housing.portales()) ids.add(c.id);
+    for (const c of this.gestorMundo.conectores.values()) {
+      if (c.housingOwnerId !== null) ids.add(c.id);
+    }
+    return ids;
+  }
+
+  /** Debug: teletransporta el protagonista a su casa (o de vuelta al mapa) por el camino real. */
+  teleportHousing(): void {
+    if (!this.esLadoAutoritativo()) {
+      this.registrarEventoLog('El housing solo está disponible en el lado local (host/solo).');
+      return;
+    }
+    const enCasa = this.nodoActivo?.tipo === 'personal';
+    let conector: ConectorMundo | null = null;
+    for (const c of this.gestorMundo.conectores.values()) {
+      if (enCasa) {
+        if (c.tipo === 'entrada' && c.nodoOrigenId === this.gestorMundo.nodoActivoId && c.housingOwnerId !== null) {
+          conector = c;
+          break;
+        }
+      } else if (c.tipo === 'portal' && c.housingOwnerId !== null) {
+        conector = c;
+        break;
+      }
+    }
+    if (!conector) {
+      this.registrarEventoLog('No hay portal de housing registrado.');
+      return;
+    }
+    this.protagonista.fila = conector.filaO;
+    this.protagonista.columna = conector.columnaO;
+    this.verificarPortal(this.protagonista);
+    this.actualizarPanelAcciones();
   }
 
   private calcularPortalesHousingInactivos(): Set<string> {
@@ -1789,7 +1885,7 @@ class Game implements IGame {
         }
 
         // 4. Límites del mapa
-        if (sigFila < 0 || sigFila >= this.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= this.config.NUMERO_COLUMNAS) {
+        if (sigFila < 0 || sigFila >= this.mapaLaberinto.length || sigColumna < 0 || sigColumna >= (this.mapaLaberinto[sigFila]?.length ?? 0)) {
             console.warn(`resolverAccion: Intento de movimiento fuera de límites por ${entidad.nombre}`);
             return;
         }
@@ -1912,7 +2008,7 @@ class Game implements IGame {
             if (df === 0 && dc === 0) continue;
             const nf = lider.fila + df;
             const nc = lider.columna + dc;
-            if (nf >= 0 && nf < this.config.NUMERO_FILAS && nc >= 0 && nc < this.config.NUMERO_COLUMNAS) {
+            if (nf >= 0 && nf < this.mapaLaberinto.length && nc >= 0 && nc < (this.mapaLaberinto[nf]?.length ?? 0)) {
                 if (this.mapaLaberinto[nf][nc].esTransitable) {
                     posicionesLibres.push({ f: nf, c: nc });
                 }
@@ -1927,7 +2023,7 @@ class Game implements IGame {
                 for (let dc = -r; dc <= r; dc++) {
                     const nf = lider.fila + df;
                     const nc = lider.columna + dc;
-                    if (nf >= 0 && nf < this.config.NUMERO_FILAS && nc >= 0 && nc < this.config.NUMERO_COLUMNAS) {
+                    if (nf >= 0 && nf < this.mapaLaberinto.length && nc >= 0 && nc < (this.mapaLaberinto[nf]?.length ?? 0)) {
                         if (this.mapaLaberinto[nf][nc].esTransitable && !posicionesLibres.some(p => p.f === nf && p.c === nc)) {
                             posicionesLibres.push({ f: nf, c: nc });
                         }
@@ -2204,6 +2300,7 @@ class Game implements IGame {
 
       let f: number, c: number;
       let intentos = 0;
+      const dimsSpawn = this.dimsActivo();
       do {
           const dist = Math.floor(Math.random() * 3) + 1;
           const angle = Math.random() * Math.PI * 2;
@@ -2211,11 +2308,11 @@ class Game implements IGame {
           c = Math.round(emisor.columna + Math.cos(angle) * dist);
           intentos++;
       } while (
-          (f < 0 || f >= this.config.NUMERO_FILAS || c < 0 || c >= this.config.NUMERO_COLUMNAS ||
+          (f < 0 || f >= dimsSpawn.filas || c < 0 || c >= dimsSpawn.columnas ||
           !this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].alimento) && intentos < 20
       );
 
-      if (f >= 0 && f < this.config.NUMERO_FILAS && c >= 0 && c < this.config.NUMERO_COLUMNAS && this.mapaLaberinto[f][c].esTransitable) {
+      if (f >= 0 && f < dimsSpawn.filas && c >= 0 && c < dimsSpawn.columnas && this.mapaLaberinto[f][c].esTransitable) {
           const alimentos = [
               { tipo: "Manzana", pc: 5 }, { tipo: "Plátano", pc: 8 }, { tipo: "Kiwi", pc: 10 },
               { tipo: "Brócoli", pc: 25 }, { tipo: "Muslo de pollo", pc: 35 }, { tipo: "Chuleta", pc: 40 },
@@ -2344,6 +2441,13 @@ class Game implements IGame {
     }
     this.iniciarFundido();
     this.invalidarPortalesHousing();
+    this.renderer.invalidarCacheLaberinto();
+    // Fase 1: los enemigos son por-nodo. Al conmutar, los del nodo anterior quedan
+    // fuera de la rejilla activa (p.ej. la casa contenida), así que se descartan.
+    // (Fase 2: persistencia de enemigos por nodo.)
+    if (this.listaDeEnemigos.length > 0) {
+        this.listaDeEnemigos = [];
+    }
     entidad.fila = aparicion.fila;
     entidad.columna = aparicion.columna;
     entidad.visualFila = aparicion.fila;
@@ -2359,6 +2463,7 @@ class Game implements IGame {
                 hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
             });
         }
+        this.actualizarPanelAcciones();
     }
   }
 
@@ -2366,8 +2471,9 @@ class Game implements IGame {
     const celda = this.mapaLaberinto[entidad.fila][entidad.columna];
     if (celda.esPortal) {
         const todosLosPortales: {f: number, c: number}[] = [];
-        for (let f = 0; f < this.config.NUMERO_FILAS; f++) {
-            for (let c = 0; c < this.config.NUMERO_COLUMNAS; c++) {
+        const dimsPortales = this.dimsActivo();
+        for (let f = 0; f < dimsPortales.filas; f++) {
+            for (let c = 0; c < dimsPortales.columnas; c++) {
                 if (this.mapaLaberinto[f][c].esPortal && (f !== entidad.fila || c !== entidad.columna)) {
                     todosLosPortales.push({ f, c });
                 }
@@ -2397,7 +2503,10 @@ class Game implements IGame {
 
   obtenerEnemigoAMostrar() {
     return this.listaDeEnemigos.find(e => e.enCombateCon === this.protagonista) ||
-           this.listaDeEnemigos.filter(e => e.estaVivo && this.mapaLaberinto[e.fila][e.columna].ultimoAvistamiento > 0).sort((a,b) => a.fila - b.fila)[0];
+           this.listaDeEnemigos.filter(e => {
+               const fila = this.mapaLaberinto[e.fila];
+               return e.estaVivo && fila !== undefined && fila[e.columna] !== undefined && fila[e.columna].ultimoAvistamiento > 0;
+           }).sort((a,b) => a.fila - b.fila)[0];
   }
 
   iniciarCombate(atacante: any, objetivo: any) {

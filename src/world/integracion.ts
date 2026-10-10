@@ -1,6 +1,6 @@
 import { Celda } from './Celda';
 import { GestorMundo, tipoDesdeNombre } from './GestorMundo';
-import { generarNodo } from './generadores';
+import { dimensionesPlanta, generarNodo } from './generadores';
 import { HousingLocal } from './housing';
 import {
   aplicarDelta,
@@ -144,8 +144,10 @@ export interface SembradoMundo {
   nodoActivoId: string;
   nodoHijo: NodoMundo;
   conectorInter: ConectorMundo;
+  conectorInterVuelta: ConectorMundo;
   casa: NodoMundo;
   portalHousing: ConectorMundo;
+  portalHousingVuelta: ConectorMundo;
 }
 
 function celdasTransitables(celdas: Celda[][]): Array<{ fila: number; columna: number }> {
@@ -187,8 +189,10 @@ export function sembrarMundoBase(params: {
   idLocal: string;
   filas: number;
   columnas: number;
+  /** Casa previamente guardada que el usuario eligió reutilizar (no se regenera). */
+  casaPrevia?: NodoMundo | null;
 }): SembradoMundo | null {
-  const { gestor, housing, idLocal, filas, columnas } = params;
+  const { gestor, housing, idLocal, filas, columnas, casaPrevia } = params;
   const raiz = gestor.mundo.get(gestor.nodoActivoId);
   if (!raiz) return null;
 
@@ -252,24 +256,46 @@ export function sembrarMundoBase(params: {
   gestor.registrarConector(conectorInter);
   raiz.celdas[celdaOrigen.fila][celdaOrigen.columna].esPortal = true;
 
+  // Espejo de vuelta: desde la celda de llegada del hijo se regresa a la raíz.
+  const conectorInterVuelta: ConectorMundo = {
+    id: `${conectorInter.id}-vuelta`,
+    tipo: 'entrada',
+    nodoOrigenId: hijo.id,
+    filaO: celdaDestinoInter.fila,
+    columnaO: celdaDestinoInter.columna,
+    nodoDestinoId: raiz.id,
+    filaD: celdaOrigen.fila,
+    columnaD: celdaOrigen.columna,
+    housingOwnerId: null,
+  };
+  gestor.registrarPortalPersonal(conectorInterVuelta);
+
   const idCasa = `casa-${idLocal}`;
-  let casa = gestor.mundo.get(idCasa);
+  let casa = gestor.mundo.get(idCasa) ?? null;
+  if (!casa && casaPrevia) {
+    // Casa recuperada del almacenamiento: se adopta tal cual (dims propias).
+    casa = casaPrevia;
+    gestor.mundo.set(casa.id, casa);
+  }
   if (!casa) {
+    // Casa contenida: plano de vivienda (retícula de habitaciones), no un mapa exterior.
+    const paramsCasa = { habitacionesX: 3, habitacionesY: 2, sinAmbientales: 1 };
+    const dimCasa = dimensionesPlanta(paramsCasa);
     const genCasa: GenSpec = {
       nombre: 'planta',
-      version: 1,
+      version: 2,
       seed: semillaDerivada(raiz.gen.seed, idCasa),
-      params: {},
+      params: paramsCasa,
     };
     casa = {
       id: idCasa,
       padreId: raiz.id,
       transform: { df: 0, dc: 0 },
-      filas,
-      columnas,
+      filas: dimCasa.filas,
+      columnas: dimCasa.columnas,
       tipo: 'personal',
       gen: genCasa,
-      celdas: generarNodo(genCasa, filas, columnas),
+      celdas: generarNodo(genCasa, dimCasa.filas, dimCasa.columnas),
       ownerId: idLocal,
     };
     gestor.mundo.set(casa.id, casa);
@@ -285,7 +311,30 @@ export function sembrarMundoBase(params: {
     celdaOrigenCasa,
   );
   gestor.registrarPortalPersonal(portalHousing);
+
+  // Espejo de vuelta de la casa: pisando la celda de llegada se vuelve al mapa.
+  const portalHousingVuelta: ConectorMundo = {
+    id: `${portalHousing.id}-vuelta`,
+    tipo: 'entrada',
+    nodoOrigenId: casa.id,
+    filaO: celdaDestinoCasa.fila,
+    columnaO: celdaDestinoCasa.columna,
+    nodoDestinoId: raiz.id,
+    filaD: celdaOrigenCasa.fila,
+    columnaD: celdaOrigenCasa.columna,
+    housingOwnerId: idLocal,
+  };
+  gestor.registrarPortalPersonal(portalHousingVuelta);
+
   housing.guardarCasa(casa);
 
-  return { nodoActivoId: raiz.id, nodoHijo: hijo, conectorInter, casa, portalHousing };
+  return {
+    nodoActivoId: raiz.id,
+    nodoHijo: hijo,
+    conectorInter,
+    conectorInterVuelta,
+    casa,
+    portalHousing,
+    portalHousingVuelta,
+  };
 }

@@ -1,5 +1,5 @@
 import { Celda } from './Celda';
-import { generarNodo, mulberry32, GENERADORES } from './generadores';
+import { generarNodo, mulberry32, GENERADORES, dimensionesPlanta } from './generadores';
 import { generarLaberintoBSP } from './generation';
 
 let ok = 0;
@@ -37,6 +37,43 @@ function mapasIguales(a: Celda[][], b: Celda[][]): boolean {
 
 function filasDe(mapa: Celda[][]): number {
   return mapa.length;
+}
+
+/** Cuenta celdas transitables alcanzables desde la primera, abriendo paso solo por muros. */
+function contarAlcanzables(mapa: Celda[][]): number {
+  const filas = mapa.length;
+  const columnas = filas > 0 ? mapa[0].length : 0;
+  let inicio: { f: number; c: number } | null = null;
+  for (let f = 0; f < filas && !inicio; f++) {
+    for (let c = 0; c < columnas; c++) {
+      if (mapa[f][c].esTransitable) {
+        inicio = { f, c };
+        break;
+      }
+    }
+  }
+  if (!inicio) return 0;
+  const visto = new Set<string>();
+  const pila = [inicio];
+  while (pila.length) {
+    const { f, c } = pila.pop()!;
+    const clave = `${f},${c}`;
+    if (visto.has(clave)) continue;
+    visto.add(clave);
+    const vecinos: Array<[number, number, keyof Celda['muros'], keyof Celda['muros']]> = [
+      [f - 1, c, 'superior', 'inferior'],
+      [f + 1, c, 'inferior', 'superior'],
+      [f, c - 1, 'izquierdo', 'derecho'],
+      [f, c + 1, 'derecho', 'izquierdo'],
+    ];
+    for (const [nf, nc, muroA, muroB] of vecinos) {
+      if (nf < 0 || nc < 0 || nf >= filas || nc >= columnas) continue;
+      if (!mapa[nf][nc].esTransitable) continue;
+      if (mapa[f][c].muros[muroA] || mapa[nf][nc].muros[muroB]) continue;
+      pila.push({ f: nf, c: nc });
+    }
+  }
+  return visto.size;
 }
 
 function columnasDe(mapa: Celda[][]): number {
@@ -142,6 +179,86 @@ function main(): void {
   const bspC = crearMapa();
   generarLaberintoBSP(bspC, mulberry32(124));
   assert(!mapasIguales(bspA, bspC), 'generarLaberintoBSP con distinto seed difiere');
+
+  // --- M2: plano de casa (planta v2) ---
+  const dims = dimensionesPlanta({ habitacionesX: 3, habitacionesY: 2 });
+  assert(
+    dims.filas === 9 && dims.columnas === 16,
+    'dimensionesPlanta: 3x2 habitaciones -> 9x16 (contenida)',
+  );
+
+  const genCasa = { nombre: 'planta', version: 2, seed: 42, params: { habitacionesX: 3, habitacionesY: 2 } };
+  const casaA = generarNodo(genCasa, dims.filas, dims.columnas);
+  assert(casaA.length === 9 && casaA[0].length === 16, 'planta v2 respeta las dimensiones contenidas');
+
+  let perimetroCerrado = true;
+  for (let c = 0; c < 16; c++) if (casaA[0][c].esTransitable || casaA[8][c].esTransitable) perimetroCerrado = false;
+  for (let f = 0; f < 9; f++) if (casaA[f][0].esTransitable || casaA[f][15].esTransitable) perimetroCerrado = false;
+  assert(perimetroCerrado, 'planta v2 tiene perímetro exterior cerrado (sin exteriores)');
+
+  let interiores = 0;
+  for (let f = 0; f < 9; f++) {
+    for (let c = 0; c < 16; c++) if (casaA[f][c].esTransitable) interiores++;
+  }
+  assert(
+    interiores >= 24,
+    'planta v2 tiene varias habitaciones (una retícula de huecos, no un pasillo)',
+  );
+  assert(
+    contarAlcanzables(casaA) === interiores,
+    'planta v2: todas las habitaciones están conectadas por puertas (alcanzables)',
+  );
+
+  const casaB = generarNodo(genCasa, dims.filas, dims.columnas);
+  assert(mapasIguales(casaA, casaB), 'planta v2 es determinista para la misma seed');
+  const casaC = generarNodo({ ...genCasa, seed: 7 }, dims.filas, dims.columnas);
+  assert(!mapasIguales(casaA, casaC), 'planta v2 con distinta seed difiere (posición de puertas)');
+
+  const casaSinAmb = generarNodo(
+    { ...genCasa, params: { habitacionesX: 3, habitacionesY: 2, sinAmbientales: 1 } },
+    dims.filas,
+    dims.columnas,
+  );
+  let tieneAmbiental = false;
+  for (let f = 0; f < 9; f++) {
+    for (let c = 0; c < 16; c++) {
+      const cel = casaSinAmb[f][c];
+      if (cel.alimento || cel.burbuja || cel.tienePico || cel.esPortal) tieneAmbiental = true;
+    }
+  }
+  assert(
+    !tieneAmbiental,
+    'planta v2 con sinAmbientales no genera comida/burbujas/picos/portales clásicos',
+  );
+
+  // Suelo decorativo por habitación + mobiliario
+  let conSuelo = 0;
+  let sinSuelo = 0;
+  let muebles = 0;
+  let muebleNoTransitable = true;
+  for (let f = 0; f < 9; f++) {
+    for (let c = 0; c < 16; c++) {
+      const cel = casaSinAmb[f][c];
+      if (cel.esTransitable) {
+        if (cel.sueloDecor) conSuelo++;
+        else sinSuelo++;
+      }
+      if (cel.mueble) {
+        muebles++;
+        if (cel.esTransitable) muebleNoTransitable = false;
+      }
+    }
+  }
+  assert(
+    conSuelo >= 24 && sinSuelo === 0,
+    'planta v2 asigna suelo decorativo (madera/baldosa/alfombra) a todas las celdas transitables',
+  );
+  assert(muebles >= 4, 'planta v2 coloca mobiliario en la casa');
+  assert(muebleNoTransitable, 'las celdas con mueble no son transitables');
+  assert(
+    contarAlcanzables(casaSinAmb) === conSuelo,
+    'planta v2: el mobiliario no rompe la conectividad de las habitaciones',
+  );
 
   console.log(`${ok}/${total} ok`);
 }

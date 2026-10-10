@@ -1,6 +1,7 @@
 import { Celda } from './Celda';
 import {
   aplicarDelta,
+  conTickAutor,
   resolverLWW,
   FMT_DELTA,
   type NodoMundo,
@@ -116,6 +117,32 @@ function main(): void {
   assert(raiz.celdas[2][2].tipoEscenario === 'puerta', 'aplicarDelta escenario fija tipoEscenario');
   assert(raiz.celdas[2][2].estadoEscenario === 'abierta', 'aplicarDelta escenario fija estado');
 
+  const muebleSet = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 2, { tipo: 'decor', campo: 'mueble', valor: 'mesa' }, 1),
+  );
+  assert(muebleSet === true, "aplicarDelta decor/mueble devuelve true");
+  assert(raiz.celdas[1][2].mueble === 'mesa', 'aplicarDelta decor/mueble fija el mueble');
+  const muebleReset = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 2, { tipo: 'decor', campo: 'mueble', valor: null }, 2),
+  );
+  assert(muebleReset === true, "aplicarDelta decor/mueble valor null devuelve true");
+  assert(raiz.celdas[1][2].mueble === null, 'aplicarDelta decor/mueble valor null resetea el mueble');
+
+  const sueloSet = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 2, 0, { tipo: 'decor', campo: 'sueloDecor', valor: 'madera' }, 1),
+  );
+  assert(sueloSet === true, "aplicarDelta decor/sueloDecor devuelve true");
+  assert(raiz.celdas[2][0].sueloDecor === 'madera', 'aplicarDelta decor/sueloDecor fija el suelo');
+  const sueloReset = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 2, 0, { tipo: 'decor', campo: 'sueloDecor', valor: null }, 2),
+  );
+  assert(sueloReset === true, "aplicarDelta decor/sueloDecor valor null devuelve true");
+  assert(raiz.celdas[2][0].sueloDecor === null, 'aplicarDelta decor/sueloDecor valor null resetea el suelo');
+
   const conector: ConectorMundo = {
     id: 'con-1',
     tipo: 'portal',
@@ -147,6 +174,20 @@ function main(): void {
   const c = deltaBase('raiz', 0, 0, { tipo: 'cavar' }, 5);
   assert(resolverLWW(a, c) === c, 'resolverLWW empate gana el entrante');
   assert(resolverLWW(null, a) === a, 'resolverLWW sin actual devuelve el entrante');
+
+  const base: Omit<DeltaMundo, 'tick'> = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 1,
+    columna: 0,
+    autoria: 'jugador-2',
+    cambio: { tipo: 'cavar' },
+  };
+  const conAutor = conTickAutor(base, 42, 100);
+  assert(conAutor.tick === 42, 'conTickAutor usa el tick del autor');
+  assert(conAutor.autoria === 'jugador-2' && conAutor.cambio.tipo === 'cavar', 'conTickAutor conserva los campos del base');
+  const conFallback = conTickAutor(base, null, 100);
+  assert(conFallback.tick === 100, 'conTickAutor cae al fallback si tickAutor es null');
 
   console.log(`${ok}/${total} ok`);
 }

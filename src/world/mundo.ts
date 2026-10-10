@@ -37,6 +37,7 @@ export type DeltaCambio =
   | { tipo: 'cavar' }
   | { tipo: 'escenario'; tipoEscenario: 'puerta' | 'trampa' | 'ninguno'; estado: string }
   | { tipo: 'objeto'; campo: 'alimento' | 'tienePico' | 'burbuja'; valor: unknown | null }
+  | { tipo: 'decor'; campo: 'sueloDecor' | 'mueble'; valor: string | null }
   | { tipo: 'conector'; accion: 'añadir' | 'quitar'; conector: ConectorMundo };
 
 export interface DeltaMundo {
@@ -112,6 +113,15 @@ export function aplicarDelta(celdas: Celda[][], delta: DeltaMundo): boolean {
         }
       }
       return true;
+    case 'decor': {
+      const valor = cambio.valor || null;
+      if (cambio.campo === 'sueloDecor') {
+        celda.sueloDecor = valor as Celda['sueloDecor'];
+      } else {
+        celda.mueble = valor;
+      }
+      return true;
+    }
     case 'conector':
       celda.conectorId = cambio.accion === 'añadir' ? cambio.conector.id : null;
       return true;
@@ -121,4 +131,12 @@ export function aplicarDelta(celdas: Celda[][], delta: DeltaMundo): boolean {
 export function resolverLWW(actual: DeltaMundo | null, entrante: DeltaMundo): DeltaMundo {
   if (!actual) return entrante;
   return entrante.tick >= actual.tick ? entrante : actual;
+}
+
+export function conTickAutor(
+  base: Omit<DeltaMundo, 'tick'>,
+  tickAutor: number | null | undefined,
+  fallbackTick: number,
+): DeltaMundo {
+  return { ...base, tick: tickAutor ?? fallbackTick };
 }

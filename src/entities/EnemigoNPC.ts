@@ -141,7 +141,26 @@ export class EnemigoNPC extends EntidadRPG {
   }
 
   puedeAtravesar(deltaFila: number, deltaColumna: number, game: IGame): boolean {
-    const celdaActual = game.mapaLaberinto[this.fila][this.columna];
+    const rejilla = game.mapaLaberinto;
+    // Blindaje (post-aceptación 2): un NPC con coordenadas de otro nodo (traídas
+    // por sync de red durante un re-sync) no tumba el game loop leyendo
+    // `undefined`; se abstiene y el [DIAG] delata el vector exacto.
+    const filaActual = rejilla[this.fila];
+    if (
+      this.fila < 0 || this.columna < 0 ||
+      filaActual === undefined || this.columna >= filaActual.length
+    ) {
+      console.error('[DIAG] enemigo fuera de la rejilla activa', {
+        id: this.id,
+        f: this.fila,
+        c: this.columna,
+        filas: rejilla.length,
+        cols: rejilla[this.fila]?.length,
+        nodo: (game as any).gestorMundo?.nodoActivoId,
+      });
+      return false;
+    }
+    const celdaActual = rejilla[this.fila][this.columna];
     if (deltaFila === -1 && celdaActual.muros.superior) return false;
     if (deltaFila === 1 && celdaActual.muros.inferior) return false;
     if (deltaColumna === -1 && celdaActual.muros.izquierdo) return false;
@@ -149,8 +168,12 @@ export class EnemigoNPC extends EntidadRPG {
 
     const sigFila = this.fila + deltaFila;
     const sigColumna = this.columna + deltaColumna;
-    if (sigFila < 0 || sigFila >= game.config.NUMERO_FILAS || sigColumna < 0 || sigColumna >= game.config.NUMERO_COLUMNAS) return false;
-    if (!game.mapaLaberinto[sigFila][sigColumna].esTransitable) return false;
+    // M2/M3: dims REALES de la rejilla activa (no el config global, que puede
+    // referir a otro nodo durante el re-sync).
+    if (sigFila < 0 || sigFila >= rejilla.length) return false;
+    const filaSiguiente = rejilla[sigFila];
+    if (filaSiguiente === undefined || sigColumna < 0 || sigColumna >= filaSiguiente.length) return false;
+    if (!filaSiguiente[sigColumna].esTransitable) return false;
 
     return true;
   }

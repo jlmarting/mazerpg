@@ -23,10 +23,11 @@ import {
 import { dentroDeBurbuja, radioSimPorDefecto } from './world/burbuja';
 import { PersistenciaMundo } from './world/PersistenciaMundo';
 import { HousingLocal } from './world/housing';
+import { EspejoLocal, type DocNodoLocal } from './world/espejoLocal';
 import { GestorMundo } from './world/GestorMundo';
-import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
+import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, rehidratarNodoTrasCruce, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
 import { ArbitroDeltas } from './world/ArbitroDeltas';
-import { FMT_DELTA, type ConectorMundo, type DeltaMundo, type GenSpec, type NodoMundo } from './world/mundo';
+import { conTickAutor, consolidarCeldasLWW, FMT_DELTA, leerSnapshotNodo, rehidratarHistoria, restaurarEnemigos, type ConectorMundo, type DeltaMundo, type EnemigoFoto, type GenSpec, type NodoMundo, type SnapshotNodo } from './world/mundo';
 
 declare global {
     interface Window {
@@ -78,6 +79,11 @@ class Game implements IGame {
   private guestPollingInterval: number | null = null;
   private persistenciaMundo: PersistenciaMundo | null = null;
   private housingDecision: 'usar' | 'nueva' | null = null;
+  /** Espejo local (mazerpg.mundo.*) de la casa: SU persistencia cuando no hay Firebase. */
+  private readonly espejo: EspejoLocal = new EspejoLocal();
+  private idCasaEspejo: string | null = null;
+  private deltasCasaPendientes: DeltaMundo[] = [];
+  private timerEspejoCasa: number | null = null;
   private firebaseHeartbeatInterval: number | null = null;
   private firebaseNpcSyncInterval: number | null = null;
   public lobbyManager!: LobbyManager;
@@ -98,6 +104,10 @@ class Game implements IGame {
   private portalesInactivosCache: Set<string> = new Set();
   private portalesInactivosRecalculadoEn: number = Number.NEGATIVE_INFINITY;
   private readonly INTERVALO_PORTALES_MS: number = 250;
+  /** Debounce del guardado del espejo de la casa (solo sin Firebase). */
+  private static readonly DEBOUNCE_ESPEJO_CASA_MS = 1500;
+  /** Límite de deltas acumulados en el doc del espejo antes de plegarlos en el snapshot. */
+  private static readonly LIMITE_DELTAS_ESPEJO = 100;
 
   constructor() {
     (window as any).game = this;
@@ -248,7 +258,10 @@ class Game implements IGame {
 
     document.getElementById('btnRespawn')?.addEventListener('click', () => this.respawnPlayer());
     document.getElementById('btnEmpezar')?.addEventListener('click', () => this.respawnPlayer());
-    document.getElementById('btnSalir')?.addEventListener('click', () => window.location.reload());
+    document.getElementById('btnSalir')?.addEventListener('click', () => {
+      this.vaciarEspejoCasa();
+      window.location.reload();
+    });
     document.getElementById('btnAbandonar')?.addEventListener('click', () => this.abandonarPartida());
 
 
@@ -840,6 +853,7 @@ class Game implements IGame {
         this.detenerIntervalosFirebase();
         if (this.networkHttp) this.networkHttp.desconectar();
         this.signaling?.desconectar();
+        this.vaciarEspejoCasa();
         window.location.reload();
     }
   }
@@ -978,6 +992,12 @@ class Game implements IGame {
     return { filas: celdas.length, columnas: celdas.length > 0 ? celdas[0].length : 0 };
   }
 
+  /** Defensa de rejilla activa: ¿la celda (f,c) existe en el nodo renderizado? Cubre fuera de rango y negativos. */
+  private fueraDeRejillaActiva(f: number, c: number): boolean {
+    const fila = this.mapaLaberinto[f];
+    return fila === undefined || fila[c] === undefined;
+  }
+
   /** True si hay una casa guardada y el arranque debe preguntar al usuario. */
   hayHousingPrevio(): boolean {
     return this.esLadoAutoritativo() && this.housing.hayCasaGuardada();
@@ -1028,6 +1048,9 @@ class Game implements IGame {
     if (this.housingDecision === 'usar') {
       casaPrevia = this.housing.cargarCasaPrevia();
     } else if (this.housingDecision === 'nueva') {
+      // CREAR UNA NUEVA: la casa descartada también suelta su historia en el espejo local.
+      const previa = this.housing.cargarCasaPrevia();
+      if (previa) this.espejo.borrarDoc(previa.id);
       this.housing.descartarCasasGuardadas();
     }
     this.housingDecision = null;
@@ -1041,6 +1064,12 @@ class Game implements IGame {
       casaPrevia,
     });
     if (sembrado) {
+      // Casa duradera (Solo): si el espejo local guarda historia de esta casa, la
+      // cava/el muebles/el escenario se rehidratan sobre la casa adoptada (sin
+      // regenerar); las celdas del nodo son las mismas que renderiza al entrar.
+      this.idCasaEspejo = sembrado.casa.id;
+      const doc = this.espejo.cargarDoc(sembrado.casa.id);
+      if (doc) rehidratarHistoria(sembrado.casa.celdas, doc);
       this.registrarEventoLog(
         'Mundo conectado: salida a zona y portal de casa personal registrados.',
       );
@@ -1584,11 +1613,17 @@ class Game implements IGame {
 
   }
 
+  /** Reenvío del estado completo del nodo activo a TODOS los invitados conectados: mapa v2 (re-dimensiona la rejilla del invitado) + enemigos + objetos + spawn. El invitado debe conocer el nodo del host en cada cruce, no solo al join. */
+  private reenviarEstadoAInvitados(): void {
+    if (!this.network?.activo) return;
+    this.network.jugadoresRemotos.forEach((_, guestId: string) => this.enviarMapaAlInvitado(guestId));
+  }
+
   enviarMapaAlInvitado(guestId: string) {
     const jInfo = this.network.jugadoresRemotos.get(guestId);
     if (!jInfo || !jInfo.dc || jInfo.dc.readyState !== "open") return;
 
-    const mapaCompacto = serializarMapa(this.mapaLaberinto);
+    const mapaCompacto = serializarMapa(this.mapaLaberinto, { v2: true });
     const enemigos = this.listaDeEnemigos.map(e => ({
         id: e.id, f: e.fila, c: e.columna, n: e.nombre, t: e.tipo, v: e.vidaActual, vm: e.vidaMaxima
     }));
@@ -1606,7 +1641,9 @@ class Game implements IGame {
             }
         }
     }
-    jInfo.dc.send(JSON.stringify({ tipo: 'objetos', lista: objetos }));
+    // is_update: el receptor limpia sus objetos antes del overlay para que el
+    // host sea la verdad absoluta (imprescindible en re-syncs tras un cruce).
+    jInfo.dc.send(JSON.stringify({ tipo: 'objetos', lista: objetos, is_update: true }));
 
     const posSpawn = this.obtenerPosicionInicioAleatoria();
     jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: posSpawn.f, c: posSpawn.c }));
@@ -1766,16 +1803,16 @@ class Game implements IGame {
     return this.tickMundo;
   }
 
-  private construirDelta(fila: number, columna: number, cambio: DeltaMundo['cambio'], autoria: string): DeltaMundo {
-    return {
+  private construirDelta(fila: number, columna: number, cambio: DeltaMundo['cambio'], autoria: string, tickAutor: number | null = null): DeltaMundo {
+    const base: Omit<DeltaMundo, 'tick'> = {
       fmt: FMT_DELTA,
       nodoId: this.gestorMundo.nodoActivoId || 'raiz',
       fila,
       columna,
       autoria: autoria || this.network.idLocal,
-      tick: this.siguienteTickMundo(),
       cambio,
     };
+    return conTickAutor(base, tickAutor, this.siguienteTickMundo());
   }
 
   private aplicarDeltaAutorizado(delta: DeltaMundo): boolean {
@@ -1793,8 +1830,99 @@ class Game implements IGame {
       this.esHost,
       (d) => void this.persistirDeltaMundo(d),
     );
-    if (aplicado) this.arbitroDeltas.registrar(delta);
+    if (aplicado) {
+      this.arbitroDeltas.registrar(delta);
+      this.programarGuardadoCasa(delta);
+    }
     return aplicado;
+  }
+
+  /**
+   * Casa duradera (Solo): sin Firebase el espejo local es la persistencia de la
+   * casa. Un delta aplicado en ella se acumula y programa un guardado con
+   * debounce; con Firebase va por persistenciaMundo (host) y el espejo no interviene.
+   */
+  private programarGuardadoCasa(delta: DeltaMundo): void {
+    if (this.persistenciaMundo) return;
+    if (!this.idCasaEspejo || delta.nodoId !== this.idCasaEspejo) return;
+    this.deltasCasaPendientes.push(delta);
+    if (this.timerEspejoCasa !== null) window.clearTimeout(this.timerEspejoCasa);
+    this.timerEspejoCasa = window.setTimeout(() => {
+      this.timerEspejoCasa = null;
+      this.vaciarEspejoCasa();
+    }, Game.DEBOUNCE_ESPEJO_CASA_MS);
+  }
+
+  /** Flush del espejo de la casa: acumula deltas (con compactación al superar el límite) y guarda. */
+  private vaciarEspejoCasa(): void {
+    if (this.timerEspejoCasa !== null) {
+      window.clearTimeout(this.timerEspejoCasa);
+      this.timerEspejoCasa = null;
+    }
+    if (this.persistenciaMundo) return; // con Firebase la casa persiste por Firestore
+    if (!this.idCasaEspejo) {
+      this.deltasCasaPendientes = [];
+      return;
+    }
+    const nodoCasa = this.gestorMundo.mundo.get(this.idCasaEspejo);
+    if (!nodoCasa) {
+      this.deltasCasaPendientes = [];
+      return;
+    }
+    const previo = this.espejo.cargarDoc(this.idCasaEspejo);
+    let deltas = [...(previo?.deltas ?? []), ...this.deltasCasaPendientes].sort(
+      (a, b) => a.tick - b.tick,
+    );
+    this.deltasCasaPendientes = [];
+
+    let snapshot: SnapshotNodo | null = previo?.snapshot ?? null;
+    let ultimaCompactacionTick = previo?.ultimaCompactacionTick ?? 0;
+    if (deltas.length > Game.LIMITE_DELTAS_ESPEJO) {
+      // Plegado tipo compactarNodo: LWW por (celda, tipo, campo) — los efectos
+      // ortogonales de la misma celda coexisten; el snapshot previo nunca regresa.
+      const plegadas = consolidarCeldasLWW([snapshot?.celdas ?? [], deltas]);
+      const fusion: SnapshotNodo = { formato: 1 };
+      const celdas = plegadas.length > 0 ? plegadas : undefined;
+      if (celdas) fusion.celdas = celdas;
+      if (snapshot?.enemigos) fusion.enemigos = snapshot.enemigos;
+      if (snapshot?.escenario) fusion.escenario = snapshot.escenario;
+      snapshot = fusion;
+      if (deltas.length > 0) ultimaCompactacionTick = Math.max(ultimaCompactacionTick, deltas[deltas.length - 1].tick);
+      deltas = [];
+    }
+
+    const doc: DocNodoLocal = {
+      formato: 1,
+      gen: nodoCasa.gen,
+      ownerId: nodoCasa.ownerId,
+      deltas,
+      snapshot,
+      ultimaCompactacionTick,
+    };
+    this.espejo.guardarDoc(this.idCasaEspejo, doc);
+  }
+
+  /**
+   * Enemigos de la casa (Solo): al salir, la foto del nodo saliente se fusiona
+   * en el doc local con la misma semántica que PersistenciaMundo.
+   * guardarSnapshotParcial: read-modify que reemplaza `enemigos` y conserva el
+   * resto del snapshot del espejo.
+   */
+  private espejoEnemigosCasa(nodoSalienteId: string, fotoEnemigos: EnemigoFoto[] | null): void {
+    if (this.persistenciaMundo) return;
+    if (!this.idCasaEspejo || nodoSalienteId !== this.idCasaEspejo) return;
+    if (!fotoEnemigos || fotoEnemigos.length === 0) return;
+    this.vaciarEspejoCasa(); // los deltas pendientes viajan en el mismo doc antes de la fusión
+    const doc = this.espejo.cargarDoc(nodoSalienteId);
+    if (!doc) return;
+    const previo = leerSnapshotNodo(doc.snapshot);
+    doc.snapshot = {
+      formato: 1,
+      enemigos: fotoEnemigos,
+      ...(previo.escenario ? { escenario: previo.escenario } : {}),
+      ...(previo.celdas ? { celdas: previo.celdas } : {}),
+    };
+    this.espejo.guardarDoc(nodoSalienteId, doc);
   }
 
   resolverAccion(id: string, accion: any) {
@@ -1807,79 +1935,85 @@ class Game implements IGame {
         console.warn(`resolverAccion: La entidad ${entidad.nombre} está muerta`);
         return;
     }
-    if (!this.enBurbujaSim(entidad.fila, entidad.columna)) {
-        return;
-    }
+    // Fase 2 §3a: la burbuja gobierna la SIM, no la persistencia. Se evalúa una
+    // vez por acción y se aplica por rama: las ediciones que producen delta del
+    // mundo (cavar, recoger, crear comida) pasan en cualquier celda del nodo;
+    // el resto de la lógica de entidades (movimiento, combate, hechizos) sigue guardada.
+    const enBurbuja = this.enBurbujaSim(entidad.fila, entidad.columna);
 
     if (accion.tipo === 'mover') {
         const { df, dc } = accion;
         const sigFila = entidad.fila + df;
         const sigColumna = entidad.columna + dc;
 
-        // 1. Verificar colisión con otros jugadores
-        let jugadorChocadoId: string | null = null;
-        let jugadorChocado: any = null;
+        // 1-3: SIM bajo burbuja — colisiones con jugadores (combate/HP), con
+        // enemigos y rehuir. Fuera de burbuja estas ramas no se simulan.
+        if (enBurbuja) {
+            // 1. Verificar colisión con otros jugadores
+            let jugadorChocadoId: string | null = null;
+            let jugadorChocado: any = null;
 
-        if (id !== this.network.idLocal && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
-            jugadorChocadoId = this.network.idLocal;
-            jugadorChocado = this.protagonista;
-        } else {
-            this.network.jugadoresRemotos.forEach((v: any, k: string) => {
-                if (k !== id && v.entidad && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
-                    jugadorChocadoId = k;
-                    jugadorChocado = v.entidad;
+            if (id !== this.network.idLocal && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
+                jugadorChocadoId = this.network.idLocal;
+                jugadorChocado = this.protagonista;
+            } else {
+                this.network.jugadoresRemotos.forEach((v: any, k: string) => {
+                    if (k !== id && v.entidad && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
+                        jugadorChocadoId = k;
+                        jugadorChocado = v.entidad;
+                    }
+                });
+            }
+
+            if (jugadorChocado) {
+                const interactions = (entidad.consecutiveInteractions.get(jugadorChocadoId!) || 0) + 1;
+                if (interactions >= 2 && entidad.estaVivo && jugadorChocado.estaVivo) {
+                    entidad.consecutiveInteractions.set(jugadorChocadoId!, 0);
+                    if (entidad.vidaActual > 1) {
+                        entidad.vidaActual -= 1;
+                        jugadorChocado.vidaActual = Math.min(jugadorChocado.vidaMaxima, jugadorChocado.vidaActual + 1);
+                        this.registrarEventoLog(`${entidad.nombre} transfirió 1 HP a ${jugadorChocado.nombre}`);
+
+                        // Notificar a todos para efectos visuales (texto flotante)
+                        this.network.enviarMensaje({
+                            tipo: 'hp_transfer',
+                            fromId: id,
+                            toId: jugadorChocadoId,
+                            amount: 1
+                        });
+                        this.network.enviarMensaje({
+                            tipo: 'hp_loss',
+                            id: id,
+                            amount: 1
+                        });
+                    }
+                } else {
+                    entidad.consecutiveInteractions.set(jugadorChocadoId!, interactions);
+                    this.registrarEventoLog(`Interacción: ${entidad.nombre} -> ${jugadorChocado.nombre} (${interactions}/2)`);
                 }
+                return;
+            }
+
+            entidad.consecutiveInteractions.forEach((_v: number, k: string) => {
+                if (k !== jugadorChocadoId) entidad.consecutiveInteractions.set(k, 0);
             });
-        }
 
-        if (jugadorChocado) {
-            const interactions = (entidad.consecutiveInteractions.get(jugadorChocadoId!) || 0) + 1;
-            if (interactions >= 2 && entidad.estaVivo && jugadorChocado.estaVivo) {
-                entidad.consecutiveInteractions.set(jugadorChocadoId!, 0);
-                if (entidad.vidaActual > 1) {
-                    entidad.vidaActual -= 1;
-                    jugadorChocado.vidaActual = Math.min(jugadorChocado.vidaMaxima, jugadorChocado.vidaActual + 1);
-                    this.registrarEventoLog(`${entidad.nombre} transfirió 1 HP a ${jugadorChocado.nombre}`);
-
-                    // Notificar a todos para efectos visuales (texto flotante)
-                    this.network.enviarMensaje({
-                        tipo: 'hp_transfer',
-                        fromId: id,
-                        toId: jugadorChocadoId,
-                        amount: 1
-                    });
-                    this.network.enviarMensaje({
-                        tipo: 'hp_loss',
-                        id: id,
-                        amount: 1
-                    });
+            // 2. Verificar colisión con enemigos
+            const enemigoEnCasilla = this.listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
+            if (enemigoEnCasilla) {
+                entidad.setEstado('attacking', 500);
+                if (entidad.enCombateCon === enemigoEnCasilla) {
+                    this.resolverRondaDeCombate(entidad, enemigoEnCasilla);
+                } else {
+                    this.iniciarCombate(entidad, enemigoEnCasilla);
                 }
-            } else {
-                entidad.consecutiveInteractions.set(jugadorChocadoId!, interactions);
-                this.registrarEventoLog(`Interacción: ${entidad.nombre} -> ${jugadorChocado.nombre} (${interactions}/2)`);
+                return;
             }
-            return;
-        }
 
-        entidad.consecutiveInteractions.forEach((_v: number, k: string) => {
-            if (k !== jugadorChocadoId) entidad.consecutiveInteractions.set(k, 0);
-        });
-
-        // 2. Verificar colisión con enemigos
-        const enemigoEnCasilla = this.listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
-        if (enemigoEnCasilla) {
-            entidad.setEstado('attacking', 500);
-            if (entidad.enCombateCon === enemigoEnCasilla) {
-                this.resolverRondaDeCombate(entidad, enemigoEnCasilla);
-            } else {
-                this.iniciarCombate(entidad, enemigoEnCasilla);
+            // 3. Rehuir combate
+            if (entidad.enCombateCon) {
+                if (!this.intentarRehuirCombate(entidad)) return;
             }
-            return;
-        }
-
-        // 3. Rehuir combate
-        if (entidad.enCombateCon) {
-            if (!this.intentarRehuirCombate(entidad)) return;
         }
 
         // 4. Límites del mapa
@@ -1910,7 +2044,8 @@ class Game implements IGame {
             }
             if (celdaObjetivo.golpesCavar >= 5) {
                 celdaObjetivo.golpesCavar = 0;
-                this.aplicarDeltaAutorizado(this.construirDelta(sigFila, sigColumna, { tipo: 'cavar' }, id));
+                const deltaCavar = this.construirDelta(sigFila, sigColumna, { tipo: 'cavar' }, id);
+                this.aplicarDeltaAutorizado(deltaCavar);
                 this.renderer.invalidarCacheLaberinto();
                 eliminarMurosEntre(this.mapaLaberinto[entidad.fila][entidad.columna], celdaObjetivo);
                 this.network.enviarMensaje({
@@ -1918,65 +2053,77 @@ class Game implements IGame {
                     f: sigFila,
                     c: sigColumna,
                     fromF: entidad.fila,
-                    fromC: entidad.columna
+                    fromC: entidad.columna,
+                    tick: deltaCavar.tick
                 });
             }
             return;
         }
 
         if (esMovimientoValido) {
-            entidad.fila = sigFila;
-            entidad.columna = sigColumna;
-            console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
-            entidad.estaCaminando = true;
-            const celdaNueva = this.mapaLaberinto[entidad.fila][entidad.columna];
-            (entidad as any).ultimaCasillaAtacada = null;
+            // Sim: el desplazamiento de la entidad sigue gobernado por la burbuja.
+            if (enBurbuja) {
+                entidad.fila = sigFila;
+                entidad.columna = sigColumna;
+                console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
+                entidad.estaCaminando = true;
+                (entidad as any).ultimaCasillaAtacada = null;
+            }
+            // Recogidas (§3a): ediciones del mundo que producen delta — pasan
+            // también fuera de burbuja, sobre la celda objetivo del intento.
+            const celdaNueva = this.mapaLaberinto[sigFila][sigColumna];
 
             if (celdaNueva.tienePico) {
                 (entidad as any).tienePico = true;
-                this.aplicarDeltaAutorizado(this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'tienePico', valor: false }, id));
+                const deltaPico = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'tienePico', valor: false }, id);
+                this.aplicarDeltaAutorizado(deltaPico);
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'pick_collected', f: entidad.fila, c: entidad.columna });
+                this.network.enviarMensaje({ tipo: 'pick_collected', f: sigFila, c: sigColumna, tick: deltaPico.tick });
             }
             if (celdaNueva.alimento) {
                 const PC = celdaNueva.alimento.pc;
                 const CC = ((3 * entidad.fuerza) + (2 * entidad.agilidad) + (1 * entidad.inteligencia)) / 6;
                 const recuperacion = Math.floor(PC / CC);
                 entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + Math.max(1, recuperacion));
-                this.aplicarDeltaAutorizado(this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'alimento', valor: null }, id));
+                const deltaAlimento = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'alimento', valor: null }, id);
+                this.aplicarDeltaAutorizado(deltaAlimento);
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'food_consumed', f: entidad.fila, c: entidad.columna });
+                this.network.enviarMensaje({ tipo: 'food_consumed', f: sigFila, c: sigColumna, tick: deltaAlimento.tick });
             }
             if (celdaNueva.burbuja) {
-                this.aplicarDeltaAutorizado(this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'burbuja', valor: null }, id));
+                const deltaEscudo = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'burbuja', valor: null }, id);
+                this.aplicarDeltaAutorizado(deltaEscudo);
                 entidad.inmunidadHasta = Date.now() + 30000;
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'shield_collected', f: entidad.fila, c: entidad.columna });
+                this.network.enviarMensaje({ tipo: 'shield_collected', f: sigFila, c: sigColumna, tick: deltaEscudo.tick });
                 this.registrarEventoLog(`${entidad.nombre} recoge escudo: inmunidad 30 s.`);
             }
-            this.verificarPortal(entidad);
+            if (enBurbuja) {
+                this.verificarPortal(entidad);
 
-            (entidad as any).pasosDesdeUltimoDano = ((entidad as any).pasosDesdeUltimoDano || 0) + 1;
-            const factorDificultad = this.config.dificultad === 'facil' ? 1 : (this.config.dificultad === 'medio' ? 2 : 3);
-            if ((entidad as any).pasosDesdeUltimoDano >= 10 * factorDificultad) {
-                (entidad as any).pasosDesdeUltimoDano = 0;
-                entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + 1);
+                (entidad as any).pasosDesdeUltimoDano = ((entidad as any).pasosDesdeUltimoDano || 0) + 1;
+                const factorDificultad = this.config.dificultad === 'facil' ? 1 : (this.config.dificultad === 'medio' ? 2 : 3);
+                if ((entidad as any).pasosDesdeUltimoDano >= 10 * factorDificultad) {
+                    (entidad as any).pasosDesdeUltimoDano = 0;
+                    entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + 1);
+                }
             }
         }
     } else if (accion.tipo === 'fireball') {
-        this.lanzarBolaDeFuego(entidad, false);
+        if (enBurbuja) this.lanzarBolaDeFuego(entidad, false);
     } else if (accion.tipo === 'bow') {
-        this.lanzarArco(entidad, false);
+        if (enBurbuja) this.lanzarArco(entidad, false);
     } else if (accion.tipo === 'create_food') {
+        // Edición interactiva (§3a): crea comida vía delta, pasa fuera de burbuja.
         this.crearComidaHabilidad(entidad, false);
     } else if (accion.tipo === 'radar') {
-        this.lanzarRadar(entidad, false);
+        if (enBurbuja) this.lanzarRadar(entidad, false);
     } else if (accion.tipo === 'whirlwind') {
-        this.lanzarWhirlwind(entidad, false);
+        if (enBurbuja) this.lanzarWhirlwind(entidad, false);
     } else if (accion.tipo === 'freeze') {
-        this.lanzarCongelar(entidad, false);
+        if (enBurbuja) this.lanzarCongelar(entidad, false);
     } else if (accion.tipo === 'stop_walking') {
-        entidad.estaCaminando = false;
+        if (enBurbuja) entidad.estaCaminando = false;
     }
   }
 
@@ -2317,14 +2464,16 @@ class Game implements IGame {
               { tipo: "Pescado", pc: 70 }
           ];
           const alimento = alimentos[Math.floor(Math.random() * alimentos.length)];
-          this.aplicarDeltaAutorizado(this.construirDelta(f, c, { tipo: 'objeto', campo: 'alimento', valor: alimento }, (emisor as any).id || this.network.idLocal));
+          const deltaComida = this.construirDelta(f, c, { tipo: 'objeto', campo: 'alimento', valor: alimento }, (emisor as any).id || this.network.idLocal);
+          this.aplicarDeltaAutorizado(deltaComida);
           this.registrarEventoLog(`${emisor.nombre} ha creado ${alimento.tipo}.`);
           this.ui.crearTextoFlotanteEnCelda(f, c, "¡COMIDA!", "#ffcc00", this);
 
           if (this.esHost && this.network.multiplayerActivo) {
               this.network.enviarMensaje({
                   tipo: 'object_spawned',
-                  f, c, a: alimento
+                  f, c, a: alimento,
+                  tick: deltaComida.tick
               });
           }
       }
@@ -2407,17 +2556,31 @@ class Game implements IGame {
               c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
           } while (!this.mapaLaberinto[f][c].esTransitable);
 
+          // §3b: toda mutación de tipoEscenario/estadoEscenario va por delta
+          // (árbitro + persistencia + política de dueño); prohibido escribir la celda a mano.
           if (i < 3) {
-              this.mapaLaberinto[f][c].tipoEscenario = 'puerta';
-              this.mapaLaberinto[f][c].estadoEscenario = 'cerrada';
+              this.aplicarDeltaAutorizado(
+                  this.construirDelta(f, c, { tipo: 'escenario', tipoEscenario: 'puerta', estado: 'cerrada' }, this.network.idLocal),
+              );
           } else {
-              this.mapaLaberinto[f][c].tipoEscenario = 'trampa';
-              this.mapaLaberinto[f][c].estadoEscenario = 'inactiva';
+              this.aplicarDeltaAutorizado(
+                  this.construirDelta(f, c, { tipo: 'escenario', tipoEscenario: 'trampa', estado: 'inactiva' }, this.network.idLocal),
+              );
           }
       }
   }
 
   verificarPortal(entidad: any) {
+    // Host-authoritative (post-aceptación 2): solo la entidad local del lado
+    // autoritativo conmuta el mundo. Una entidad remota (invitada) o un NPC que
+    // pisa el portal del host NO atraviesan: el anfitrión cruza y el reenvío
+    // (reenviarEstadoAInvitados) lleva a los invitados al nuevo nodo. Sin esto,
+    // un paso remoto conmutaba el nodo activo global con el host quieto
+    // (niebla negra, fundido y conmutaciones en ping-pong que crasheaban el loop).
+    if (this.esLadoAutoritativo() && entidad !== this.protagonista) {
+        this.registrarEventoLog(`${entidad?.nombre ?? 'Entidad'} pisó el portal; el anfitrión debe cruzar primero.`);
+        return;
+    }
     const conector = this.gestorMundo.nodoActivoId
         ? this.gestorMundo.conectorEn(entidad.fila, entidad.columna)
         : null;
@@ -2429,6 +2592,7 @@ class Game implements IGame {
   }
 
   private atravesarConector(entidad: any, conector: ConectorMundo): void {
+    const nodoSalienteId = this.gestorMundo.nodoActivoId;
     let aparicion: { fila: number; columna: number };
     try {
         aparicion = this.gestorMundo.atravesar(conector.id);
@@ -2440,11 +2604,17 @@ class Game implements IGame {
     this.iniciarFundido();
     this.invalidarPortalesHousing();
     this.renderer.invalidarCacheLaberinto();
-    // Fase 1: los enemigos son por-nodo. Al conmutar, los del nodo anterior quedan
-    // fuera de la rejilla activa (p.ej. la casa contenida), así que se descartan.
-    // (Fase 2: persistencia de enemigos por nodo.)
+    // Fase 2: los enemigos son por-nodo y persistentes. Antes de descartar la
+    // lista activa se fotografía el nodo saliente (solo host/Firebase) y, tras
+    // conmutar, el destino se restaura desde su snapshot de enemigos; si no hay
+    // foto, la siembra por gen queda como está.
+    const fotoEnemigos = this.fotografiarEnemigos();
     if (this.listaDeEnemigos.length > 0) {
         this.listaDeEnemigos = [];
+    }
+    if (nodoSalienteId) {
+        this.conmutarSnapshotEnemigos(nodoSalienteId, fotoEnemigos);
+        this.espejoEnemigosCasa(nodoSalienteId, fotoEnemigos);
     }
     entidad.fila = aparicion.fila;
     entidad.columna = aparicion.columna;
@@ -2463,6 +2633,88 @@ class Game implements IGame {
         }
         this.actualizarPanelAcciones();
     }
+  }
+
+  /** Foto fiel de la lista activa (id/fila/columna/nombre/tipo/vidas); null salvo lado autoritativo con lista no vacía. */
+  private fotografiarEnemigos(): EnemigoFoto[] | null {
+    // Sin Firebase el espejo local usa esta foto para la casa (solo); el destino
+    // de la conmutación solo lo restaura la vía Firestore (conmutarSnapshotEnemigos).
+    if (!this.esLadoAutoritativo() || this.listaDeEnemigos.length === 0) {
+        return null;
+    }
+    return this.listaDeEnemigos.map((e) => ({
+        id: String(e.id),
+        fila: e.fila,
+        columna: e.columna,
+        nombre: e.nombre,
+        tipo: e.tipo,
+        vidaActual: e.vidaActual,
+        vidaMaxima: e.vidaMaxima,
+    }));
+  }
+
+  /** Persiste la foto del nodo saliente y restaura la lista del destino desde su snapshot (async, patrón handler 'enemigos'). */
+  private conmutarSnapshotEnemigos(nodoSalienteId: string, fotoEnemigos: EnemigoFoto[] | null): void {
+    const persistencia = this.persistenciaMundo;
+    if (!this.esHost || !persistencia) {
+        return;
+    }
+    // El destino se captura de forma síncrona: no depende de ningún await.
+    const destinoId = this.gestorMundo.nodoActivoId;
+    if (!destinoId) return;
+    void (async () => {
+        try {
+            // La foto escribe en el nodo saliente fijo (datos capturados de forma síncrona): sin carrera.
+            if (fotoEnemigos && fotoEnemigos.length > 0) {
+                await persistencia.guardarSnapshotParcial(nodoSalienteId, { enemigos: fotoEnemigos });
+            }
+            const persistido = await persistencia.cargarNodo(destinoId);
+            // Doble cruce rápido (A->B->C / A->B->A): si el nodo activo ya no es el
+            // destino de ESTA conmutación, la lista activa la gobierna la conmutación
+            // más reciente; restaurar aquí pisaría con una foto ajena.
+            if (this.gestorMundo.nodoActivoId !== destinoId) return;
+            // I1: la historia persistida del destino (celdas plegadas + deltas por
+            // tick) se aplica sobre el nodo ya materializado por gen, ANTES de que
+            // cualquier observador/envío (enviarMapaAlInvitado, sync periódica de
+            // objetos) lo vea: el invitado debe recibir la casa ya editada. Sin
+            // persistenciaMundo (solo) la casa la cubre el espejo local: no se duplica.
+            rehidratarNodoTrasCruce(this.gestorMundo, destinoId, persistido);
+            const fotoDestino = leerSnapshotNodo(persistido?.snapshot);
+            // M3: la foto del destino se acota a las dims del nodo activo; los
+            // enemigos fuera de rejilla se descartan (no se inventa posición).
+            if (fotoDestino.enemigos) {
+                this.listaDeEnemigos = restaurarEnemigos(
+                    fotoDestino,
+                    (d) => this.reconstruirEnemigo(d),
+                    this.dimsActivo(),
+                );
+            }
+            // Post-aceptación: el invitado recibe 'mapa' SOLO al join. Si el host
+            // atraviesa a otro nodo, su rejilla quedaría vieja (p. ej. casa 9×16)
+            // y el sync por red traería enemigos con coordenadas del destino
+            // (mundo 60×60) => crash en EnemigoNPC.puedeAtravesar. Con el nodo ya
+            // rehidratado se reenvía el estado completo SIEMPRE (con o sin foto:
+            // el mapa del nodo cambió igual), y con la guard de arriba una
+            // conmutación más reciente manda aquí.
+            this.reenviarEstadoAInvitados();
+        } catch (e) {
+            console.warn('No se pudo sincronizar el snapshot de enemigos entre nodos.', e);
+        }
+    })();
+  }
+
+  /** Reconstrucción exacta de un enemigo desde su foto (constructor de fase 1 + vidas + setupEntity); los muertos siguen muertos. */
+  private reconstruirEnemigo(d: EnemigoFoto): EnemigoNPC {
+    const idNumerico = Number(d.id);
+    const id = Number.isFinite(idNumerico) && String(idNumerico) === d.id ? idNumerico : (d.id as unknown as number);
+    const e = new EnemigoNPC(d.fila, d.columna, d.nombre, d.tipo, id, this.config.dificultad);
+    e.vidaActual = d.vidaActual;
+    e.vidaMaxima = d.vidaMaxima;
+    if (d.vidaActual <= 0) {
+        e.estaVivo = false;
+    }
+    this.setupEntity(e);
+    return e;
   }
 
   private teleportarPortalClasico(entidad: any): void {
@@ -2662,9 +2914,9 @@ class Game implements IGame {
         case 'object_spawned':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.esHost) {
-                if (!this.enBurbujaSim(msg.f, msg.c)) break;
+                // Delta del mundo (§3a): pasa sin gate de burbuja; mandan árbitro y dueño.
                 if (msg.a) {
-                    this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: msg.a }, idEmisor));
+                    this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: msg.a }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
                 }
                 this.ui.crearTextoFlotanteEnCelda(msg.f, msg.c, "¡COMIDA!", "#ffcc00", this);
             }
@@ -2816,7 +3068,16 @@ class Game implements IGame {
             this.ajustarDimensiones();
             break;
         case 'enemigos':
-            this.listaDeEnemigos = msg.lista.map((d: any) => {
+            // Defensa (post-aceptación): coordenadas de otro nodo (join o re-sync
+            // en vuelo con la rejilla aún sin redimensionar) no se construyen; el
+            // re-sync completo ('mapa' + 'enemigos') las traerá en su mundo correcto.
+            this.listaDeEnemigos = msg.lista.filter((d: any) => {
+                if (this.fueraDeRejillaActiva(d.f, d.c)) {
+                    console.warn(`Enemigo ${d.n} (${d.f},${d.c}) fuera de la rejilla activa; descartado hasta el re-sync.`);
+                    return false;
+                }
+                return true;
+            }).map((d: any) => {
                 const e = new EnemigoNPC(d.f, d.c, d.n, d.t, d.id, this.config.dificultad);
                 e.vidaActual = d.v; e.vidaMaxima = d.vm;
                 this.setupEntity(e);
@@ -2853,26 +3114,26 @@ class Game implements IGame {
             break;
         case 'food_consumed':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
-            if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: null }, idEmisor));
+            // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'pick_collected':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
-            if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'tienePico', valor: false }, idEmisor));
+            // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'tienePico', valor: false }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'shield_collected':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
-            if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'burbuja', valor: null }, idEmisor));
+            // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'burbuja', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'dig_completed':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
-            if (!this.enBurbujaSim(msg.f, msg.c)) break;
-            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'cavar' }, idEmisor));
+            // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'cavar' }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             if (msg.fromF !== undefined && msg.fromC !== undefined) {
                 eliminarMurosEntre(this.mapaLaberinto[msg.fromF][msg.fromC], this.mapaLaberinto[msg.f][msg.c]);
@@ -2943,13 +3204,15 @@ class Game implements IGame {
             }
             if (this.esHost) this.network.enviarMensaje({ ...msg }, idEmisor);
             break;
-        case 'npc_update':
+        case 'npc_update': {
             const npc = this.listaDeEnemigos.find(e => e.id === msg.id);
-            if (npc) {
+            // Defensa (post-aceptación): no mover un NPC a coordenadas de otro nodo.
+            if (npc && !this.fueraDeRejillaActiva(msg.f, msg.c)) {
                 npc.fila = msg.f; npc.columna = msg.c; npc.vidaActual = msg.v;
                 if (npc.vidaActual <= 0) npc.estaVivo = false;
             }
             break;
+        }
         case 'npc_damaged_by_guest':
             if (this.esHost) {
                 const targetNpc = this.listaDeEnemigos.find(e => e.id === msg.id);
@@ -2990,13 +3253,15 @@ class Game implements IGame {
             break;
         case 'npc_sync_all':
             msg.lista.forEach((d: any) => {
-                const npc = this.listaDeEnemigos.find(e => e.id === d.id);
-                if (npc) {
-                    npc.fila = d.f;
-                    npc.columna = d.c;
-                    npc.vidaActual = d.v;
-                    npc.vidaMaxima = d.vm;
-                    npc.estaVivo = npc.vidaActual > 0;
+                const npcSync = this.listaDeEnemigos.find(e => e.id === d.id);
+                // Defensa (post-aceptación): el sync del host puede tener coords de
+                // otro nodo mientras llega el re-sync; no mover fuera de rejilla.
+                if (npcSync && !this.fueraDeRejillaActiva(d.f, d.c)) {
+                    npcSync.fila = d.f;
+                    npcSync.columna = d.c;
+                    npcSync.vidaActual = d.v;
+                    npcSync.vidaMaxima = d.vm;
+                    npcSync.estaVivo = npcSync.vidaActual > 0;
                 }
             });
             break;

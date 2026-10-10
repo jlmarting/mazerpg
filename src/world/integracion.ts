@@ -4,6 +4,8 @@ import { dimensionesPlanta, generarNodo } from './generadores';
 import { HousingLocal } from './housing';
 import {
   aplicarDelta,
+  leerSnapshotNodo,
+  rehidratarHistoria,
   type ConectorMundo,
   type DeltaMundo,
   type GenSpec,
@@ -93,15 +95,28 @@ function materializarNodo(
   filas: number,
   columnas: number,
 ): NodoMundo {
-  // Fase 1: el formato del snapshot de compactación no está definido, así que un nodo
-  // compactado no se puede reconstruir. Se rechaza explícitamente en lugar de perder
-  // silenciosamente los cambios compactados (el llamador cae a un mundo nuevo).
-  if ((persistido.ultimaCompactacionTick ?? 0) > 0) {
-    throw new Error(`Nodo ${nodoId} compactado: snapshot no soportado en fase 1`);
-  }
   const celdas = generarNodo(persistido.gen, filas, columnas);
-  for (const delta of persistido.deltas) {
-    aplicarDelta(celdas, delta);
+  // Fase 2 (spec §1, ciclo 5): gen -> deltas plegados en snapshot.celdas (ya
+  // consolidados por celda, se aplican en orden de array) -> deltas restantes
+  // con tick > ultimaCompactacionTick. Un snapshot corrupto/sin formato degrada
+  // a fase 1: gen + todos los deltas (sin perder durabilidad).
+  const snapshotBruto = persistido.snapshot;
+  const esFormatoUno =
+    !!snapshotBruto &&
+    typeof snapshotBruto === 'object' &&
+    (snapshotBruto as Record<string, unknown>).formato === 1;
+  const ultimaCompactacionTick = persistido.ultimaCompactacionTick ?? 0;
+  if (esFormatoUno) {
+    for (const delta of leerSnapshotNodo(snapshotBruto).celdas ?? []) {
+      aplicarDelta(celdas, delta);
+    }
+    for (const delta of persistido.deltas) {
+      if (delta.tick > ultimaCompactacionTick) aplicarDelta(celdas, delta);
+    }
+  } else {
+    for (const delta of persistido.deltas) {
+      aplicarDelta(celdas, delta);
+    }
   }
   const nodo: NodoMundo = {
     id: nodoId,
@@ -117,6 +132,29 @@ function materializarNodo(
   gestor.mundo.set(nodo.id, nodo);
   gestor.nodoActivoId = nodo.id;
   return nodo;
+}
+
+/**
+ * I1 (spec §1 ciclo 5, §3c): rehidratación de la historia del nodo destino tras
+ * un cruce en el lado con persistenciaMundo. El destino llega materializado por
+ * gen (`atravesar` -> `materializarDestino`) y sus deltas/snapshot en Firestore
+ * quedan huérfanos; aquí se aplican sobre las celdas ya materializadas, ANTES
+ * de que el mapa/objetos viajen al invitado (`enviarMapaAlInvitado`). El guard
+ * anti-race (`nodoActivoId !== destinoId -> return`) es del llamador, invocado
+ * justo antes. Sin persistenciaMundo (solo) lo cubre el espejo local: no se
+ * duplica. Devuelve true solo si aplicó historia (nodo + doc + historia).
+ */
+export function rehidratarNodoTrasCruce(
+  gestor: GestorMundo,
+  destinoId: string,
+  persistido: NodoPersistidoLike | null | undefined,
+): boolean {
+  const nodo = gestor.mundo.get(destinoId);
+  if (!nodo || !persistido) return false;
+  const plegadas = leerSnapshotNodo(persistido.snapshot).celdas ?? [];
+  if (plegadas.length === 0 && (persistido.deltas ?? []).length === 0) return false;
+  rehidratarHistoria(nodo.celdas, persistido);
+  return true;
 }
 
 export async function arrancarMundoGestor(params: ArranqueMundoParams): Promise<ResultadoArranque> {

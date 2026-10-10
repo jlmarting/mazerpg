@@ -1,17 +1,28 @@
 import { Celda } from './Celda';
 import { GestorMundo } from './GestorMundo';
+import { generarNodo } from './generadores';
 import {
   aplicarDeltaConPersistencia,
   arrancarMundoGestor,
   celdasCompatibilidad,
   esLadoAutoritativo,
   planificarArranque,
+  rehidratarNodoTrasCruce,
   sembrarMundoBase,
   type NodoPersistidoLike,
   type PersistenciaMundoLike,
 } from './integracion';
 import { HousingLocal, type AlmacenamientoLocal } from './housing';
-import { FMT_DELTA, type DeltaMundo, type GenSpec, type NodoMundo } from './mundo';
+import {
+  aplicarDelta,
+  FMT_DELTA,
+  leerSnapshotNodo,
+  restaurarEnemigos,
+  type DeltaMundo,
+  type EnemigoFoto,
+  type GenSpec,
+  type NodoMundo,
+} from './mundo';
 
 declare const process: { exit(codigo: number): void };
 
@@ -97,6 +108,30 @@ function crearNodoPersonal(id: string, ownerId: string | null, filas: number, co
     celdas,
     ownerId,
   };
+}
+
+function mundoEsperado(gen: GenSpec, filas: number, columnas: number, deltas: DeltaMundo[]): Celda[][] {
+  const celdas = generarNodo(gen, filas, columnas);
+  for (const delta of deltas) aplicarDelta(celdas, delta);
+  return celdas;
+}
+
+function mismosMundos(a: Celda[][], b: Celda[][]): boolean {
+  if (a.length !== b.length) return false;
+  for (let f = 0; f < a.length; f++) {
+    if (a[f].length !== b[f].length) return false;
+    for (let c = 0; c < a[f].length; c++) {
+      const x = a[f][c];
+      const y = b[f][c];
+      if (x.esTransitable !== y.esTransitable) return false;
+      if (JSON.stringify(x.alimento) !== JSON.stringify(y.alimento)) return false;
+      if (JSON.stringify(x.burbuja) !== JSON.stringify(y.burbuja)) return false;
+      if (x.tipoEscenario !== y.tipoEscenario || x.estadoEscenario !== y.estadoEscenario) return false;
+      if (x.sueloDecor !== y.sueloDecor || x.mueble !== y.mueble) return false;
+      if (x.tienePico !== y.tienePico) return false;
+    }
+  }
+  return true;
 }
 
 async function main(): Promise<void> {
@@ -266,31 +301,154 @@ async function main(): Promise<void> {
   assert(!lanzoConectorEn, 'conectorEn sin nodo activo no lanza');
   assert(conectorVacio === null, 'conectorEn sin nodo activo devuelve null');
 
-  // Importante #3: un nodo compactado no se puede reconstruir en fase 1
+  // Fix round 1 / item 2: un nodo compactado (fase 2) se carga — gen + celdas plegadas + deltas pendientes
+  const GEN_COMPACTADO: GenSpec = { nombre: 'mazmorra', version: 1, seed: 42, params: {} };
+  const cavarPlegado: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 0,
+    columna: 0,
+    autoria: 'L1',
+    tick: 5,
+    cambio: { tipo: 'cavar' },
+  };
+  const escenarioPlegado: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 1,
+    columna: 1,
+    autoria: 'L1',
+    tick: 6,
+    cambio: { tipo: 'escenario', tipoEscenario: 'puerta', estado: 'cerrada' },
+  };
+  const alimentoPendiente: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 2,
+    columna: 2,
+    autoria: 'L1',
+    tick: 30,
+    cambio: { tipo: 'objeto', campo: 'alimento', valor: { tipo: 'Manzana', pc: 5 } },
+  };
+
   const persistenciaCompactada = new PersistenciaMock();
   persistenciaCompactada.nodos = ['raiz'];
   persistenciaCompactada.porNodo.set('raiz', {
-    gen: GEN_RAIZ,
+    gen: GEN_COMPACTADO,
     ownerId: null,
-    deltas: [],
-    snapshot: { celdas: 'x' },
-    ultimaCompactacionTick: 5,
+    deltas: [alimentoPendiente],
+    snapshot: { formato: 1, celdas: [cavarPlegado, escenarioPlegado] },
+    ultimaCompactacionTick: 10,
   });
   const gestorCompactado = new GestorMundo();
-  let lanzoCompactado = false;
-  try {
-    await arrancarMundoGestor({
-      gestor: gestorCompactado,
-      persistencia: persistenciaCompactada,
-      filas: 10,
-      columnas: 10,
-      genPorDefecto: GEN_RAIZ,
-    });
-  } catch {
-    lanzoCompactado = true;
-  }
-  assert(lanzoCompactado, 'cargar un nodo compactado se rechaza (snapshot no soportado en fase 1)');
-  assert(gestorCompactado.nodoActivoId === '', 'un nodo compactado rechazado no deja nodo activo');
+  const arranqueCompactado = await arrancarMundoGestor({
+    gestor: gestorCompactado,
+    persistencia: persistenciaCompactada,
+    filas: 10,
+    columnas: 10,
+    genPorDefecto: { nombre: 'mazmorra', version: 1, seed: 1, params: {} },
+  });
+  assert(
+    arranqueCompactado.cargado === true,
+    'cargar un nodo compactado (fase 2, snapshot formato 1) ya no se rechaza',
+  );
+  assert(
+    gestorCompactado.nodoActivoId === 'raiz',
+    'un nodo compactado cargado deja su nodo como activo',
+  );
+  const esperadoCompactado = mundoEsperado(GEN_COMPACTADO, 10, 10, [cavarPlegado, escenarioPlegado, alimentoPendiente]);
+  assert(
+    mismosMundos(gestorCompactado.obtenerCeldas(), esperadoCompactado),
+    'la reconstrucción coincide con gen + todos los deltas en orden de tick (celdas plegadas + pendientes)',
+  );
+  const celdaComp = gestorCompactado.obtenerCeldas();
+  assert(
+    celdaComp[0][0].esTransitable === true &&
+      celdaComp[1][1].tipoEscenario === 'puerta' &&
+      celdaComp[1][1].estadoEscenario === 'cerrada' &&
+      celdaComp[2][2].alimento !== null && celdaComp[2][2].alimento?.tipo === 'Manzana',
+    'los delta plegados y el pendiente quedan aplicados a las celdas concretas',
+  );
+
+  // Un delta residual con tick <= ultimaCompactacionTick ya está plegado: no se re-aplica en la carga
+  const picoRetrasado: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 0,
+    columna: 0,
+    autoria: 'L1',
+    tick: 8,
+    cambio: { tipo: 'objeto', campo: 'tienePico', valor: true },
+  };
+  const persistenciaResidual = new PersistenciaMock();
+  persistenciaResidual.nodos = ['raiz'];
+  persistenciaResidual.porNodo.set('raiz', {
+    gen: GEN_COMPACTADO,
+    ownerId: null,
+    deltas: [picoRetrasado, alimentoPendiente],
+    snapshot: { formato: 1, celdas: [cavarPlegado, escenarioPlegado] },
+    ultimaCompactacionTick: 10,
+  });
+  const gestorResidual = new GestorMundo();
+  await arrancarMundoGestor({
+    gestor: gestorResidual,
+    persistencia: persistenciaResidual,
+    filas: 10,
+    columnas: 10,
+    genPorDefecto: GEN_COMPACTADO,
+  });
+  assert(
+    gestorResidual.obtenerCeldas()[0][0].tienePico === false,
+    'un delta residual con tick <= ultimaCompactacionTick no se re-aplica (ya está plegado)',
+  );
+
+  // Snapshot corrupto/sin formato: degradar a fase 1 (gen + TODOS los deltas)
+  const cavarCorrupto: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 3,
+    columna: 3,
+    autoria: 'L1',
+    tick: 5,
+    cambio: { tipo: 'cavar' },
+  };
+  const picoCorrupto: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 4,
+    columna: 4,
+    autoria: 'L1',
+    tick: 12,
+    cambio: { tipo: 'objeto', campo: 'tienePico', valor: true },
+  };
+  const persistenciaCorrupta = new PersistenciaMock();
+  persistenciaCorrupta.nodos = ['raiz'];
+  persistenciaCorrupta.porNodo.set('raiz', {
+    gen: GEN_COMPACTADO,
+    ownerId: null,
+    deltas: [cavarCorrupto, picoCorrupto],
+    snapshot: { formato: 2, celdas: [cavarPlegado] },
+    ultimaCompactacionTick: 10,
+  });
+  const gestorCorrupto = new GestorMundo();
+  const arranqueCorrupto = await arrancarMundoGestor({
+    gestor: gestorCorrupto,
+    persistencia: persistenciaCorrupta,
+    filas: 10,
+    columnas: 10,
+    genPorDefecto: GEN_COMPACTADO,
+  });
+  assert(
+    arranqueCorrupto.cargado === true &&
+      gestorCorrupto.obtenerCeldas()[3][3].esTransitable === true &&
+      gestorCorrupto.obtenerCeldas()[4][4].tienePico === true,
+    'snapshot sin formato 1: se degrada a gen + todos los deltas (como fase 1, sin throw)',
+  );
+  const esperadoCorrupto = mundoEsperado(GEN_COMPACTADO, 10, 10, [cavarCorrupto, picoCorrupto]);
+  assert(
+    mismosMundos(gestorCorrupto.obtenerCeldas(), esperadoCorrupto),
+    'la degradación reproduce gen + todos los deltas en orden de tick',
+  );
 
   // C1: sembrado mínimo de mundo (conector alcanzable + portal de housing)
   const almacenCasa = new AlmacenTest();
@@ -464,6 +622,194 @@ async function main(): Promise<void> {
       'no se genera la casa nueva cuando hay casaPrevia',
     );
   }
+
+  // --- Fase 2: restauración fiel de enemigos desde el snapshot del nodo ---
+  const fotoRestaurar: EnemigoFoto[] = [
+    { id: '3', fila: 2, columna: 3, nombre: 'Orco de la sala', tipo: 'Orco', vidaActual: 4, vidaMaxima: 10 },
+    { id: '8', fila: 7, columna: 8, nombre: 'Esqueleto', tipo: 'Esqueleto', vidaActual: 0, vidaMaxima: 8 },
+    { id: '5', fila: 9, columna: 1, nombre: 'Goblin', tipo: 'Goblin', vidaActual: 3, vidaMaxima: 6 },
+  ];
+  const reconstruidos = restaurarEnemigos(
+    { formato: 1, enemigos: fotoRestaurar },
+    (d) => ({ ...d, estaVivo: d.vidaActual > 0 }),
+  );
+  assert(reconstruidos.length === 3, 'restaurarEnemigos reconstruye la foto completa');
+  assert(
+    reconstruidos[0].id === '3' &&
+      reconstruidos[0].fila === 2 &&
+      reconstruidos[0].columna === 3 &&
+      reconstruidos[0].nombre === 'Orco de la sala' &&
+      reconstruidos[0].tipo === 'Orco' &&
+      reconstruidos[0].vidaActual === 4 &&
+      reconstruidos[0].vidaMaxima === 10,
+    'restauración fiel: id/posición/nombre/tipo/vida quedan tal cual la foto',
+  );
+  assert(
+    reconstruidos[1].fila === 7 && reconstruidos[1].columna === 8,
+    'las posiciones se restauran tal cual (también para muertos)',
+  );
+  assert(
+    reconstruidos[1].estaVivo === false && reconstruidos[1].vidaActual === 0,
+    'los muertos siguen muertos al restaurar (vidaActual 0 -> estaVivo false)',
+  );
+  assert(
+    reconstruidos[0].estaVivo === true && reconstruidos[2].estaVivo === true,
+    'los vivos siguen vivos al restaurar',
+  );
+
+  assert(restaurarEnemigos(undefined, (d) => d).length === 0, 'sin snapshot no hay restauración');
+  assert(restaurarEnemigos(null, (d) => d).length === 0, 'snapshot null: restauración vacía');
+  assert(
+    restaurarEnemigos({ formato: 1 }, (d) => d).length === 0,
+    'snapshot sin enemigos: restauración vacía (el llamador deja la siembra)',
+  );
+  assert(
+    restaurarEnemigos(
+      { formato: 2, enemigos: [{ id: 'x', fila: 0, columna: 0, nombre: '?', tipo: '?', vidaActual: 1, vidaMaxima: 2 }] },
+      (d) => d,
+    ).length === 0,
+    'formato desconocido se ignora (forward-compat)',
+  );
+
+  const conInvalidez = {
+    formato: 1,
+    enemigos: [
+      { id: 'a', fila: 1, columna: 1, nombre: 'n', tipo: 'Orco', vidaActual: '5', vidaMaxima: 10 },
+      { id: 'b', fila: 2, columna: 2, nombre: 'n', tipo: 'Orco', vidaActual: 5, vidaMaxima: 10 },
+      { id: 'c', fila: -3, columna: 2, nombre: 'n', tipo: 'Orco', vidaActual: 5, vidaMaxima: 10 },
+    ],
+  };
+  assert(
+    restaurarEnemigos(conInvalidez, (d) => d).length === 1 &&
+      restaurarEnemigos(conInvalidez, (d) => d)[0].id === 'b',
+    'las entradas de foto corruptas se descartan (tolerancia a datos remotos)',
+  );
+
+  const clampeada = restaurarEnemigos(
+    { formato: 1, enemigos: [{ id: 'c', fila: 0, columna: 0, nombre: 'n', tipo: 't', vidaActual: 99, vidaMaxima: 10 }] },
+    (d) => d,
+  );
+  assert(
+    clampeada.length === 1 && clampeada[0].vidaActual === 10,
+    'la vida restaurada se acota a [0, vidaMaxima]',
+  );
+
+  // --- M3: la foto de enemigos se acota a las dims del destino ---
+  const fotoGrande: EnemigoFoto[] = [
+    { id: 'g1', fila: 30, columna: 24, nombre: 'Minotauro', tipo: 'Minotauro', vidaActual: 5, vidaMaxima: 10 },
+    { id: 'g2', fila: 5, columna: 8, nombre: 'Goblin', tipo: 'Goblin', vidaActual: 0, vidaMaxima: 8 },
+    { id: 'g3', fila: 8, columna: 15, nombre: 'Orco', tipo: 'Orco', vidaActual: 3, vidaMaxima: 10 },
+    { id: 'g4', fila: 0, columna: 16, nombre: 'Orco borde', tipo: 'Orco', vidaActual: 2, vidaMaxima: 10 },
+  ];
+  const acotada = restaurarEnemigos({ formato: 1, enemigos: fotoGrande }, (d) => ({ ...d, estaVivo: d.vidaActual > 0 }), { filas: 9, columnas: 16 });
+  const idsAcotados = acotada.map((e) => e.id).join(',');
+  assert(
+    acotada.length === 2 && idsAcotados === 'g2,g3',
+    'M3 dims: fila 30 sobre rejilla 9×16 se descarta (sin posiciones inventadas) y columna 16 = columnas también',
+  );
+  assert(
+    acotada.some((e) => e.id === 'g2' && e.estaVivo === false && e.vidaActual === 0),
+    'M3 dims: los muertos VÁLIDOS se conservan (siguen muertos)',
+  );
+  assert(
+    acotada.some((e) => e.id === 'g3' && e.fila === 8 && e.columna === 15 && e.estaVivo === true),
+    'M3 dims: la foto válida se conserva tal cual en el borde de rejilla (8,15)',
+  );
+  assert(
+    restaurarEnemigos({ formato: 1, enemigos: fotoGrande }, (d) => ({ ...d, estaVivo: d.vidaActual > 0 })).length === 4,
+    'M3: sin dims no hay filtro (compatibilidad con el llamador sin nodo activo)',
+  );
+
+  const leido = leerSnapshotNodo({
+    formato: 1,
+    escenario: [{ fila: 0, columna: 0, tipoEscenario: 'puerta', estadoEscenario: 'cerrada' }],
+    celdas: [deltaAlimento(0, 0)],
+  });
+  assert(
+    leido.formato === 1 &&
+      leido.escenario?.length === 1 &&
+      leido.escenario[0].tipoEscenario === 'puerta' &&
+      leido.celdas?.length === 1 &&
+      leido.celdas[0].tick === 1,
+    'leerSnapshotNodo conserva las partes reconocidas del formato 1 (escenario/celdas)',
+  );
+  assert(
+    leerSnapshotNodo({ formato: 3, enemigos: fotoRestaurar }).enemigos === undefined,
+    'leerSnapshotNodo rechaza formato distinto de 1',
+  );
+  assert(
+    leerSnapshotNodo('basura').formato === 1 && !leerSnapshotNodo('basura').enemigos,
+    'leerSnapshotNodo tolera datos no-objeto (snapshot vacío normalizado)',
+  );
+
+  // --- Fase 2 (I1): historia del nodo destino rehidratada tras el cruce ---
+  // El host con persistenciaMundo materializa el destino por gen al travesar
+  // (atravesar -> materializarDestino); la historia persistida (snapshot.celdas
+  // + deltas por tick) debe aplicarse sobre ese nodo ANTES de que el mapa viaje
+  // al invitado (enviarMapaAlInvitado). El guard anti-race
+  // (nodoActivoId !== destinoId) y la llamada quedan wiring en main.ts
+  // (conmutarSnapshotEnemigos): solo-en-tsc, main no es bundle-eable.
+  const gestorCruce = new GestorMundo();
+  gestorCruce.crearMundoInicial(GEN_RAIZ, 6, 6);
+  gestorCruce.registrarPortalPersonal({
+    id: 'con-casa-1',
+    tipo: 'portal',
+    nodoOrigenId: 'raiz',
+    filaO: 0,
+    columnaO: 0,
+    nodoDestinoId: 'casa-L1',
+    filaD: 0,
+    columnaD: 0,
+    housingOwnerId: 'L1',
+  });
+  gestorCruce.atravesar('con-casa-1');
+  assert(gestorCruce.nodoActivoId === 'casa-L1', 'I1: el cruce activa el nodo destino materializado por gen');
+  const destinoI1 = gestorCruce.mundo.get('casa-L1');
+  assert(
+    destinoI1 !== undefined && destinoI1.celdas[1][1].mueble === null,
+    'I1: sin historia el destino materializado por gen no lleva edición alguna (el gen mazmorra no coloca muebles)',
+  );
+  const casaPersistida: NodoPersistidoLike = {
+    gen: GEN_RAIZ,
+    ownerId: 'L1',
+    deltas: [
+      { fmt: FMT_DELTA, nodoId: 'casa-L1', fila: 1, columna: 1, autoria: 'L1', tick: 5, cambio: { tipo: 'cavar' } },
+      {
+        fmt: FMT_DELTA,
+        nodoId: 'casa-L1',
+        fila: 1,
+        columna: 1,
+        autoria: 'L1',
+        tick: 7,
+        cambio: { tipo: 'objeto', campo: 'alimento', valor: { tipo: 'Manzana', pc: 5 } },
+      },
+      { fmt: FMT_DELTA, nodoId: 'casa-L1', fila: 2, columna: 2, autoria: 'L1', tick: 9, cambio: { tipo: 'decor', campo: 'mueble', valor: 'mesa' } },
+    ],
+  };
+  const aplicoI1 = rehidratarNodoTrasCruce(gestorCruce, 'casa-L1', casaPersistida);
+  assert(aplicoI1 === true, 'I1: rehidratarNodoTrasCruce aplica la historia persistida del destino');
+  assert(
+    !!destinoI1 &&
+      destinoI1.celdas[1][1].esTransitable === true &&
+      destinoI1.celdas[1][1].alimento !== null &&
+      destinoI1.celdas[1][1].alimento?.tipo === 'Manzana',
+    'I1: tras el flujo de cruce la celda del destino queda transitable y con alimento (historia completa)',
+  );
+  assert(
+    !!destinoI1 && destinoI1.celdas[2][2].mueble === 'mesa',
+    'I1: el decor persistido del destino se rehidrata al travesar',
+  );
+  assert(
+    !!destinoI1 && gestorCruce.obtenerCeldas() === destinoI1.celdas,
+    'I1: las celdas del nodo activo del cruce son las rehidratadas (la vista y el envío las observan)',
+  );
+
+  assert(rehidratarNodoTrasCruce(gestorCruce, 'nodo-fantasma', casaPersistida) === false, 'I1: destino inexistente no rehidrata (guard de nodo)');
+  assert(rehidratarNodoTrasCruce(gestorCruce, 'casa-L1', null) === false, 'I1: sin doc persistido no rehidrata (guard de doc)');
+  assert(
+    rehidratarNodoTrasCruce(gestorCruce, 'casa-L1', { gen: GEN_RAIZ, ownerId: null, deltas: [] }) === false,
+    'I1: doc sin historia (sin deltas ni snapshot) no rehidrata',
+  );
 
   console.log(`${ok}/${total} ok`);
 }

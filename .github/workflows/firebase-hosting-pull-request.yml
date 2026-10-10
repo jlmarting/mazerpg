@@ -32,6 +32,11 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
+      # --- REGLAS DE FIRESTORE (Fase 2): NO se despliegan aquí ---
+      # Las reglas son GLOBALES del proyecto mazerpg-b2aa4: una PR no debe
+      # tocarlas. Se despliegan SOLO en el merge de main
+      # (firebase-hosting-merge.yml). El preview de Hosting del PR sigue
+      # funcionando igual contra las reglas ya publicadas.
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

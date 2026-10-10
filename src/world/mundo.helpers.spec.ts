@@ -1,6 +1,9 @@
 import { Celda } from './Celda';
 import {
   aplicarDelta,
+  conTickAutor,
+  consolidarCeldasLWW,
+  rehidratarHistoria,
   resolverLWW,
   FMT_DELTA,
   type NodoMundo,
@@ -116,6 +119,50 @@ function main(): void {
   assert(raiz.celdas[2][2].tipoEscenario === 'puerta', 'aplicarDelta escenario fija tipoEscenario');
   assert(raiz.celdas[2][2].estadoEscenario === 'abierta', 'aplicarDelta escenario fija estado');
 
+  const muebleSet = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 2, { tipo: 'decor', campo: 'mueble', valor: 'mesa' }, 1),
+  );
+  assert(muebleSet === true, "aplicarDelta decor/mueble devuelve true");
+  assert(raiz.celdas[1][2].mueble === 'mesa', 'aplicarDelta decor/mueble fija el mueble');
+  const muebleReset = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 2, { tipo: 'decor', campo: 'mueble', valor: null }, 2),
+  );
+  assert(muebleReset === true, "aplicarDelta decor/mueble valor null devuelve true");
+  assert(raiz.celdas[1][2].mueble === null, 'aplicarDelta decor/mueble valor null resetea el mueble');
+
+  const sueloSet = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 2, 0, { tipo: 'decor', campo: 'sueloDecor', valor: 'madera' }, 1),
+  );
+  assert(sueloSet === true, "aplicarDelta decor/sueloDecor devuelve true");
+  assert(raiz.celdas[2][0].sueloDecor === 'madera', 'aplicarDelta decor/sueloDecor fija el suelo');
+  const sueloReset = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 2, 0, { tipo: 'decor', campo: 'sueloDecor', valor: null }, 2),
+  );
+  assert(sueloReset === true, "aplicarDelta decor/sueloDecor valor null devuelve true");
+  assert(raiz.celdas[2][0].sueloDecor === null, 'aplicarDelta decor/sueloDecor valor null resetea el suelo');
+
+  const sueloAlfombra = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 0, { tipo: 'decor', campo: 'sueloDecor', valor: 'alfombra' }, 1),
+  );
+  assert(sueloAlfombra === true && raiz.celdas[1][0].sueloDecor === 'alfombra', 'aplicarDelta decor/sueloDecor fija alfombra (preparación)');
+  const sueloPiedra = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 0, { tipo: 'decor', campo: 'sueloDecor', valor: 'piedra' }, 2),
+  );
+  assert(sueloPiedra === false, "aplicarDelta decor/sueloDecor rechaza material no válido ('piedra')");
+  assert(raiz.celdas[1][0].sueloDecor === 'alfombra', "aplicarDelta decor/sueloDecor con 'piedra' no muta la celda");
+  const sueloNulo = aplicarDelta(
+    raiz.celdas,
+    deltaBase('raiz', 1, 0, { tipo: 'decor', campo: 'sueloDecor', valor: null }, 3),
+  );
+  assert(sueloNulo === true, "aplicarDelta decor/sueloDecor valor null devuelve true");
+  assert(raiz.celdas[1][0].sueloDecor === null, 'aplicarDelta decor/sueloDecor valor null resetea el suelo');
+
   const conector: ConectorMundo = {
     id: 'con-1',
     tipo: 'portal',
@@ -147,6 +194,92 @@ function main(): void {
   const c = deltaBase('raiz', 0, 0, { tipo: 'cavar' }, 5);
   assert(resolverLWW(a, c) === c, 'resolverLWW empate gana el entrante');
   assert(resolverLWW(null, a) === a, 'resolverLWW sin actual devuelve el entrante');
+
+  const base: Omit<DeltaMundo, 'tick'> = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 1,
+    columna: 0,
+    autoria: 'jugador-2',
+    cambio: { tipo: 'cavar' },
+  };
+  const conAutor = conTickAutor(base, 42, 100);
+  assert(conAutor.tick === 42, 'conTickAutor usa el tick del autor');
+  assert(conAutor.autoria === 'jugador-2' && conAutor.cambio.tipo === 'cavar', 'conTickAutor conserva los campos del base');
+  const conFallback = conTickAutor(base, null, 100);
+  assert(conFallback.tick === 100, 'conTickAutor cae al fallback si tickAutor es null');
+
+  // C1: el plegado LWW conserva efectos ortogonales de la misma celda
+  // (cavar + objeto.alimento coexisten; la recarga reproduce ambos).
+  const plegadas1 = consolidarCeldasLWW([
+    [
+      deltaBase('raiz', 1, 1, { tipo: 'cavar' }, 5),
+      deltaBase('raiz', 1, 1, { tipo: 'objeto', campo: 'alimento', valor: { tipo: 'Manzana', pc: 5 } }, 7),
+    ],
+  ]);
+  assert(plegadas1.length === 2, 'C1: cavar + alimento en la misma celda no se pliegan entre sí');
+  const celdasC1 = crearNodoRaiz(2, 2).celdas;
+  for (const delta of plegadas1) aplicarDelta(celdasC1, delta);
+  assert(celdasC1[1][1].esTransitable === true, 'C1: aplicado el plegado sobre gen, la celda queda transitable');
+  assert(
+    celdasC1[1][1].alimento !== null &&
+    celdasC1[1][1].alimento?.tipo === 'Manzana' &&
+    celdasC1[1][1].alimento?.pc === 5,
+    'C1: aplicado el plegado sobre gen, la celda conserva el alimento',
+  );
+  const celdasRecarga = crearNodoRaiz(2, 2).celdas;
+  for (const delta of consolidarCeldasLWW([plegadas1])) aplicarDelta(celdasRecarga, delta);
+  assert(
+    celdasRecarga[1][1].esTransitable === celdasC1[1][1].esTransitable &&
+      celdasRecarga[1][1].alimento?.tipo === celdasC1[1][1].alimento?.tipo &&
+      celdasRecarga[1][1].alimento?.pc === celdasC1[1][1].alimento?.pc,
+    'C1: la recarga del plegado reproduce la celda idéntica (transitable y con alimento)',
+  );
+
+  // C1: dentro de la misma clave (celda+tipo) sigue mandando LWW entre sí.
+  const plegadasCavar = consolidarCeldasLWW([
+    [deltaBase('raiz', 1, 1, { tipo: 'cavar' }, 5), deltaBase('raiz', 1, 1, { tipo: 'cavar' }, 9)],
+  ]);
+  assert(plegadasCavar.length === 1 && plegadasCavar[0].tick === 9, "C1: dos 'cavar' de la misma celda se pliegan LWW (gana tick 9)");
+
+  // C1: campos del mismo tipo distintos coexisten (decor.sueloDecor + decor.mueble).
+  const plegadasDecor = consolidarCeldasLWW([
+    [
+      deltaBase('raiz', 0, 0, { tipo: 'decor', campo: 'sueloDecor', valor: 'madera' }, 5),
+      deltaBase('raiz', 0, 0, { tipo: 'decor', campo: 'mueble', valor: 'mesa' }, 6),
+    ],
+  ]);
+  assert(plegadasDecor.length === 2, 'C1: decor.sueloDecor + decor.mueble de la misma celda coexisten');
+
+  // C1: 'escenario' escribe un único (tipoEscenario+estado) por celda; el
+  // plegado conserva la pareja del último.
+  const plegadasEscenario = consolidarCeldasLWW([
+    [
+      deltaBase('raiz', 0, 1, { tipo: 'escenario', tipoEscenario: 'puerta', estado: 'cerrada' }, 8),
+      deltaBase('raiz', 0, 1, { tipo: 'escenario', tipoEscenario: 'trampa', estado: 'inactiva' }, 9),
+    ],
+  ]);
+  assert(plegadasEscenario.length === 1, 'C1: deltas de escenario de la misma celda se pliegan entre sí');
+  const cambioEscenario = plegadasEscenario[0].cambio;
+  assert(
+    cambioEscenario.tipo === 'escenario' && cambioEscenario.tipoEscenario === 'trampa' && cambioEscenario.estado === 'inactiva',
+    "C1: el escenario plegado conserva (tipoEscenario+estado) del último ('trampa inactiva')",
+  );
+
+  // rehidratarHistoria acepta historia cruda (Firebase) y aplica ciclo completo.
+  const nodoCrudol = crearNodoRaiz(2, 2);
+  rehidratarHistoria(nodoCrudol.celdas, {
+    snapshot: { formato: 1, celdas: [deltaBase('raiz', 0, 0, { tipo: 'cavar' }, 4)] },
+    deltas: [
+      deltaBase('raiz', 1, 1, { tipo: 'objeto', campo: 'alimento', valor: { tipo: 'Manzana', pc: 5 } }, 7),
+      deltaBase('raiz', 1, 1, { tipo: 'cavar' }, 6),
+    ],
+  });
+  assert(nodoCrudol.celdas[0][0].esTransitable === true, 'rehidratarHistoria aplica las celdas plegadas del snapshot crudo');
+  assert(
+    nodoCrudol.celdas[1][1].esTransitable === true && nodoCrudol.celdas[1][1].alimento?.tipo === 'Manzana',
+    'rehidratarHistoria aplica los deltas crudos ordenados por tick sobre el gen',
+  );
 
   console.log(`${ok}/${total} ok`);
 }

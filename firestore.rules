@@ -112,6 +112,7 @@ match /databases/{database}/documents {
       // que se valida cada clave presente en el documento resultante.
       function conexionOk(d) {
         return d is map
+          && d.size() >= 1
           && d.size() <= 4
           && d.keys().hasOnly(['id', 'nick', 'offer', 'answer'])
           && (!('id' in d) || (d.get('id') is string && d.get('id').size() <= 64))
@@ -183,24 +184,35 @@ match /databases/{database}/documents {
           && (!('celdas' in s) || (s.get('celdas') is list && s.get('celdas').size() <= 1024));
       }
 
-      // Forma de mundos/{nodoId}: gen obligatorio (GenSpec: nombre, version, seed,
-      // params); el resto de claves se valida si está presente (las escrituras por
-      // fusión la conservan). ownerId es string o null. Params es mapa de números.
+      // Forma de mundos/{nodoId}: dos escrituras reales distintas -
+      //   (a) guardarNodo: doc con gen + metadatos (GenSpec: nombre, version,
+      //       seed, params) - solo ocurre en el raiz (integracion.ts);
+      //   (b) guardarSnapshotParcial/compactarNodo: set({snapshot}, {merge:true})
+      //       que puede CREAR el doc de 'zona-abierto-1'/'casa-{idLocal}' con
+      //       SOLO {snapshot} (esos nodos nunca reciben gen via guardarNodo).
+      // Por eso gen es CONDICIONAL: si viene, se valida entero (genOk); si no
+      // viene, el doc debe traer un snapshot valido (coherencia por snapshotOk):
+      // nunca se admite un doc ni con gen ni con snapshot. ownerId es string o
+      // null; params es mapa de numeros.
+      function genOk(g) {
+        return g is map
+          && g.size() <= 8
+          && g.keys().hasOnly(['nombre', 'version', 'seed', 'params'])
+          && g.get('nombre', '') is string
+          && g.get('nombre', '').size() > 0
+          && g.get('nombre', '').size() <= 32
+          && g.get('version', 0) is number
+          && g.get('seed', 0) is number
+          && g.get('params', {}) is map
+          && g.get('params', {}).size() <= 16;
+      }
+
       function nodoOk(d) {
         return d is map
           && d.size() <= 6
-          && d.keys().hasAll(['gen'])
           && d.keys().hasOnly(['gen', 'ownerId', 'createdAt', 'updatedAt', 'ultimaCompactacionTick', 'snapshot'])
-          && d.get('gen') is map
-          && d.get('gen').size() <= 8
-          && d.get('gen').keys().hasOnly(['nombre', 'version', 'seed', 'params'])
-          && d.get('gen').get('nombre', '') is string
-          && d.get('gen').get('nombre', '').size() > 0
-          && d.get('gen').get('nombre', '').size() <= 32
-          && d.get('gen').get('version', 0) is number
-          && d.get('gen').get('seed', 0) is number
-          && d.get('gen').get('params', {}) is map
-          && d.get('gen').get('params', {}).size() <= 16
+          && ('gen' in d || 'snapshot' in d)
+          && (!('gen' in d) || genOk(d.get('gen')))
           && (!('ownerId' in d) || (d.get('ownerId') == null || (d.get('ownerId') is string && d.get('ownerId').size() <= 64)))
           && (!('createdAt' in d) || (d.get('createdAt') is number && d.get('createdAt') >= 0))
           && (!('updatedAt' in d) || (d.get('updatedAt') is number && d.get('updatedAt') >= 0))

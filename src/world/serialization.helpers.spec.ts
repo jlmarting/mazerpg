@@ -59,9 +59,23 @@ function estructurasIguales(a: Celda[][], b: Celda[][]): boolean {
       if (x.muros.derecho !== y.muros.derecho) return false;
       if (x.muros.inferior !== y.muros.inferior) return false;
       if (x.muros.izquierdo !== y.muros.izquierdo) return false;
+      if (x.sueloDecor !== y.sueloDecor) return false;
+      if (x.mueble !== y.mueble) return false;
+      if (x.tipoEscenario !== y.tipoEscenario) return false;
+      if (x.estadoEscenario !== y.estadoEscenario) return false;
     }
   }
   return true;
+}
+
+function contarDecor(mapa: Celda[][]): number {
+  let n = 0;
+  for (const fila of mapa) {
+    for (const celda of fila) {
+      if (celda.sueloDecor || celda.mueble || celda.tipoEscenario !== 'ninguno') n++;
+    }
+  }
+  return n;
 }
 
 /** Nodo 60x60 determinista con decor disperso para el presupuesto. */
@@ -200,19 +214,34 @@ function main(): void {
   deserializarMapa([], payloadGrande);
   deserializarMapa([], payloadGrande);
   let dtDecode = Infinity;
-  let dimsGrande: { filas: number, columnas: number } = { filas: 0, columnas: 0 };
   for (let intento = 0; intento < 5; intento++) {
     const destino: Celda[][] = [];
     const t0 = performance.now();
-    dimsGrande = deserializarMapa(destino, payloadGrande);
+    deserializarMapa(destino, payloadGrande);
     const dt = performance.now() - t0;
     if (dt < dtDecode) dtDecode = dt;
   }
   const destinoGrande: Celda[][] = [];
-  deserializarMapa(destinoGrande, payloadGrande);
-  assert(dimsGrande.filas === 60 && dimsGrande.columnas === 60 && estructurasIguales(grande, destinoGrande) &&
-    destinoGrande[0][1].sueloDecor !== undefined,
-    'decode del nodo 60x60 v2 es consistente',
+  const dimsGrande2 = deserializarMapa(destinoGrande, payloadGrande);
+  assert(dimsGrande2.filas === 60 && dimsGrande2.columnas === 60 && estructurasIguales(grande, destinoGrande),
+    'decode del nodo 60x60 v2 sincroniza muros, transitable y decor (toda la cuadrícula)',
+  );
+  const decorOriginal = contarDecor(grande);
+  assert(decorOriginal > 0 && contarDecor(destinoGrande) === decorOriginal,
+    'el nodo grande lleva decor real y el decode lo repone completo (mismo conteo en ambos lados)',
+  );
+  assert(
+    grande[0][0].sueloDecor === 'madera' && destinoGrande[0][0].sueloDecor === 'madera' &&
+      grande[0][0].mueble === 'estante' && destinoGrande[0][0].mueble === 'estante' &&
+      grande[0][0].tipoEscenario === 'puerta' && destinoGrande[0][0].tipoEscenario === 'puerta' &&
+      grande[0][0].estadoEscenario === 'cerrada' && destinoGrande[0][0].estadoEscenario === 'cerrada',
+    'la celda 0,0 retoma su decor exacto (madera + estante + puerta/cerrada)',
+  );
+  assert(
+    grande[2][2].sueloDecor === null && destinoGrande[2][2].sueloDecor === null &&
+      grande[2][2].mueble === null && destinoGrande[2][2].mueble === null &&
+      grande[2][2].tipoEscenario === 'ninguno' && destinoGrande[2][2].tipoEscenario === 'ninguno',
+    'la celda 2,2 queda sin decor en ambos lados (null exacto, no undefined)',
   );
   assert(dtDecode <= 5, `presupuesto: decode 60x60 v2 ≤ 5 ms (medido ${dtDecode.toFixed(3)} ms)`);
 

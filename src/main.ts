@@ -25,7 +25,7 @@ import { PersistenciaMundo } from './world/PersistenciaMundo';
 import { HousingLocal } from './world/housing';
 import { EspejoLocal, type DocNodoLocal } from './world/espejoLocal';
 import { GestorMundo } from './world/GestorMundo';
-import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
+import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, rehidratarNodoTrasCruce, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
 import { ArbitroDeltas } from './world/ArbitroDeltas';
 import { conTickAutor, consolidarCeldasLWW, FMT_DELTA, leerSnapshotNodo, rehidratarHistoria, restaurarEnemigos, type ConectorMundo, type DeltaMundo, type EnemigoFoto, type GenSpec, type NodoMundo, type SnapshotNodo } from './world/mundo';
 
@@ -1864,7 +1864,8 @@ class Game implements IGame {
     let snapshot: SnapshotNodo | null = previo?.snapshot ?? null;
     let ultimaCompactacionTick = previo?.ultimaCompactacionTick ?? 0;
     if (deltas.length > Game.LIMITE_DELTAS_ESPEJO) {
-      // Plegado tipo compactarNodo: celda a celda LWW, el snapshot previo nunca regresa.
+      // Plegado tipo compactarNodo: LWW por (celda, tipo, campo) — los efectos
+      // ortogonales de la misma celda coexisten; el snapshot previo nunca regresa.
       const plegadas = consolidarCeldasLWW([snapshot?.celdas ?? [], deltas]);
       const fusion: SnapshotNodo = { formato: 1 };
       const celdas = plegadas.length > 0 ? plegadas : undefined;
@@ -2648,6 +2649,12 @@ class Game implements IGame {
             // destino de ESTA conmutación, la lista activa la gobierna la conmutación
             // más reciente; restaurar aquí pisaría con una foto ajena.
             if (this.gestorMundo.nodoActivoId !== destinoId) return;
+            // I1: la historia persistida del destino (celdas plegadas + deltas por
+            // tick) se aplica sobre el nodo ya materializado por gen, ANTES de que
+            // cualquier observador/envío (enviarMapaAlInvitado, sync periódica de
+            // objetos) lo vea: el invitado debe recibir la casa ya editada. Sin
+            // persistenciaMundo (solo) la casa la cubre el espejo local: no se duplica.
+            rehidratarNodoTrasCruce(this.gestorMundo, destinoId, persistido);
             const fotoDestino = leerSnapshotNodo(persistido?.snapshot);
             if (!fotoDestino.enemigos) return; // sin foto: la siembra por gen queda como está
             this.listaDeEnemigos = restaurarEnemigos(fotoDestino, (d) => this.reconstruirEnemigo(d));

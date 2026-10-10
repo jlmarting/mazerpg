@@ -5,6 +5,7 @@ import { HousingLocal } from './housing';
 import {
   aplicarDelta,
   leerSnapshotNodo,
+  rehidratarHistoria,
   type ConectorMundo,
   type DeltaMundo,
   type GenSpec,
@@ -131,6 +132,29 @@ function materializarNodo(
   gestor.mundo.set(nodo.id, nodo);
   gestor.nodoActivoId = nodo.id;
   return nodo;
+}
+
+/**
+ * I1 (spec §1 ciclo 5, §3c): rehidratación de la historia del nodo destino tras
+ * un cruce en el lado con persistenciaMundo. El destino llega materializado por
+ * gen (`atravesar` -> `materializarDestino`) y sus deltas/snapshot en Firestore
+ * quedan huérfanos; aquí se aplican sobre las celdas ya materializadas, ANTES
+ * de que el mapa/objetos viajen al invitado (`enviarMapaAlInvitado`). El guard
+ * anti-race (`nodoActivoId !== destinoId -> return`) es del llamador, invocado
+ * justo antes. Sin persistenciaMundo (solo) lo cubre el espejo local: no se
+ * duplica. Devuelve true solo si aplicó historia (nodo + doc + historia).
+ */
+export function rehidratarNodoTrasCruce(
+  gestor: GestorMundo,
+  destinoId: string,
+  persistido: NodoPersistidoLike | null | undefined,
+): boolean {
+  const nodo = gestor.mundo.get(destinoId);
+  if (!nodo || !persistido) return false;
+  const plegadas = leerSnapshotNodo(persistido.snapshot).celdas ?? [];
+  if (plegadas.length === 0 && (persistido.deltas ?? []).length === 0) return false;
+  rehidratarHistoria(nodo.celdas, persistido);
+  return true;
 }
 
 export async function arrancarMundoGestor(params: ArranqueMundoParams): Promise<ResultadoArranque> {

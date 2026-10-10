@@ -7,6 +7,7 @@ import {
   celdasCompatibilidad,
   esLadoAutoritativo,
   planificarArranque,
+  rehidratarNodoTrasCruce,
   sembrarMundoBase,
   type NodoPersistidoLike,
   type PersistenciaMundoLike,
@@ -713,6 +714,75 @@ async function main(): Promise<void> {
   assert(
     leerSnapshotNodo('basura').formato === 1 && !leerSnapshotNodo('basura').enemigos,
     'leerSnapshotNodo tolera datos no-objeto (snapshot vacío normalizado)',
+  );
+
+  // --- Fase 2 (I1): historia del nodo destino rehidratada tras el cruce ---
+  // El host con persistenciaMundo materializa el destino por gen al travesar
+  // (atravesar -> materializarDestino); la historia persistida (snapshot.celdas
+  // + deltas por tick) debe aplicarse sobre ese nodo ANTES de que el mapa viaje
+  // al invitado (enviarMapaAlInvitado). El guard anti-race
+  // (nodoActivoId !== destinoId) y la llamada quedan wiring en main.ts
+  // (conmutarSnapshotEnemigos): solo-en-tsc, main no es bundle-eable.
+  const gestorCruce = new GestorMundo();
+  gestorCruce.crearMundoInicial(GEN_RAIZ, 6, 6);
+  gestorCruce.registrarPortalPersonal({
+    id: 'con-casa-1',
+    tipo: 'portal',
+    nodoOrigenId: 'raiz',
+    filaO: 0,
+    columnaO: 0,
+    nodoDestinoId: 'casa-L1',
+    filaD: 0,
+    columnaD: 0,
+    housingOwnerId: 'L1',
+  });
+  gestorCruce.atravesar('con-casa-1');
+  assert(gestorCruce.nodoActivoId === 'casa-L1', 'I1: el cruce activa el nodo destino materializado por gen');
+  const destinoI1 = gestorCruce.mundo.get('casa-L1');
+  assert(
+    destinoI1 !== undefined && destinoI1.celdas[1][1].mueble === null,
+    'I1: sin historia el destino materializado por gen no lleva edición alguna (el gen mazmorra no coloca muebles)',
+  );
+  const casaPersistida: NodoPersistidoLike = {
+    gen: GEN_RAIZ,
+    ownerId: 'L1',
+    deltas: [
+      { fmt: FMT_DELTA, nodoId: 'casa-L1', fila: 1, columna: 1, autoria: 'L1', tick: 5, cambio: { tipo: 'cavar' } },
+      {
+        fmt: FMT_DELTA,
+        nodoId: 'casa-L1',
+        fila: 1,
+        columna: 1,
+        autoria: 'L1',
+        tick: 7,
+        cambio: { tipo: 'objeto', campo: 'alimento', valor: { tipo: 'Manzana', pc: 5 } },
+      },
+      { fmt: FMT_DELTA, nodoId: 'casa-L1', fila: 2, columna: 2, autoria: 'L1', tick: 9, cambio: { tipo: 'decor', campo: 'mueble', valor: 'mesa' } },
+    ],
+  };
+  const aplicoI1 = rehidratarNodoTrasCruce(gestorCruce, 'casa-L1', casaPersistida);
+  assert(aplicoI1 === true, 'I1: rehidratarNodoTrasCruce aplica la historia persistida del destino');
+  assert(
+    !!destinoI1 &&
+      destinoI1.celdas[1][1].esTransitable === true &&
+      destinoI1.celdas[1][1].alimento !== null &&
+      destinoI1.celdas[1][1].alimento?.tipo === 'Manzana',
+    'I1: tras el flujo de cruce la celda del destino queda transitable y con alimento (historia completa)',
+  );
+  assert(
+    !!destinoI1 && destinoI1.celdas[2][2].mueble === 'mesa',
+    'I1: el decor persistido del destino se rehidrata al travesar',
+  );
+  assert(
+    !!destinoI1 && gestorCruce.obtenerCeldas() === destinoI1.celdas,
+    'I1: las celdas del nodo activo del cruce son las rehidratadas (la vista y el envío las observan)',
+  );
+
+  assert(rehidratarNodoTrasCruce(gestorCruce, 'nodo-fantasma', casaPersistida) === false, 'I1: destino inexistente no rehidrata (guard de nodo)');
+  assert(rehidratarNodoTrasCruce(gestorCruce, 'casa-L1', null) === false, 'I1: sin doc persistido no rehidrata (guard de doc)');
+  assert(
+    rehidratarNodoTrasCruce(gestorCruce, 'casa-L1', { gen: GEN_RAIZ, ownerId: null, deltas: [] }) === false,
+    'I1: doc sin historia (sin deltas ni snapshot) no rehidrata',
   );
 
   console.log(`${ok}/${total} ok`);

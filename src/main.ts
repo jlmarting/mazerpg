@@ -1611,7 +1611,7 @@ class Game implements IGame {
     const jInfo = this.network.jugadoresRemotos.get(guestId);
     if (!jInfo || !jInfo.dc || jInfo.dc.readyState !== "open") return;
 
-    const mapaCompacto = serializarMapa(this.mapaLaberinto);
+    const mapaCompacto = serializarMapa(this.mapaLaberinto, { v2: true });
     const enemigos = this.listaDeEnemigos.map(e => ({
         id: e.id, f: e.fila, c: e.columna, n: e.nombre, t: e.tipo, v: e.vidaActual, vm: e.vidaMaxima
     }));

@@ -2571,6 +2571,16 @@ class Game implements IGame {
   }
 
   verificarPortal(entidad: any) {
+    // Host-authoritative (post-aceptación 2): solo la entidad local del lado
+    // autoritativo conmuta el mundo. Una entidad remota (invitada) o un NPC que
+    // pisa el portal del host NO atraviesan: el anfitrión cruza y el reenvío
+    // (reenviarEstadoAInvitados) lleva a los invitados al nuevo nodo. Sin esto,
+    // un paso remoto conmutaba el nodo activo global con el host quieto
+    // (niebla negra, fundido y conmutaciones en ping-pong que crasheaban el loop).
+    if (this.esLadoAutoritativo() && entidad !== this.protagonista) {
+        this.registrarEventoLog(`${entidad?.nombre ?? 'Entidad'} pisó el portal; el anfitrión debe cruzar primero.`);
+        return;
+    }
     const conector = this.gestorMundo.nodoActivoId
         ? this.gestorMundo.conectorEn(entidad.fila, entidad.columna)
         : null;

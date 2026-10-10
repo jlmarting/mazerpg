@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Firebase unificado al proyecto `mazerpg-b2aa4` (`.firebaserc`, `projectId` y service account) (`0a354b4`)
 
 ### Fixed
+- Host-authoritative en portales: una entidad remota (invitada) o un NPC que pisa el portal del host ya no conmuta el nodo activo global — el anfitrión cruza y el reenvío lleva a los invitados al nuevo nodo; además, un NPC con coordenadas fuera de la rejilla activa se abstiene y lo delata con `[DIAG]` en vez de tumbar el game loop
 - Crash del game loop del invitado al cruzar el host de nodo: el estado completo (mapa v2 + enemigos + objetos) se reenvía tras cada cruce con el nodo ya rehidratado, la foto de enemigos se acota a las dims del destino (`restaurarEnemigos`) y el invitado descarta NPCs con coordenadas fuera de su rejilla
 - Arbitraje LWW real: el tick del autor viaja por red y se respeta entre clientes (`67fe781`)
 - El plegado LWW por celda ya no pierde efectos ortogonales: la clave de plegado pasa a (celda, tipo, campo) — cavar + objeto/decor/escenario de la misma celda coexisten en el snapshot plegado (la recarga deja la celda transitable y con su objeto)

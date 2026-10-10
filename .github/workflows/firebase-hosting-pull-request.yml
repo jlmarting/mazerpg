@@ -32,6 +32,21 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
+      # --- DESPLIEGUE DE REGLAS DE FIRESTORE (Fase 2) ---
+      # Usa el Node 20 ya configurado arriba. OJO: las reglas son GLOBALES del
+      # proyecto mazerpg-b2aa4: el despliegue desde un PR afecta a todos los
+      # entornos (los previews son sólo de Hosting). El secret de la SA se
+      # escribe en $RUNNER_TEMP con heredoc (nunca se imprime al log) y la CLI
+      # lo consume vía GOOGLE_APPLICATION_CREDENTIALS.
+      - name: Desplegar reglas de Firestore
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+        run: |
+          cat << 'EOF' > "$RUNNER_TEMP/gcp-sa.json"
+          ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MAZERPG_B2AA4 }}
+          EOF
+          npx -y firebase-tools@latest deploy --only firestore:rules --project mazerpg-b2aa4 --json --force || (echo '::error::Fallo despliegue de reglas — si es permisos de la SA (rol Firebase Rules), concedelo en consola IAM o despliega manualmente'; exit 1)
+          rm -f "$RUNNER_TEMP/gcp-sa.json"
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

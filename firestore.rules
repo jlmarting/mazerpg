@@ -1,0 +1,256 @@
+rules_version = '2';
+
+// ============================================================================
+// Reglas Firestore — mazerpg (Fase 2: mundo persistente)
+// ============================================================================
+// DECISIÓN DOCUMENTADA (hardening sin autenticación):
+// La app NO usa autenticación (no existe auth anónimo en este proyecto; todo el
+// cliente escribe con el SDK web sin request.auth). Por tanto:
+//   * Ninguna regla consulta request.auth: con la app tal cual está, cualquier
+//     regla con identidad bloquearía a los jugadores legítimos.
+//   * El endurecimiento apoya en tres capas:
+//       (1) árbol cerrado: solo /partidas/** con IDs que casan con los que el
+//           código genera realmente (regex idValido);
+//       (2) forma exacta de cada documento (claves, tipos, longitudes);
+//       (3) acotación de tamaño por nº de entradas + longitudes de string +
+//           nº de elementos de lista.
+//   * Todo lo demás queda denegado por el catch-all final.
+//
+// NOTA SOBRE TAMAÑOS (traduce los umbrales del brief con datos medidos):
+// rules.Map.size() cuenta ENTRADAS del mapa, NO bytes (ref:
+// https://firebase.google.com/docs/reference/rules/rules.Map). La cota de
+// bytes se logra por construcción (claves exactas + longitudes máximas por
+// string + nº máximo de elementos por lista). Datos:
+//   - SDP WebRTC sólo data-channel (sin audio/vídeo): 400-900 caracteres ->
+//     sdp <= 1500; documento de conexiones < 4 KiB con oferta+respuesta.
+//   - Candidata ICE (RTCIceCandidate.toJSON): 130-220 caracteres ->
+//     candidate <= 1024; documento < 1 KiB.
+//   - Delta de mundo: 7 entradas exactas, strings <= 64 -> ~200-400 B < 4 KiB.
+//   - Snapshot de nodo: la CASA es 9x16 (144 celdas); el raíz es 60x60. Enemigos:
+//     40 base, 70 en dificultad 'locura' (main.generarEnemigos). Cotas:
+//     celdas <= 1024, enemigos <= 80, escenario <= 200 -> doc peor caso ~150 KiB,
+//     lejos del tope duro de 1 MiB de Firestore. El "12 KiB" nominal del brief
+//     sólo era alcanzable para la casa; con Map.size() contando entradas la cota
+//     real es de nº de entradas, documentada aquí.
+//
+// ESCRITURAS REALES CALCADAS (grep verificado sobre FirebaseManager.ts,
+// NetworkManager.ts, PersistenciaMundo.ts y main.ts):
+//   partidas/{pid}: set 6 campos (crearPartida) -> create
+//   partidas/{pid}: update {numJugadores,lastSeen} (heartbeat) -> update
+//   partidas/{pid}: update {hostId,hostNick} (promocionarAHost) -> update
+//   partidas/{pid}: list donde estado=='activa' (lobby), get (seguimiento) -> get,list
+//   partidas/{pid}/conexiones/{id}: set {id,nick} (guest), set(merge) {offer|answer} -> create,update
+//   partidas/{pid}/conexiones: list (sondeo del host) ; get (onSnapshot) -> get,list
+//   partidas/{pid}/conexiones/{id}/iceCandidates{Host,Guest}/{auto}: .add() -> create
+//   ... y list de ICE (onSnapshot) + delete (limpiarSignaling) -> get,list,delete
+//   partidas/{pid}/mundos/{nodoId}: set 5 campos / set(merge) snapshot -> create,update
+//   partidas/{pid}/mundos: list (listarNodos) ; get (cargarNodo) -> get,list
+//   partidas/{pid}/mundos/{nodoId}/deltas/{auto}: set 7 campos -> create
+//   ... y list (orderBy/where tick) + delete (compactación) -> get,list,delete
+// ============================================================================
+
+match /databases/{database}/documents {
+
+  // IDs generados realmente (verificados en src):
+  //   pid        = '<animal>-<adjetivo>' -> 'oso-leal' (8) a 'elefante-brillante' (18)
+  //   conexiones = 'L' + aleatorio(9) | 'GUEST_' + aleatorio(5)   (10-11)
+  //   nodos      = 'raiz' (4) | 'zona-abierto-1' | 'casa-{idLocal}' | 'housing-portal-{idLocal}'
+  //   autoId     = identificador automático de Firestore (20 alfanuméricos)
+  // Todos casan en 4-40 con [a-zA-Z0-9_-].
+  function idValido(id) {
+    return id is string && id.matches('^[a-zA-Z0-9_-]{4,40}$');
+  }
+
+  match /partidas/{pid} {
+    function pidValido() {
+      return idValido(pid);
+    }
+
+    // Forma exacta de partidas/{pid}: las 6 claves de FirebaseManager.crearPartida.
+    // Toda actualización real (heartbeat, promoción a host) es un update que
+    // mantiene las 6 claves: request.resource.data trae el documento fusionado.
+    function partidaOk(d) {
+      return d is map
+        && d.size() == 6
+        && d.keys().hasAll(['hostId', 'hostNick', 'creacion', 'numJugadores', 'estado', 'lastSeen'])
+        && d.get('hostId') is string
+        && d.get('hostId').size() <= 64
+        && d.get('hostNick') is string
+        && d.get('hostNick').size() <= 64
+        && d.get('estado') is string
+        && d.get('estado').size() <= 32
+        && d.get('creacion') is number
+        && d.get('creacion') >= 0
+        && d.get('numJugadores') is number
+        && d.get('numJugadores') >= 0
+        && d.get('numJugadores') <= 32
+        && d.get('lastSeen') is number
+        && d.get('lastSeen') >= 0;
+    }
+
+    // Lecturas: lobby (list con filtro estado=='activa') y seguimiento de host
+    // (get del documento). El código nunca borra partidas: delete queda denegado.
+    allow get, list: if pidValido();
+    allow create, update: if pidValido() && partidaOk(request.resource.data);
+
+    match /conexiones/{g} {
+      // Oferta/respuesta SDP: exactamente {type, sdp}. SDP real (sólo canal de
+      // datos) <= 900 caracteres; 1500 da margen 2x sin romper el handshake.
+      function sdpOk(m) {
+        return m is map
+          && m.size() == 2
+          && m.keys().hasAll(['type', 'sdp'])
+          && m.get('type') is string
+          && m.get('type').size() <= 32
+          && m.get('sdp') is string
+          && m.get('sdp').size() > 0
+          && m.get('sdp').size() <= 1500;
+      }
+
+      // Escrituras reales: el invitado crea {id, nick} y luego añade {answer}
+      // (merge); el host añade {offer} (merge). Las claves crecen por fusión, así
+      // que se valida cada clave presente en el documento resultante.
+      function conexionOk(d) {
+        return d is map
+          && d.size() <= 4
+          && d.keys().hasOnly(['id', 'nick', 'offer', 'answer'])
+          && (!('id' in d) || (d.get('id') is string && d.get('id').size() <= 64))
+          && (!('nick' in d) || (d.get('nick') is string && d.get('nick').size() <= 64))
+          && (!('offer' in d) || sdpOk(d.get('offer')))
+          && (!('answer' in d) || sdpOk(d.get('answer')));
+      }
+
+      // Lecturas: onSnapshot del documento (host e invitado) y sondeo del host
+      // (collection('conexiones').get() -> list). Borrado: limpiarSignaling.
+      allow get, list, delete: if pidValido() && idValido(g);
+      allow create, update: if pidValido() && idValido(g) && conexionOk(request.resource.data);
+
+      match /iceCandidatesHost/{autoId} {
+        // Escritura real: .add(event.candidate.toJSON()) -> {candidate, sdpMid,
+        // sdpMLineIndex, usernameFragment}; los tres últimos pueden ser null según
+        // el navegador (por eso se admite null explícito con == null).
+        function candidataOk(d) {
+          return d is map
+            && d.size() <= 4
+            && d.keys().hasOnly(['candidate', 'sdpMid', 'sdpMLineIndex', 'usernameFragment'])
+            && d.get('candidate', '') is string
+            && d.get('candidate', '').size() > 0
+            && d.get('candidate', '').size() <= 1024
+            && (!('sdpMid' in d) || (d.get('sdpMid') == null || (d.get('sdpMid') is string && d.get('sdpMid').size() <= 64)))
+            && (!('sdpMLineIndex' in d) || (d.get('sdpMLineIndex') == null || (d.get('sdpMLineIndex') is number && d.get('sdpMLineIndex') >= 0)))
+            && (!('usernameFragment' in d) || (d.get('usernameFragment') == null || (d.get('usernameFragment') is string && d.get('usernameFragment').size() <= 64)));
+        }
+
+        // Lecturas: onSnapshot de la subcolección (list) y list limitado de
+        // limpiarSignaling; delete de cada candidata al limpiar.
+        allow get, list, delete: if pidValido() && idValido(g);
+        allow create: if pidValido() && idValido(g) && candidataOk(request.resource.data);
+      }
+
+      match /iceCandidatesGuest/{autoId} {
+        // Misma forma que iceCandidatesHost (host e invitado usan .add()).
+        function candidataOk(d) {
+          return d is map
+            && d.size() <= 4
+            && d.keys().hasOnly(['candidate', 'sdpMid', 'sdpMLineIndex', 'usernameFragment'])
+            && d.get('candidate', '') is string
+            && d.get('candidate', '').size() > 0
+            && d.get('candidate', '').size() <= 1024
+            && (!('sdpMid' in d) || (d.get('sdpMid') == null || (d.get('sdpMid') is string && d.get('sdpMid').size() <= 64)))
+            && (!('sdpMLineIndex' in d) || (d.get('sdpMLineIndex') == null || (d.get('sdpMLineIndex') is number && d.get('sdpMLineIndex') >= 0)))
+            && (!('usernameFragment' in d) || (d.get('usernameFragment') == null || (d.get('usernameFragment') is string && d.get('usernameFragment').size() <= 64)));
+        }
+
+        allow get, list, delete: if pidValido() && idValido(g);
+        allow create: if pidValido() && idValido(g) && candidataOk(request.resource.data);
+      }
+    }
+
+    match /mundos/{nodoId} {
+      // SnapshotNodo (mundo.ts, formato 1): {formato, enemigos?, escenario?, celdas?}.
+      // Las listas llevan cotas por nº de elementos (la validación profunda de
+      // los elementos no es posible en el lenguaje de reglas: sin bucles ni
+      // recursión; el cliente puede escribir listas con elementos complejos,
+      // límite residual documentado; el tope duro de 1 MiB por documento protege
+      // el backend).
+      function snapshotOk(s) {
+        return s is map
+          && s.size() <= 4
+          && s.keys().hasOnly(['formato', 'enemigos', 'escenario', 'celdas'])
+          && s.get('formato', 0) == 1
+          && (!('enemigos' in s) || (s.get('enemigos') is list && s.get('enemigos').size() <= 80))
+          && (!('escenario' in s) || (s.get('escenario') is list && s.get('escenario').size() <= 200))
+          && (!('celdas' in s) || (s.get('celdas') is list && s.get('celdas').size() <= 1024));
+      }
+
+      // Forma de mundos/{nodoId}: gen obligatorio (GenSpec: nombre, version, seed,
+      // params); el resto de claves se valida si está presente (las escrituras por
+      // fusión la conservan). ownerId es string o null. Params es mapa de números.
+      function nodoOk(d) {
+        return d is map
+          && d.size() <= 6
+          && d.keys().hasAll(['gen'])
+          && d.keys().hasOnly(['gen', 'ownerId', 'createdAt', 'updatedAt', 'ultimaCompactacionTick', 'snapshot'])
+          && d.get('gen') is map
+          && d.get('gen').size() <= 8
+          && d.get('gen').keys().hasOnly(['nombre', 'version', 'seed', 'params'])
+          && d.get('gen').get('nombre', '') is string
+          && d.get('gen').get('nombre', '').size() > 0
+          && d.get('gen').get('nombre', '').size() <= 32
+          && d.get('gen').get('version', 0) is number
+          && d.get('gen').get('seed', 0) is number
+          && d.get('gen').get('params', {}) is map
+          && d.get('gen').get('params', {}).size() <= 16
+          && (!('ownerId' in d) || (d.get('ownerId') == null || (d.get('ownerId') is string && d.get('ownerId').size() <= 64)))
+          && (!('createdAt' in d) || (d.get('createdAt') is number && d.get('createdAt') >= 0))
+          && (!('updatedAt' in d) || (d.get('updatedAt') is number && d.get('updatedAt') >= 0))
+          && (!('ultimaCompactacionTick' in d) || (d.get('ultimaCompactacionTick') is number && d.get('ultimaCompactacionTick') >= 0))
+          && (!('snapshot' in d) || snapshotOk(d.get('snapshot')));
+      }
+
+      // Lecturas: listarNodos (list) y cargarNodo (get del nodo + list de deltas).
+      allow get, list: if pidValido() && idValido(nodoId);
+      allow create, update: if pidValido() && idValido(nodoId) && nodoOk(request.resource.data);
+
+      match /deltas/{autoId} {
+        // Delta exacto (guardarDelta): 7 claves. Autocorrelación de integridad:
+        // el campo nodoId del documento debe coincidir con el nodo del camino.
+        // fila/columna <= 1023 (raíz 60x60, casa 9x16; margen generoso). cambio
+        // es mapa con <= 4 entradas (cavar / objeto / decor / escenario / portal);
+        // sus valores anidados no se validan en profundidad (límite del lenguaje).
+        function deltaOk(d) {
+          return d is map
+            && d.size() == 7
+            && d.keys().hasAll(['fmt', 'nodoId', 'fila', 'columna', 'autoria', 'tick', 'cambio'])
+            && d.get('fmt', 0) == 1
+            && d.get('nodoId', '') is string
+            && d.get('nodoId', '') == nodoId
+            && d.get('fila', -1) is number
+            && d.get('fila', -1) >= 0
+            && d.get('fila', -1) <= 1023
+            && d.get('columna', -1) is number
+            && d.get('columna', -1) >= 0
+            && d.get('columna', -1) <= 1023
+            && d.get('autoria', '') is string
+            && d.get('autoria', '').size() > 0
+            && d.get('autoria', '').size() <= 64
+            && d.get('tick', -1) is number
+            && d.get('tick', -1) >= 0
+            && d.get('cambio', {}) is map
+            && d.get('cambio', {}).size() <= 4;
+        }
+
+        // Lecturas: cargarNodo (orderBy('tick')) y compactarNodo (where tick<=).
+        // Borrado: la compactación elimina los deltas plegados en el snapshot.
+        allow get, list, delete: if pidValido() && idValido(nodoId);
+        allow create: if pidValido() && idValido(nodoId) && deltaOk(request.resource.data);
+      }
+    }
+  }
+
+  // Catch-all: cualquier otra colección o ruta del proyecto queda denegada.
+  // (No se usa allow true en ningún sitio fuera del árbol partidas/.)
+  match /{document=**} {
+    allow read, write: if false;
+  }
+}

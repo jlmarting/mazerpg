@@ -1,5 +1,7 @@
 rules_version = '2';
 
+service cloud.firestore {
+
 // ============================================================================
 // Reglas Firestore — mazerpg (Fase 2: mundo persistente)
 // ============================================================================
@@ -49,7 +51,7 @@ rules_version = '2';
 //   ... y list (orderBy/where tick) + delete (compactación) -> get,list,delete
 // ============================================================================
 
-match /databases/{database}/documents {
+  match /databases/{database}/documents {
 
   // IDs generados realmente (verificados en src):
   //   pid        = '<animal>-<adjetivo>' -> 'oso-leal' (8) a 'elefante-brillante' (18)
@@ -265,4 +267,5 @@ match /databases/{database}/documents {
   match /{document=**} {
     allow read, write: if false;
   }
+}
 }

@@ -1,5 +1,6 @@
 import { Celda } from './Celda';
 import { GestorMundo } from './GestorMundo';
+import { generarNodo } from './generadores';
 import {
   aplicarDeltaConPersistencia,
   arrancarMundoGestor,
@@ -12,6 +13,7 @@ import {
 } from './integracion';
 import { HousingLocal, type AlmacenamientoLocal } from './housing';
 import {
+  aplicarDelta,
   FMT_DELTA,
   leerSnapshotNodo,
   restaurarEnemigos,
@@ -105,6 +107,30 @@ function crearNodoPersonal(id: string, ownerId: string | null, filas: number, co
     celdas,
     ownerId,
   };
+}
+
+function mundoEsperado(gen: GenSpec, filas: number, columnas: number, deltas: DeltaMundo[]): Celda[][] {
+  const celdas = generarNodo(gen, filas, columnas);
+  for (const delta of deltas) aplicarDelta(celdas, delta);
+  return celdas;
+}
+
+function mismosMundos(a: Celda[][], b: Celda[][]): boolean {
+  if (a.length !== b.length) return false;
+  for (let f = 0; f < a.length; f++) {
+    if (a[f].length !== b[f].length) return false;
+    for (let c = 0; c < a[f].length; c++) {
+      const x = a[f][c];
+      const y = b[f][c];
+      if (x.esTransitable !== y.esTransitable) return false;
+      if (JSON.stringify(x.alimento) !== JSON.stringify(y.alimento)) return false;
+      if (JSON.stringify(x.burbuja) !== JSON.stringify(y.burbuja)) return false;
+      if (x.tipoEscenario !== y.tipoEscenario || x.estadoEscenario !== y.estadoEscenario) return false;
+      if (x.sueloDecor !== y.sueloDecor || x.mueble !== y.mueble) return false;
+      if (x.tienePico !== y.tienePico) return false;
+    }
+  }
+  return true;
 }
 
 async function main(): Promise<void> {
@@ -274,31 +300,154 @@ async function main(): Promise<void> {
   assert(!lanzoConectorEn, 'conectorEn sin nodo activo no lanza');
   assert(conectorVacio === null, 'conectorEn sin nodo activo devuelve null');
 
-  // Importante #3: un nodo compactado no se puede reconstruir en fase 1
+  // Fix round 1 / item 2: un nodo compactado (fase 2) se carga — gen + celdas plegadas + deltas pendientes
+  const GEN_COMPACTADO: GenSpec = { nombre: 'mazmorra', version: 1, seed: 42, params: {} };
+  const cavarPlegado: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 0,
+    columna: 0,
+    autoria: 'L1',
+    tick: 5,
+    cambio: { tipo: 'cavar' },
+  };
+  const escenarioPlegado: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 1,
+    columna: 1,
+    autoria: 'L1',
+    tick: 6,
+    cambio: { tipo: 'escenario', tipoEscenario: 'puerta', estado: 'cerrada' },
+  };
+  const alimentoPendiente: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 2,
+    columna: 2,
+    autoria: 'L1',
+    tick: 30,
+    cambio: { tipo: 'objeto', campo: 'alimento', valor: { tipo: 'Manzana', pc: 5 } },
+  };
+
   const persistenciaCompactada = new PersistenciaMock();
   persistenciaCompactada.nodos = ['raiz'];
   persistenciaCompactada.porNodo.set('raiz', {
-    gen: GEN_RAIZ,
+    gen: GEN_COMPACTADO,
     ownerId: null,
-    deltas: [],
-    snapshot: { celdas: 'x' },
-    ultimaCompactacionTick: 5,
+    deltas: [alimentoPendiente],
+    snapshot: { formato: 1, celdas: [cavarPlegado, escenarioPlegado] },
+    ultimaCompactacionTick: 10,
   });
   const gestorCompactado = new GestorMundo();
-  let lanzoCompactado = false;
-  try {
-    await arrancarMundoGestor({
-      gestor: gestorCompactado,
-      persistencia: persistenciaCompactada,
-      filas: 10,
-      columnas: 10,
-      genPorDefecto: GEN_RAIZ,
-    });
-  } catch {
-    lanzoCompactado = true;
-  }
-  assert(lanzoCompactado, 'cargar un nodo compactado se rechaza (snapshot no soportado en fase 1)');
-  assert(gestorCompactado.nodoActivoId === '', 'un nodo compactado rechazado no deja nodo activo');
+  const arranqueCompactado = await arrancarMundoGestor({
+    gestor: gestorCompactado,
+    persistencia: persistenciaCompactada,
+    filas: 10,
+    columnas: 10,
+    genPorDefecto: { nombre: 'mazmorra', version: 1, seed: 1, params: {} },
+  });
+  assert(
+    arranqueCompactado.cargado === true,
+    'cargar un nodo compactado (fase 2, snapshot formato 1) ya no se rechaza',
+  );
+  assert(
+    gestorCompactado.nodoActivoId === 'raiz',
+    'un nodo compactado cargado deja su nodo como activo',
+  );
+  const esperadoCompactado = mundoEsperado(GEN_COMPACTADO, 10, 10, [cavarPlegado, escenarioPlegado, alimentoPendiente]);
+  assert(
+    mismosMundos(gestorCompactado.obtenerCeldas(), esperadoCompactado),
+    'la reconstrucción coincide con gen + todos los deltas en orden de tick (celdas plegadas + pendientes)',
+  );
+  const celdaComp = gestorCompactado.obtenerCeldas();
+  assert(
+    celdaComp[0][0].esTransitable === true &&
+      celdaComp[1][1].tipoEscenario === 'puerta' &&
+      celdaComp[1][1].estadoEscenario === 'cerrada' &&
+      celdaComp[2][2].alimento !== null && celdaComp[2][2].alimento?.tipo === 'Manzana',
+    'los delta plegados y el pendiente quedan aplicados a las celdas concretas',
+  );
+
+  // Un delta residual con tick <= ultimaCompactacionTick ya está plegado: no se re-aplica en la carga
+  const picoRetrasado: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 0,
+    columna: 0,
+    autoria: 'L1',
+    tick: 8,
+    cambio: { tipo: 'objeto', campo: 'tienePico', valor: true },
+  };
+  const persistenciaResidual = new PersistenciaMock();
+  persistenciaResidual.nodos = ['raiz'];
+  persistenciaResidual.porNodo.set('raiz', {
+    gen: GEN_COMPACTADO,
+    ownerId: null,
+    deltas: [picoRetrasado, alimentoPendiente],
+    snapshot: { formato: 1, celdas: [cavarPlegado, escenarioPlegado] },
+    ultimaCompactacionTick: 10,
+  });
+  const gestorResidual = new GestorMundo();
+  await arrancarMundoGestor({
+    gestor: gestorResidual,
+    persistencia: persistenciaResidual,
+    filas: 10,
+    columnas: 10,
+    genPorDefecto: GEN_COMPACTADO,
+  });
+  assert(
+    gestorResidual.obtenerCeldas()[0][0].tienePico === false,
+    'un delta residual con tick <= ultimaCompactacionTick no se re-aplica (ya está plegado)',
+  );
+
+  // Snapshot corrupto/sin formato: degradar a fase 1 (gen + TODOS los deltas)
+  const cavarCorrupto: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 3,
+    columna: 3,
+    autoria: 'L1',
+    tick: 5,
+    cambio: { tipo: 'cavar' },
+  };
+  const picoCorrupto: DeltaMundo = {
+    fmt: FMT_DELTA,
+    nodoId: 'raiz',
+    fila: 4,
+    columna: 4,
+    autoria: 'L1',
+    tick: 12,
+    cambio: { tipo: 'objeto', campo: 'tienePico', valor: true },
+  };
+  const persistenciaCorrupta = new PersistenciaMock();
+  persistenciaCorrupta.nodos = ['raiz'];
+  persistenciaCorrupta.porNodo.set('raiz', {
+    gen: GEN_COMPACTADO,
+    ownerId: null,
+    deltas: [cavarCorrupto, picoCorrupto],
+    snapshot: { formato: 2, celdas: [cavarPlegado] },
+    ultimaCompactacionTick: 10,
+  });
+  const gestorCorrupto = new GestorMundo();
+  const arranqueCorrupto = await arrancarMundoGestor({
+    gestor: gestorCorrupto,
+    persistencia: persistenciaCorrupta,
+    filas: 10,
+    columnas: 10,
+    genPorDefecto: GEN_COMPACTADO,
+  });
+  assert(
+    arranqueCorrupto.cargado === true &&
+      gestorCorrupto.obtenerCeldas()[3][3].esTransitable === true &&
+      gestorCorrupto.obtenerCeldas()[4][4].tienePico === true,
+    'snapshot sin formato 1: se degrada a gen + todos los deltas (como fase 1, sin throw)',
+  );
+  const esperadoCorrupto = mundoEsperado(GEN_COMPACTADO, 10, 10, [cavarCorrupto, picoCorrupto]);
+  assert(
+    mismosMundos(gestorCorrupto.obtenerCeldas(), esperadoCorrupto),
+    'la degradación reproduce gen + todos los deltas en orden de tick',
+  );
 
   // C1: sembrado mínimo de mundo (conector alcanzable + portal de housing)
   const almacenCasa = new AlmacenTest();

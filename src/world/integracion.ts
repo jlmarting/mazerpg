@@ -4,6 +4,7 @@ import { dimensionesPlanta, generarNodo } from './generadores';
 import { HousingLocal } from './housing';
 import {
   aplicarDelta,
+  leerSnapshotNodo,
   type ConectorMundo,
   type DeltaMundo,
   type GenSpec,
@@ -93,15 +94,28 @@ function materializarNodo(
   filas: number,
   columnas: number,
 ): NodoMundo {
-  // Fase 1: el formato del snapshot de compactación no está definido, así que un nodo
-  // compactado no se puede reconstruir. Se rechaza explícitamente en lugar de perder
-  // silenciosamente los cambios compactados (el llamador cae a un mundo nuevo).
-  if ((persistido.ultimaCompactacionTick ?? 0) > 0) {
-    throw new Error(`Nodo ${nodoId} compactado: snapshot no soportado en fase 1`);
-  }
   const celdas = generarNodo(persistido.gen, filas, columnas);
-  for (const delta of persistido.deltas) {
-    aplicarDelta(celdas, delta);
+  // Fase 2 (spec §1, ciclo 5): gen -> deltas plegados en snapshot.celdas (ya
+  // consolidados por celda, se aplican en orden de array) -> deltas restantes
+  // con tick > ultimaCompactacionTick. Un snapshot corrupto/sin formato degrada
+  // a fase 1: gen + todos los deltas (sin perder durabilidad).
+  const snapshotBruto = persistido.snapshot;
+  const esFormatoUno =
+    !!snapshotBruto &&
+    typeof snapshotBruto === 'object' &&
+    (snapshotBruto as Record<string, unknown>).formato === 1;
+  const ultimaCompactacionTick = persistido.ultimaCompactacionTick ?? 0;
+  if (esFormatoUno) {
+    for (const delta of leerSnapshotNodo(snapshotBruto).celdas ?? []) {
+      aplicarDelta(celdas, delta);
+    }
+    for (const delta of persistido.deltas) {
+      if (delta.tick > ultimaCompactacionTick) aplicarDelta(celdas, delta);
+    }
+  } else {
+    for (const delta of persistido.deltas) {
+      aplicarDelta(celdas, delta);
+    }
   }
   const nodo: NodoMundo = {
     id: nodoId,

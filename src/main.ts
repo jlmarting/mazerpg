@@ -1807,79 +1807,85 @@ class Game implements IGame {
         console.warn(`resolverAccion: La entidad ${entidad.nombre} está muerta`);
         return;
     }
-    if (!this.enBurbujaSim(entidad.fila, entidad.columna)) {
-        return;
-    }
+    // Fase 2 §3a: la burbuja gobierna la SIM, no la persistencia. Se evalúa una
+    // vez por acción y se aplica por rama: las ediciones que producen delta del
+    // mundo (cavar, recoger, crear comida) pasan en cualquier celda del nodo;
+    // el resto de la lógica de entidades (movimiento, combate, hechizos) sigue guardada.
+    const enBurbuja = this.enBurbujaSim(entidad.fila, entidad.columna);
 
     if (accion.tipo === 'mover') {
         const { df, dc } = accion;
         const sigFila = entidad.fila + df;
         const sigColumna = entidad.columna + dc;
 
-        // 1. Verificar colisión con otros jugadores
-        let jugadorChocadoId: string | null = null;
-        let jugadorChocado: any = null;
+        // 1-3: SIM bajo burbuja — colisiones con jugadores (combate/HP), con
+        // enemigos y rehuir. Fuera de burbuja estas ramas no se simulan.
+        if (enBurbuja) {
+            // 1. Verificar colisión con otros jugadores
+            let jugadorChocadoId: string | null = null;
+            let jugadorChocado: any = null;
 
-        if (id !== this.network.idLocal && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
-            jugadorChocadoId = this.network.idLocal;
-            jugadorChocado = this.protagonista;
-        } else {
-            this.network.jugadoresRemotos.forEach((v: any, k: string) => {
-                if (k !== id && v.entidad && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
-                    jugadorChocadoId = k;
-                    jugadorChocado = v.entidad;
+            if (id !== this.network.idLocal && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
+                jugadorChocadoId = this.network.idLocal;
+                jugadorChocado = this.protagonista;
+            } else {
+                this.network.jugadoresRemotos.forEach((v: any, k: string) => {
+                    if (k !== id && v.entidad && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
+                        jugadorChocadoId = k;
+                        jugadorChocado = v.entidad;
+                    }
+                });
+            }
+
+            if (jugadorChocado) {
+                const interactions = (entidad.consecutiveInteractions.get(jugadorChocadoId!) || 0) + 1;
+                if (interactions >= 2 && entidad.estaVivo && jugadorChocado.estaVivo) {
+                    entidad.consecutiveInteractions.set(jugadorChocadoId!, 0);
+                    if (entidad.vidaActual > 1) {
+                        entidad.vidaActual -= 1;
+                        jugadorChocado.vidaActual = Math.min(jugadorChocado.vidaMaxima, jugadorChocado.vidaActual + 1);
+                        this.registrarEventoLog(`${entidad.nombre} transfirió 1 HP a ${jugadorChocado.nombre}`);
+
+                        // Notificar a todos para efectos visuales (texto flotante)
+                        this.network.enviarMensaje({
+                            tipo: 'hp_transfer',
+                            fromId: id,
+                            toId: jugadorChocadoId,
+                            amount: 1
+                        });
+                        this.network.enviarMensaje({
+                            tipo: 'hp_loss',
+                            id: id,
+                            amount: 1
+                        });
+                    }
+                } else {
+                    entidad.consecutiveInteractions.set(jugadorChocadoId!, interactions);
+                    this.registrarEventoLog(`Interacción: ${entidad.nombre} -> ${jugadorChocado.nombre} (${interactions}/2)`);
                 }
+                return;
+            }
+
+            entidad.consecutiveInteractions.forEach((_v: number, k: string) => {
+                if (k !== jugadorChocadoId) entidad.consecutiveInteractions.set(k, 0);
             });
-        }
 
-        if (jugadorChocado) {
-            const interactions = (entidad.consecutiveInteractions.get(jugadorChocadoId!) || 0) + 1;
-            if (interactions >= 2 && entidad.estaVivo && jugadorChocado.estaVivo) {
-                entidad.consecutiveInteractions.set(jugadorChocadoId!, 0);
-                if (entidad.vidaActual > 1) {
-                    entidad.vidaActual -= 1;
-                    jugadorChocado.vidaActual = Math.min(jugadorChocado.vidaMaxima, jugadorChocado.vidaActual + 1);
-                    this.registrarEventoLog(`${entidad.nombre} transfirió 1 HP a ${jugadorChocado.nombre}`);
-
-                    // Notificar a todos para efectos visuales (texto flotante)
-                    this.network.enviarMensaje({
-                        tipo: 'hp_transfer',
-                        fromId: id,
-                        toId: jugadorChocadoId,
-                        amount: 1
-                    });
-                    this.network.enviarMensaje({
-                        tipo: 'hp_loss',
-                        id: id,
-                        amount: 1
-                    });
+            // 2. Verificar colisión con enemigos
+            const enemigoEnCasilla = this.listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
+            if (enemigoEnCasilla) {
+                entidad.setEstado('attacking', 500);
+                if (entidad.enCombateCon === enemigoEnCasilla) {
+                    this.resolverRondaDeCombate(entidad, enemigoEnCasilla);
+                } else {
+                    this.iniciarCombate(entidad, enemigoEnCasilla);
                 }
-            } else {
-                entidad.consecutiveInteractions.set(jugadorChocadoId!, interactions);
-                this.registrarEventoLog(`Interacción: ${entidad.nombre} -> ${jugadorChocado.nombre} (${interactions}/2)`);
+                return;
             }
-            return;
-        }
 
-        entidad.consecutiveInteractions.forEach((_v: number, k: string) => {
-            if (k !== jugadorChocadoId) entidad.consecutiveInteractions.set(k, 0);
-        });
-
-        // 2. Verificar colisión con enemigos
-        const enemigoEnCasilla = this.listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
-        if (enemigoEnCasilla) {
-            entidad.setEstado('attacking', 500);
-            if (entidad.enCombateCon === enemigoEnCasilla) {
-                this.resolverRondaDeCombate(entidad, enemigoEnCasilla);
-            } else {
-                this.iniciarCombate(entidad, enemigoEnCasilla);
+            // 3. Rehuir combate
+            if (entidad.enCombateCon) {
+                if (!this.intentarRehuirCombate(entidad)) return;
             }
-            return;
-        }
-
-        // 3. Rehuir combate
-        if (entidad.enCombateCon) {
-            if (!this.intentarRehuirCombate(entidad)) return;
         }
 
         // 4. Límites del mapa
@@ -1927,61 +1933,69 @@ class Game implements IGame {
         }
 
         if (esMovimientoValido) {
-            entidad.fila = sigFila;
-            entidad.columna = sigColumna;
-            console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
-            entidad.estaCaminando = true;
-            const celdaNueva = this.mapaLaberinto[entidad.fila][entidad.columna];
-            (entidad as any).ultimaCasillaAtacada = null;
+            // Sim: el desplazamiento de la entidad sigue gobernado por la burbuja.
+            if (enBurbuja) {
+                entidad.fila = sigFila;
+                entidad.columna = sigColumna;
+                console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
+                entidad.estaCaminando = true;
+                (entidad as any).ultimaCasillaAtacada = null;
+            }
+            // Recogidas (§3a): ediciones del mundo que producen delta — pasan
+            // también fuera de burbuja, sobre la celda objetivo del intento.
+            const celdaNueva = this.mapaLaberinto[sigFila][sigColumna];
 
             if (celdaNueva.tienePico) {
                 (entidad as any).tienePico = true;
-                const deltaPico = this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'tienePico', valor: false }, id);
+                const deltaPico = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'tienePico', valor: false }, id);
                 this.aplicarDeltaAutorizado(deltaPico);
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'pick_collected', f: entidad.fila, c: entidad.columna, tick: deltaPico.tick });
+                this.network.enviarMensaje({ tipo: 'pick_collected', f: sigFila, c: sigColumna, tick: deltaPico.tick });
             }
             if (celdaNueva.alimento) {
                 const PC = celdaNueva.alimento.pc;
                 const CC = ((3 * entidad.fuerza) + (2 * entidad.agilidad) + (1 * entidad.inteligencia)) / 6;
                 const recuperacion = Math.floor(PC / CC);
                 entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + Math.max(1, recuperacion));
-                const deltaAlimento = this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'alimento', valor: null }, id);
+                const deltaAlimento = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'alimento', valor: null }, id);
                 this.aplicarDeltaAutorizado(deltaAlimento);
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'food_consumed', f: entidad.fila, c: entidad.columna, tick: deltaAlimento.tick });
+                this.network.enviarMensaje({ tipo: 'food_consumed', f: sigFila, c: sigColumna, tick: deltaAlimento.tick });
             }
             if (celdaNueva.burbuja) {
-                const deltaEscudo = this.construirDelta(entidad.fila, entidad.columna, { tipo: 'objeto', campo: 'burbuja', valor: null }, id);
+                const deltaEscudo = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'burbuja', valor: null }, id);
                 this.aplicarDeltaAutorizado(deltaEscudo);
                 entidad.inmunidadHasta = Date.now() + 30000;
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'shield_collected', f: entidad.fila, c: entidad.columna, tick: deltaEscudo.tick });
+                this.network.enviarMensaje({ tipo: 'shield_collected', f: sigFila, c: sigColumna, tick: deltaEscudo.tick });
                 this.registrarEventoLog(`${entidad.nombre} recoge escudo: inmunidad 30 s.`);
             }
-            this.verificarPortal(entidad);
+            if (enBurbuja) {
+                this.verificarPortal(entidad);
 
-            (entidad as any).pasosDesdeUltimoDano = ((entidad as any).pasosDesdeUltimoDano || 0) + 1;
-            const factorDificultad = this.config.dificultad === 'facil' ? 1 : (this.config.dificultad === 'medio' ? 2 : 3);
-            if ((entidad as any).pasosDesdeUltimoDano >= 10 * factorDificultad) {
-                (entidad as any).pasosDesdeUltimoDano = 0;
-                entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + 1);
+                (entidad as any).pasosDesdeUltimoDano = ((entidad as any).pasosDesdeUltimoDano || 0) + 1;
+                const factorDificultad = this.config.dificultad === 'facil' ? 1 : (this.config.dificultad === 'medio' ? 2 : 3);
+                if ((entidad as any).pasosDesdeUltimoDano >= 10 * factorDificultad) {
+                    (entidad as any).pasosDesdeUltimoDano = 0;
+                    entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + 1);
+                }
             }
         }
     } else if (accion.tipo === 'fireball') {
-        this.lanzarBolaDeFuego(entidad, false);
+        if (enBurbuja) this.lanzarBolaDeFuego(entidad, false);
     } else if (accion.tipo === 'bow') {
-        this.lanzarArco(entidad, false);
+        if (enBurbuja) this.lanzarArco(entidad, false);
     } else if (accion.tipo === 'create_food') {
+        // Edición interactiva (§3a): crea comida vía delta, pasa fuera de burbuja.
         this.crearComidaHabilidad(entidad, false);
     } else if (accion.tipo === 'radar') {
-        this.lanzarRadar(entidad, false);
+        if (enBurbuja) this.lanzarRadar(entidad, false);
     } else if (accion.tipo === 'whirlwind') {
-        this.lanzarWhirlwind(entidad, false);
+        if (enBurbuja) this.lanzarWhirlwind(entidad, false);
     } else if (accion.tipo === 'freeze') {
-        this.lanzarCongelar(entidad, false);
+        if (enBurbuja) this.lanzarCongelar(entidad, false);
     } else if (accion.tipo === 'stop_walking') {
-        entidad.estaCaminando = false;
+        if (enBurbuja) entidad.estaCaminando = false;
     }
   }
 
@@ -2414,12 +2428,16 @@ class Game implements IGame {
               c = Math.floor(Math.random() * this.config.NUMERO_COLUMNAS);
           } while (!this.mapaLaberinto[f][c].esTransitable);
 
+          // §3b: toda mutación de tipoEscenario/estadoEscenario va por delta
+          // (árbitro + persistencia + política de dueño); prohibido escribir la celda a mano.
           if (i < 3) {
-              this.mapaLaberinto[f][c].tipoEscenario = 'puerta';
-              this.mapaLaberinto[f][c].estadoEscenario = 'cerrada';
+              this.aplicarDeltaAutorizado(
+                  this.construirDelta(f, c, { tipo: 'escenario', tipoEscenario: 'puerta', estado: 'cerrada' }, this.network.idLocal),
+              );
           } else {
-              this.mapaLaberinto[f][c].tipoEscenario = 'trampa';
-              this.mapaLaberinto[f][c].estadoEscenario = 'inactiva';
+              this.aplicarDeltaAutorizado(
+                  this.construirDelta(f, c, { tipo: 'escenario', tipoEscenario: 'trampa', estado: 'inactiva' }, this.network.idLocal),
+              );
           }
       }
   }
@@ -2669,7 +2687,7 @@ class Game implements IGame {
         case 'object_spawned':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
             if (!this.esHost) {
-                if (!this.enBurbujaSim(msg.f, msg.c)) break;
+                // Delta del mundo (§3a): pasa sin gate de burbuja; mandan árbitro y dueño.
                 if (msg.a) {
                     this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: msg.a }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
                 }
@@ -2860,25 +2878,25 @@ class Game implements IGame {
             break;
         case 'food_consumed':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
-            if (!this.enBurbujaSim(msg.f, msg.c)) break;
+            // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'pick_collected':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
-            if (!this.enBurbujaSim(msg.f, msg.c)) break;
+            // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'tienePico', valor: false }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'shield_collected':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
-            if (!this.enBurbujaSim(msg.f, msg.c)) break;
+            // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'burbuja', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'dig_completed':
             if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
-            if (!this.enBurbujaSim(msg.f, msg.c)) break;
+            // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'cavar' }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             if (msg.fromF !== undefined && msg.fromC !== undefined) {

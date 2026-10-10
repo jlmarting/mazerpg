@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Smoke headless de 1 cliente sobre `dist/` (`scripts/smoke_headless.mjs`): arranque limpio con casa, travesía ida/vuelta por el conector real, recarga con casa duradera (espejo local); CDP con Chromium headless (binario Playwright del sistema)
 - Arte de la casa: suelos de madera/baldosa/alfombra, muros de interior (yeso + zócalo) y mobiliario (cama, chimenea, mesa, silla, estante) — `verification/gen_house.py` → `public/sprites/house.png` (grupo `escenario_casa` en `sprites.json`)
 - El portal de housing se dibuja como una casita que emite pulsos para llamar la atención
 - Debug: botón "🏠 A MI CASA / AL MAPA" para teletransportarse al housing y volver (solo con modo desarrollo)

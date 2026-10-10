@@ -992,6 +992,12 @@ class Game implements IGame {
     return { filas: celdas.length, columnas: celdas.length > 0 ? celdas[0].length : 0 };
   }
 
+  /** Defensa de rejilla activa: ¿la celda (f,c) existe en el nodo renderizado? Cubre fuera de rango y negativos. */
+  private fueraDeRejillaActiva(f: number, c: number): boolean {
+    const fila = this.mapaLaberinto[f];
+    return fila === undefined || fila[c] === undefined;
+  }
+
   /** True si hay una casa guardada y el arranque debe preguntar al usuario. */
   hayHousingPrevio(): boolean {
     return this.esLadoAutoritativo() && this.housing.hayCasaGuardada();
@@ -1607,6 +1613,12 @@ class Game implements IGame {
 
   }
 
+  /** Reenvío del estado completo del nodo activo a TODOS los invitados conectados: mapa v2 (re-dimensiona la rejilla del invitado) + enemigos + objetos + spawn. El invitado debe conocer el nodo del host en cada cruce, no solo al join. */
+  private reenviarEstadoAInvitados(): void {
+    if (!this.network?.activo) return;
+    this.network.jugadoresRemotos.forEach((_, guestId: string) => this.enviarMapaAlInvitado(guestId));
+  }
+
   enviarMapaAlInvitado(guestId: string) {
     const jInfo = this.network.jugadoresRemotos.get(guestId);
     if (!jInfo || !jInfo.dc || jInfo.dc.readyState !== "open") return;
@@ -1629,7 +1641,9 @@ class Game implements IGame {
             }
         }
     }
-    jInfo.dc.send(JSON.stringify({ tipo: 'objetos', lista: objetos }));
+    // is_update: el receptor limpia sus objetos antes del overlay para que el
+    // host sea la verdad absoluta (imprescindible en re-syncs tras un cruce).
+    jInfo.dc.send(JSON.stringify({ tipo: 'objetos', lista: objetos, is_update: true }));
 
     const posSpawn = this.obtenerPosicionInicioAleatoria();
     jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: posSpawn.f, c: posSpawn.c }));
@@ -2656,8 +2670,23 @@ class Game implements IGame {
             // persistenciaMundo (solo) la casa la cubre el espejo local: no se duplica.
             rehidratarNodoTrasCruce(this.gestorMundo, destinoId, persistido);
             const fotoDestino = leerSnapshotNodo(persistido?.snapshot);
-            if (!fotoDestino.enemigos) return; // sin foto: la siembra por gen queda como está
-            this.listaDeEnemigos = restaurarEnemigos(fotoDestino, (d) => this.reconstruirEnemigo(d));
+            // M3: la foto del destino se acota a las dims del nodo activo; los
+            // enemigos fuera de rejilla se descartan (no se inventa posición).
+            if (fotoDestino.enemigos) {
+                this.listaDeEnemigos = restaurarEnemigos(
+                    fotoDestino,
+                    (d) => this.reconstruirEnemigo(d),
+                    this.dimsActivo(),
+                );
+            }
+            // Post-aceptación: el invitado recibe 'mapa' SOLO al join. Si el host
+            // atraviesa a otro nodo, su rejilla quedaría vieja (p. ej. casa 9×16)
+            // y el sync por red traería enemigos con coordenadas del destino
+            // (mundo 60×60) => crash en EnemigoNPC.puedeAtravesar. Con el nodo ya
+            // rehidratado se reenvía el estado completo SIEMPRE (con o sin foto:
+            // el mapa del nodo cambió igual), y con la guard de arriba una
+            // conmutación más reciente manda aquí.
+            this.reenviarEstadoAInvitados();
         } catch (e) {
             console.warn('No se pudo sincronizar el snapshot de enemigos entre nodos.', e);
         }
@@ -3029,7 +3058,16 @@ class Game implements IGame {
             this.ajustarDimensiones();
             break;
         case 'enemigos':
-            this.listaDeEnemigos = msg.lista.map((d: any) => {
+            // Defensa (post-aceptación): coordenadas de otro nodo (join o re-sync
+            // en vuelo con la rejilla aún sin redimensionar) no se construyen; el
+            // re-sync completo ('mapa' + 'enemigos') las traerá en su mundo correcto.
+            this.listaDeEnemigos = msg.lista.filter((d: any) => {
+                if (this.fueraDeRejillaActiva(d.f, d.c)) {
+                    console.warn(`Enemigo ${d.n} (${d.f},${d.c}) fuera de la rejilla activa; descartado hasta el re-sync.`);
+                    return false;
+                }
+                return true;
+            }).map((d: any) => {
                 const e = new EnemigoNPC(d.f, d.c, d.n, d.t, d.id, this.config.dificultad);
                 e.vidaActual = d.v; e.vidaMaxima = d.vm;
                 this.setupEntity(e);
@@ -3156,13 +3194,15 @@ class Game implements IGame {
             }
             if (this.esHost) this.network.enviarMensaje({ ...msg }, idEmisor);
             break;
-        case 'npc_update':
+        case 'npc_update': {
             const npc = this.listaDeEnemigos.find(e => e.id === msg.id);
-            if (npc) {
+            // Defensa (post-aceptación): no mover un NPC a coordenadas de otro nodo.
+            if (npc && !this.fueraDeRejillaActiva(msg.f, msg.c)) {
                 npc.fila = msg.f; npc.columna = msg.c; npc.vidaActual = msg.v;
                 if (npc.vidaActual <= 0) npc.estaVivo = false;
             }
             break;
+        }
         case 'npc_damaged_by_guest':
             if (this.esHost) {
                 const targetNpc = this.listaDeEnemigos.find(e => e.id === msg.id);
@@ -3203,13 +3243,15 @@ class Game implements IGame {
             break;
         case 'npc_sync_all':
             msg.lista.forEach((d: any) => {
-                const npc = this.listaDeEnemigos.find(e => e.id === d.id);
-                if (npc) {
-                    npc.fila = d.f;
-                    npc.columna = d.c;
-                    npc.vidaActual = d.v;
-                    npc.vidaMaxima = d.vm;
-                    npc.estaVivo = npc.vidaActual > 0;
+                const npcSync = this.listaDeEnemigos.find(e => e.id === d.id);
+                // Defensa (post-aceptación): el sync del host puede tener coords de
+                // otro nodo mientras llega el re-sync; no mover fuera de rejilla.
+                if (npcSync && !this.fueraDeRejillaActiva(d.f, d.c)) {
+                    npcSync.fila = d.f;
+                    npcSync.columna = d.c;
+                    npcSync.vidaActual = d.v;
+                    npcSync.vidaMaxima = d.vm;
+                    npcSync.estaVivo = npcSync.vidaActual > 0;
                 }
             });
             break;

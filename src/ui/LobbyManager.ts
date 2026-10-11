@@ -1,5 +1,9 @@
 export type LobbyMode = 'solo' | 'firebase' | 'http' | 'cooperativo';
 
+import type { AparienciaAvatar, ZonaAvatar } from '../core/avatarTintes';
+import { PALETAS, ORIGEN_ZONA, APARIENCIA_DEFECTO } from '../config/apariencia';
+import { aparienciaEfectiva, conservarCoincidencias } from '../core/avatarTintes';
+
 export interface CharacterData {
   nombre: string;
   color: string;
@@ -8,10 +12,12 @@ export interface CharacterData {
   agilidad: number;
   inteligencia: number;
   personajeCreado: boolean;
+  apariencia: AparienciaAvatar;
 }
 
 export interface LobbyDelegate {
-  onSaveCharacter(nombre: string, color: string, clase: string): void;
+  onSaveCharacter(nombre: string, color: string, clase: string, apariencia: AparienciaAvatar): void;
+  pintarPreviewAvatar(canvas: HTMLCanvasElement, clase: string, apariencia: AparienciaAvatar): void;
   onRerollStats(clase: string): void;
   onStartSolo(dificultad: string): void;
   onHostGame(modo: 'firebase' | 'http' | 'manual', dificultad: string): void;
@@ -44,6 +50,8 @@ export class LobbyManager {
   private pendingDificultadCallback: ((dif: string) => void) | null = null;
   private pendingHousingStart: ((dif: string) => void) | null = null;
   private pendingHousingDiff: string | null = null;
+  /** Tintes elegidos en el modal (se confirman en saveCharacter). */
+  private avatarZonas: Record<ZonaAvatar, string> = { ...APARIENCIA_DEFECTO.guerrero.zonas };
 
   constructor(delegate: LobbyDelegate) {
     this.delegate = delegate;
@@ -188,6 +196,9 @@ export class LobbyManager {
       (document.getElementById('charColorInput') as HTMLInputElement).value = char.color;
       this.selectClassButton(char.clase);
     }
+    const ef = aparienciaEfectiva(char.clase, char.apariencia);
+    this.avatarZonas = { ...ef.zonas };
+    this.renderAvatarRows();
     this.recalculateStats();
     this.populateStatsDisplay();
   }
@@ -200,9 +211,68 @@ export class LobbyManager {
     const name = (document.getElementById('charNameInput') as HTMLInputElement).value.trim() || "Héroe";
     const color = (document.getElementById('charColorInput') as HTMLInputElement).value;
     const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
-    this.delegate.onSaveCharacter(name, color, selectedClass);
+    const apariencia: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas } };
+    this.delegate.onSaveCharacter(name, color, selectedClass, apariencia);
     this.closeCharacterModal();
     this.showAccion();
+  }
+
+  /** Clase seleccionada ahora mismo en el modal (para tintes y preview). */
+  private claseActualModal(): string {
+    return document.querySelector('.class-btn.selected')?.getAttribute('data-class')
+      || this.delegate.getCharacterData().clase;
+  }
+
+  /** Zonas con tonos mapeados para la clase (piel sin mapear no se muestra en v1). */
+  private zonasMapeadas(clase: string): ZonaAvatar[] {
+    const origen = ORIGEN_ZONA[clase] ?? ORIGEN_ZONA.guerrero;
+    return (['piel', 'pelo', 'torso', 'piernas'] as ZonaAvatar[]).filter((z) => (origen[z] ?? []).length > 0);
+  }
+
+  /** Dibuja las filas de swatches y repinta la preview. */
+  private renderAvatarRows(): void {
+    const cont = document.getElementById('avatarZonas');
+    if (!cont) return;
+    const clase = this.claseActualModal();
+    cont.innerHTML = '';
+    const nombres: Record<ZonaAvatar, string> = { piel: 'Piel', pelo: 'Pelo', torso: 'Torso', piernas: 'Piernas' };
+    for (const zona of this.zonasMapeadas(clase)) {
+      const fila = document.createElement('div');
+      fila.className = 'avatar-zona-row';
+      const etiqueta = document.createElement('span');
+      etiqueta.className = 'avatar-zona-nombre';
+      etiqueta.textContent = nombres[zona];
+      fila.appendChild(etiqueta);
+      for (const hex of PALETAS[zona]) {
+        const sw = document.createElement('button');
+        sw.className = 'avatar-swatch' + (this.avatarZonas[zona] === hex ? ' selected' : '');
+        sw.style.backgroundColor = hex;
+        sw.setAttribute('aria-label', `${nombres[zona]} ${hex}`);
+        sw.addEventListener('click', () => {
+          this.avatarZonas[zona] = hex;
+          this.renderAvatarRows();
+        });
+        fila.appendChild(sw);
+      }
+      cont.appendChild(fila);
+    }
+    this.repaintPreview();
+  }
+
+  /** La preview muestra el sprite tineado real: lo que ves es lo que viaja. */
+  private repaintPreview(): void {
+    const canvas = document.getElementById('avatarPreview') as HTMLCanvasElement | null;
+    if (!canvas) return;
+    this.delegate.pintarPreviewAvatar(canvas, this.claseActualModal(), { formato: 1, zonas: { ...this.avatarZonas } });
+  }
+
+  /** Cambio de clase: lo no personalizado sigue al defecto nuevo; el resto se conserva. */
+  private rebaseAvatarAClase(prevClase: string, nuevaClase: string): void {
+    const prevDef = APARIENCIA_DEFECTO[prevClase] ?? APARIENCIA_DEFECTO.guerrero;
+    const nextDef = APARIENCIA_DEFECTO[nuevaClase] ?? APARIENCIA_DEFECTO.guerrero;
+    const actual: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas } };
+    this.avatarZonas = { ...conservarCoincidencias(prevDef, nextDef, actual).zonas };
+    this.renderAvatarRows();
   }
 
   showDifficultyModal(callback: (diff: string) => void): void {
@@ -477,8 +547,12 @@ export class LobbyManager {
 
     document.querySelectorAll('.class-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
+        const prev = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
         document.querySelectorAll('.class-btn').forEach(b => b.classList.remove('selected'));
         (e.currentTarget as HTMLElement).classList.add('selected');
+        const next = (e.currentTarget as HTMLElement).getAttribute('data-class') || 'guerrero';
+        if (next !== prev) this.rebaseAvatarAClase(prev, next);
+        else this.repaintPreview();
         this.recalculateStats();
       });
     });

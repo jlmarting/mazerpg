@@ -108,6 +108,23 @@ export function claveVariante(clase: string, frame: string, a: AparienciaAvatar)
   return `${clase}|${frame}|${z.piel},${z.pelo},${z.torso},${z.piernas}`.toLowerCase();
 }
 
+/**
+ * Cambio de clase: las zonas sin personalizar (iguales al defecto anterior)
+ * siguen al defecto nuevo; las personalizadas se conservan (las paletas son
+ * compartidas entre clases, así que el color sigue siendo elegible).
+ */
+export function conservarCoincidencias(
+  defectoPrevio: AparienciaAvatar,
+  defectoNuevo: AparienciaAvatar,
+  elegida: AparienciaAvatar,
+): AparienciaAvatar {
+  const zonas = { ...elegida.zonas };
+  for (const zona of ZONAS) {
+    if (elegida.zonas[zona] === defectoPrevio.zonas[zona]) zonas[zona] = defectoNuevo.zonas[zona];
+  }
+  return { formato: 1, zonas };
+}
+
 /** LRU mínima para la caché del compositor (valores opacos, desalojo al superar el máximo). */
 export class LRUCache<T> {
   private readonly mapa = new Map<string, T>();

@@ -1046,6 +1046,29 @@ canvas {
 .portrait-medallion[data-clase="mago"] .portrait-icon[data-icon="mago"] { display: block; }
 #modalPortrait { margin: 0 auto 16px auto; }
 
+/* Avatar v1: preview tineada + swatches por zona */
+.avatar-preview {
+    display: block;
+    margin: 0 auto 12px auto;
+    width: 64px;
+    height: 64px;
+    image-rendering: pixelated;
+    background: #14100b;
+    border: 2px solid var(--oro);
+    border-radius: 6px;
+}
+.avatar-zona-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.avatar-zona-nombre { width: 64px; font-size: 10px; color: #a08c5a; text-transform: uppercase; }
+.avatar-swatch {
+    width: 28px;
+    height: 28px;
+    border: 2px solid #666;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 0;
+}
+.avatar-swatch.selected { border-color: #fff; box-shadow: 0 0 6px rgba(255, 255, 255, 0.6); }
+
 /* Caja del modal: piedra con remaches */
 .character-modal-box {
     background:

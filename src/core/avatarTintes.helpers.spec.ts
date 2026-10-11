@@ -6,6 +6,7 @@ import {
   claveVariante,
   LRUCache,
   hexARgb,
+  conservarCoincidencias,
 } from './avatarTintes';
 import { PALETAS, APARIENCIA_DEFECTO } from '../config/apariencia';
 
@@ -94,6 +95,16 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(r2b.zonas.pelo === APARIENCIA_DEFECTO.explorador.zonas.pelo, 'campo presente pero malformado cae al defecto');
   const r3 = aplicarAparienciaRemota(valida, { formato: 99 }, 'mago');
   assert(r3.zonas.torso === APARIENCIA_DEFECTO.mago.zonas.torso, 'handshake con basura cae al defecto');
+}
+
+// conservarCoincidencias: cambio de clase respeta lo personalizado
+{
+  const prev = APARIENCIA_DEFECTO.explorador;
+  const next = APARIENCIA_DEFECTO.mago;
+  const elegida = { formato: 1 as const, zonas: { ...prev.zonas, torso: PALETAS.torso[4] } };
+  const r = conservarCoincidencias(prev, next, elegida);
+  assert(r.zonas.pelo === next.zonas.pelo, 'zona sin personalizar sigue a la nueva clase');
+  assert(r.zonas.torso === PALETAS.torso[4], 'zona personalizada se conserva');
 }
 
 console.log(`\n${ok}/${total} asserts de avatarTintes en verde`);

@@ -373,14 +373,26 @@ class Game implements IGame {
     }
   }
 
-  onSaveCharacter(nombre: string, color: string, clase: string): void {
+  onSaveCharacter(nombre: string, color: string, clase: string, apariencia: import('./core/avatarTintes').AparienciaAvatar): void {
     this.protagonista.nombre = nombre;
     this.protagonista.color = color;
     this.protagonista.clase = clase;
+    this.protagonista.apariencia = sanearApariencia(apariencia, clase);
     this.protagonista.personajeCreado = true;
     (document.getElementById('nickInput') as HTMLInputElement).value = nombre;
     this.registrarEventoLog(`Personaje guardado: ${nombre} (${clase})`);
     this.actualizarPanelAcciones();
+
+    // Si hay partida activa, la nueva apariencia se publica (Firestore + red).
+    if (this.network && this.network.multiplayerActivo) {
+      const ef = aparienciaEfectiva(clase, this.protagonista.apariencia);
+      this.network.enviarMensaje({ tipo: 'avatar', id: this.network.idLocal, apariencia: ef });
+      if (this.network.idPartidaActual) {
+        this.firebase.guardarAparienciaJugador(
+          this.network.idPartidaActual, this.network.idLocal,
+          { nick: nombre, clase, apariencia: ef });
+      }
+    }
 
     if (this.partidaIdDesdeUrl) {
       this.registrarEventoLog(`Conectando a partida ${this.partidaIdDesdeUrl}...`);
@@ -448,8 +460,26 @@ class Game implements IGame {
       fuerza: this.protagonista.fuerza,
       agilidad: this.protagonista.agilidad,
       inteligencia: this.protagonista.inteligencia,
-      personajeCreado: this.protagonista.personajeCreado
+      personajeCreado: this.protagonista.personajeCreado,
+      apariencia: aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia)
     };
+  }
+
+  /** Pinta el sprite tineado (frame idle) en el canvas del modal: lo que ves es lo que viaja. */
+  pintarPreviewAvatar(canvas: HTMLCanvasElement, clase: string, apariencia: import('./core/avatarTintes').AparienciaAvatar): void {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const sm = this.renderer.spriteManager;
+    const base = `player_${clase}_idle`;
+    const nombreBase = sm.obtenerSprite(base) ? base : `${base}_0`;
+    if (!sm.obtenerSprite(nombreBase)) return;
+    const ef = aparienciaEfectiva(clase, apariencia);
+    const variante = this.renderer.avatarCompositor.obtenerVariante(nombreBase, clase, ef) || nombreBase;
+    const info = sm.obtenerSprite(variante);
+    if (!info || !info.image) return;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(info.image, info.sx, info.sy, info.sw, info.sh, 0, 0, canvas.width, canvas.height);
   }
 
   hasSavedSession(): boolean {

@@ -11,7 +11,7 @@ export class Jugador extends EntidadRPG {
   ultimaVezHabilidad: { fireball: number, bow: number, food: number, radar: number, whirlwind: number, freeze: number } = { fireball: 0, bow: 0, food: 0, radar: 0, whirlwind: 0, freeze: 0 };
   clase: string = 'guerrero';
   color: string = '#007bff';
-  apariencia: AparienciaAvatar = { formato: 1, zonas: { ...APARIENCIA_DEFECTO.guerrero.zonas }, genero: 'm' };
+  apariencia: AparienciaAvatar = { formato: 1, zonas: { ...APARIENCIA_DEFECTO.guerrero.zonas }, genero: 'm', piezas: { pelo: null, torso: null, piernas: null, casco: null } };
   spriteKey: string = 'player_idle';
   personajeCreado: boolean = false;
 
@@ -26,7 +26,7 @@ export class Jugador extends EntidadRPG {
         // La apariencia siempre es defecto de su clase hasta personalizar (Task 5):
         // evita teñir una clase con los colores de otra.
         const def = APARIENCIA_DEFECTO[nuevaClase] ?? APARIENCIA_DEFECTO.guerrero;
-        this.apariencia = { formato: 1, zonas: { ...def.zonas }, genero: this.apariencia.genero ?? 'm' };
+        this.apariencia = { formato: 1, zonas: { ...def.zonas }, genero: this.apariencia.genero ?? 'm', piezas: { pelo: null, torso: null, piernas: null, casco: null } };
     } else if (nuevaClase) {
         this.clase = nuevaClase;
     }

@@ -74,3 +74,12 @@
 - [ ] **Step 2: Navegador** — M/F en el modal, preview, remotos cruzados, recarga; sheet `_f` bloqueado (renombrar temporalmente) → fallback geométrico sin excepción.
 - [ ] **Step 3: Puerta** — Run: `pnpm test`, `pnpm build` — Expected: verde.
 - [ ] **Step 4: Turno de cierre** — Anotar commits en la ronda `20261011c`.
+
+### Task 4: Base F ligera + prototipo piezas generizadas (híbrido)
+
+**Contexto:** el mando decide híbrido — la base F queda sutil y el dimorfismo lo ponen piezas generizadas (pelo largo, peto F). La receta v3 fuerte se sustituye.
+
+- [ ] **Step 1: Receta ligera** — `scripts/gen_cuerpos.py` con `RECETA = 'ligera' | 'completa'`: ligera = cadera +1px + pelo +3 anclado (sin oscurecer/cintura/busto/volumen). Regenerar sheets, matriz M/F, el mando valida.
+- [ ] **Step 2: Prototipo piezas F (/tmp)** — pelo-largo-F + peto-F programáticos sobre cuerpos F; matriz M+piezas vs F+piezas; el mando valida feel.
+- [ ] **Step 3: Commit** — `feat(cuerpos): base F ligera` (+ prototipo archivado en la ronda, no en el repo).
+- [ ] **Step 4: Spec Fase 2** — con piezas generizadas ya probadas (ranuras, variantes por género, registro, UI).

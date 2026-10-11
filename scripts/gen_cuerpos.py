@@ -1,4 +1,4 @@
-"""Cuerpos F por derivación programática (receta v3, validada en matriz M/F).
+"""Cuerpos F por derivación programática (receta versionada, ver RECETA).
 
 Uso (desde la raíz del repo):
     python3 scripts/gen_cuerpos.py [--apply]
@@ -24,9 +24,12 @@ from PIL import Image
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# --- Receta v3 (versionada) ---
+# --- Receta (versionada) ---
+# 'ligera' (híbrido: el dimorfismo lo ponen las piezas): cadera +1px + pelo +3 anclado.
+# 'completa' (v3 histórica): + volumen lateral + hombros/cintura + busto.
+RECETA = 'ligera'
 CADERA_FILAS = (0.66, 0.82)
-PELO_EXTRA = 6
+PELO_EXTRA = 3
 PELO_BANDA_TOP = 0.38
 VOLUMEN_FILAS = (0.30, 0.50)
 SOMBRA_FILAS = (0.42, 0.45, 0.58, 0.61, 0.64)
@@ -105,28 +108,30 @@ def derivar(sheet, box, clase):
         for j in range(max(col_pelo) + 1, min(max(col_pelo) + 1 + PELO_EXTRA, h)):
             if px[i, j][3] <= 128:
                 px[i, j] = anclar(px[i, max(col_pelo)], tonos, ANCLA_PELO[clase])
-    for j in range(int(h * VOLUMEN_FILAS[0]), int(h * VOLUMEN_FILAS[1])):
-        xs = [i for i in range(w) if px[i, j][3] > 128 and cerca(px[i, j][:3], tonos)]
-        if not xs:
-            continue
-        if min(xs) - 1 >= 0 and px[min(xs) - 1, j][3] <= 128:
-            px[min(xs) - 1, j] = anclar(px[min(xs), j], tonos, ANCLA_PELO[clase])
-        if max(xs) + 1 < w and px[max(xs) + 1, j][3] <= 128:
-            px[max(xs) + 1, j] = anclar(px[max(xs), j], tonos, ANCLA_PELO[clase])
-    for r in SOMBRA_FILAS:
-        rj = int(h * r)
-        if rj >= h:
-            continue
-        xs = [i for i in range(w) if px[i, rj][3] > 128]
-        if len(xs) < 6:
-            continue
-        px[min(xs), rj] = oscurecer(px[min(xs), rj], SOMBRA_FACTOR)
-        px[max(xs), rj] = oscurecer(px[max(xs), rj], SOMBRA_FACTOR)
-    cx = centro_cabeza(crop)
-    by = int(h * BUSTO_FILA)
-    for bx in (cx - 2, cx + 2):
-        if 0 <= bx < w and px[bx, by][3] > 128:
-            px[bx, by] = aclarar(px[bx, by], BUSTO_DELTA)
+    # Volumen lateral y remodelado solo en receta completa
+    if RECETA == 'completa':
+        for j in range(int(h * VOLUMEN_FILAS[0]), int(h * VOLUMEN_FILAS[1])):
+            xs = [i for i in range(w) if px[i, j][3] > 128 and cerca(px[i, j][:3], tonos)]
+            if not xs:
+                continue
+            if min(xs) - 1 >= 0 and px[min(xs) - 1, j][3] <= 128:
+                px[min(xs) - 1, j] = anclar(px[min(xs), j], tonos, ANCLA_PELO[clase])
+            if max(xs) + 1 < w and px[max(xs) + 1, j][3] <= 128:
+                px[max(xs) + 1, j] = anclar(px[max(xs), j], tonos, ANCLA_PELO[clase])
+        for r in SOMBRA_FILAS:
+            rj = int(h * r)
+            if rj >= h:
+                continue
+            xs = [i for i in range(w) if px[i, rj][3] > 128]
+            if len(xs) < 6:
+                continue
+            px[min(xs), rj] = oscurecer(px[min(xs), rj], SOMBRA_FACTOR)
+            px[max(xs), rj] = oscurecer(px[max(xs), rj], SOMBRA_FACTOR)
+        cx = centro_cabeza(crop)
+        by = int(h * BUSTO_FILA)
+        for bx in (cx - 2, cx + 2):
+            if 0 <= bx < w and px[bx, by][3] > 128:
+                px[bx, by] = aclarar(px[bx, by], BUSTO_DELTA)
     return crop
 
 

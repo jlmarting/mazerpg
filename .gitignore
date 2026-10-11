@@ -71,3 +71,5 @@ dist/
 
 # Agentic execution scratch (superpowers workspaces, ledgers)
 .superpowers/
+
+.worktrees/

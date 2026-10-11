@@ -1,14 +1,62 @@
 import { PALETAS, APARIENCIA_DEFECTO } from '../config/apariencia';
+import PiezasJSON from '../config/piezas.json';
 
 export type ZonaAvatar = 'piel' | 'pelo' | 'torso' | 'piernas';
+export type RanuraPieza = 'pelo' | 'torso' | 'piernas' | 'casco';
 
 export interface AparienciaAvatar {
   formato: 1;
   zonas: Record<ZonaAvatar, string>;
   genero: 'm' | 'f';
+  piezas: Record<RanuraPieza, string | null>;
+}
+
+export interface VariantePieza {
+  ranura: string;
+  generos: string[];
+  tipo: string;
+  paleta?: Record<string, string>;
+  anclas?: Record<string, { dx: number; dy: number; w: number; h: number }>;
+}
+
+export interface TablaPiezas {
+  variantes: Record<string, VariantePieza>;
+}
+
+const TABLA_PIEZAS = PiezasJSON as unknown as TablaPiezas;
+
+/** Tabla real de piezas (para el compositor y la UI; los tests inyectan la suya). */
+export { TABLA_PIEZAS };
+
+function piezasNulas(): Record<RanuraPieza, string | null> {
+  return { pelo: null, torso: null, piernas: null, casco: null };
+}
+
+/** Sanea el bloque de piezas: variante desconocida, de otro género o de otra ranura → null. */
+export function sanearPiezas(p: unknown, tabla: TablaPiezas, genero: 'm' | 'f'): Record<RanuraPieza, string | null> {
+  const out = piezasNulas();
+  if (typeof p !== 'object' || p === null) return out;
+  const obj = p as Record<string, unknown>;
+  for (const ranura of RANURAS) {
+    const v = obj[ranura];
+    if (typeof v !== 'string') continue;
+    const meta = tabla.variantes[v];
+    if (meta && meta.ranura === ranura && meta.generos.includes(genero)) out[ranura] = v;
+  }
+  return out;
+}
+
+/** Resuelve el ancla de una pieza overlay para un frame (null si no hay: se omite la pieza). */
+export function anclaPara(tabla: TablaPiezas, variante: string, frameKey: string): { dx: number; dy: number; w: number; h: number } | null {
+  const meta = tabla.variantes[variante];
+  if (!meta || meta.tipo !== 'overlay') return null;
+  return meta.anclas?.[frameKey] ?? null;
 }
 
 const ZONAS: ZonaAvatar[] = ['piel', 'pelo', 'torso', 'piernas'];
+
+/** Ranuras de pieza (orden de UI y de composición). */
+export const RANURAS: RanuraPieza[] = ['pelo', 'torso', 'piernas', 'casco'];
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 
 export function hexARgb(hex: string): [number, number, number] {
@@ -74,14 +122,14 @@ export function aplicarTintes(
 
 function defectoDe(clase: string): AparienciaAvatar {
   const d = APARIENCIA_DEFECTO[clase] ?? APARIENCIA_DEFECTO.guerrero;
-  return { formato: 1, zonas: { ...d.zonas }, genero: 'm' };
+  return { formato: 1, zonas: { ...d.zonas }, genero: 'm', piezas: piezasNulas() };
 }
 
 /** Sanea dato externo (sesión, handshake, Firestore): lo inválido cae al defecto, nunca rompe. */
 export function sanearApariencia(a: unknown, clase: string): AparienciaAvatar {
   const def = defectoDe(clase);
   if (typeof a !== 'object' || a === null) return def;
-  const obj = a as { formato?: unknown; zonas?: unknown; genero?: unknown };
+  const obj = a as { formato?: unknown; zonas?: unknown; genero?: unknown; piezas?: unknown };
   if (obj.formato !== 1 || typeof obj.zonas !== 'object' || obj.zonas === null) return def;
   const z = obj.zonas as Record<string, unknown>;
   const zonas = { ...def.zonas };
@@ -92,7 +140,8 @@ export function sanearApariencia(a: unknown, clase: string): AparienciaAvatar {
       if (paleta.includes(v.toLowerCase())) zonas[zona] = v.toLowerCase();
     }
   }
-  return { formato: 1, zonas, genero: obj.genero === 'f' ? 'f' : 'm' };
+  const genero = obj.genero === 'f' ? 'f' : 'm';
+  return { formato: 1, zonas, genero, piezas: sanearPiezas(obj.piezas, TABLA_PIEZAS, genero) };
 }
 
 /** Apariencia efectiva para render/red: ausente → defecto de la clase (siempre saneada). */
@@ -116,7 +165,8 @@ export function aplicarAparienciaRemota(
 
 export function claveVariante(clase: string, frame: string, a: AparienciaAvatar): string {
   const z = a.zonas;
-  return `${clase}|${a.genero}|${frame}|${z.piel},${z.pelo},${z.torso},${z.piernas}`.toLowerCase();
+  const p = a.piezas;
+  return `${clase}|${a.genero}|${frame}|${z.piel},${z.pelo},${z.torso},${z.piernas}|${p.pelo},${p.torso},${p.piernas},${p.casco}`.toLowerCase();
 }
 
 /**
@@ -133,7 +183,7 @@ export function conservarCoincidencias(
   for (const zona of ZONAS) {
     if (elegida.zonas[zona] === defectoPrevio.zonas[zona]) zonas[zona] = defectoNuevo.zonas[zona];
   }
-  return { formato: 1, zonas, genero: elegida.genero === 'f' ? 'f' : 'm' };
+  return { formato: 1, zonas, genero: elegida.genero === 'f' ? 'f' : 'm', piezas: { ...elegida.piezas } };
 }
 
 /**

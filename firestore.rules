@@ -277,11 +277,13 @@ service cloud.firestore {
           && (!('genero' in d) || (d.get('genero') in ['m', 'f']))
           && (!('apariencia' in d) || (
             d.get('apariencia') is map
-            && d.get('apariencia').size() == 2
+            && d.get('apariencia').size() <= 3
             && d.get('apariencia').keys().hasAll(['formato', 'zonas'])
             && d.get('apariencia').get('formato', 0) == 1
             && d.get('apariencia').get('zonas', {}) is map
-            && d.get('apariencia').get('zonas', {}).size() == 4))
+            && d.get('apariencia').get('zonas', {}).size() == 4
+            && (!('piezas' in d.get('apariencia')) || (d.get('apariencia').get('piezas', {}) is map
+              && d.get('apariencia').get('piezas', {}).size() <= 4))))
           && (!('actualizado' in d) || (d.get('actualizado') is number && d.get('actualizado') >= 0));
       }
 

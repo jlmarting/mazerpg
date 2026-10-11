@@ -3,6 +3,8 @@ import {
   aparienciaEfectiva,
   aplicarAparienciaRemota,
   fichaJugador,
+  sanearPiezas,
+  anclaPara,
   aplicarTintes,
   claveVariante,
   LRUCache,
@@ -73,7 +75,7 @@ function assert(condicion: boolean, mensaje: string): void {
 // claveVariante determinista y sensible al cambio
 {
   const a = APARIENCIA_DEFECTO.explorador;
-  const b = { formato: 1 as const, genero: 'm' as const, zonas: { ...a.zonas, pelo: PALETAS.pelo[1] } };
+  const b = { formato: 1 as const, genero: 'm' as const, piezas: { pelo: null, torso: null, piernas: null, casco: null }, zonas: { ...a.zonas, pelo: PALETAS.pelo[1] } };
   assert(claveVariante('explorador', 'idle', a) === claveVariante('explorador', 'idle', a), 'clave determinista');
   assert(claveVariante('explorador', 'idle', a) !== claveVariante('explorador', 'idle', b), 'la clave cambia con la apariencia');
 }
@@ -94,7 +96,7 @@ function assert(condicion: boolean, mensaje: string): void {
 
 // aplicarAparienciaRemota: frontera de red (handshake / mensaje avatar)
 {
-  const valida = { formato: 1 as const, genero: 'm' as const, zonas: { piel: '#f2c9a0', pelo: PALETAS.pelo[2], torso: PALETAS.torso[2], piernas: PALETAS.piernas[2] } };
+  const valida = { formato: 1 as const, genero: 'm' as const, piezas: { pelo: null, torso: null, piernas: null, casco: null }, zonas: { piel: '#f2c9a0', pelo: PALETAS.pelo[2], torso: PALETAS.torso[2], piernas: PALETAS.piernas[2] } };
   const r1 = aplicarAparienciaRemota(undefined, valida, 'explorador');
   assert(r1.zonas.pelo === PALETAS.pelo[2], 'handshake con apariencia valida se aplica');
   const r2 = aplicarAparienciaRemota(valida, undefined, 'explorador');
@@ -109,13 +111,32 @@ function assert(condicion: boolean, mensaje: string): void {
 {
   const prev = APARIENCIA_DEFECTO.explorador;
   const next = APARIENCIA_DEFECTO.mago;
-  const elegida = { formato: 1 as const, genero: 'm' as const, zonas: { ...prev.zonas, torso: PALETAS.torso[4] } };
+  const elegida = { formato: 1 as const, genero: 'm' as const, piezas: { pelo: null, torso: null, piernas: null, casco: null }, zonas: { ...prev.zonas, torso: PALETAS.torso[4] } };
   const r = conservarCoincidencias(prev, next, elegida);
   assert(r.zonas.pelo === next.zonas.pelo, 'zona sin personalizar sigue a la nueva clase');
   assert(r.zonas.torso === PALETAS.torso[4], 'zona personalizada se conserva');
 }
 
-// genero: ausente/basura -> 'm'; 'f' se conserva
+// piezas: variante desconocida/otro género -> null; ausente -> todo null
+{
+  const TABLA_MIN = {
+    variantes: {
+      'pelo-largo-f': { ranura: 'pelo', generos: ['f'], tipo: 'remap', anclas: {} },
+      'casco': { ranura: 'casco', generos: ['m', 'f'], tipo: 'overlay', anclas: { 'explorador_m_idle_0': { dx: 0, dy: 0, w: 32, h: 32 } } },
+    },
+  };
+  const r = sanearPiezas({ pelo: 'pelo-largo-f', torso: 'no-existe', piernas: null, casco: 'casco' }, TABLA_MIN, 'f');
+  assert(r.pelo === 'pelo-largo-f', 'variante válida del género se conserva');
+  assert(r.torso === null, 'variante desconocida cae a null');
+  assert(r.piernas === null && r.casco === 'casco', 'null se respeta y casco unisex vale');
+  const r2 = sanearPiezas({ pelo: 'pelo-largo-f', torso: null, piernas: null, casco: null }, TABLA_MIN, 'm');
+  assert(r2.pelo === null, 'variante de otro género cae a null');
+  const r3 = sanearPiezas(undefined, TABLA_MIN, 'm');
+  assert(r3.pelo === null && r3.torso === null && r3.piernas === null && r3.casco === null, 'sin piezas todo null');
+  assert(anclaPara(TABLA_MIN, 'casco', 'explorador_m_idle_0') !== null, 'ancla existente se resuelve');
+  assert(anclaPara(TABLA_MIN, 'casco', 'otro_frame') === null, 'ancla ausente es null');
+  assert(anclaPara(TABLA_MIN, 'pelo-largo-f', 'explorador_m_idle_0') === null, 'remap no tiene ancla');
+}
 {
   const base = { formato: 1 as const, zonas: { ...APARIENCIA_DEFECTO.mago.zonas } };
   assert(sanearApariencia(base, 'mago').genero === 'm', 'sin genero se asume m');
@@ -128,7 +149,7 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(bandasPara('idle') !== null && bandasPara('idle')!.pelo[1] === 0.38, 'idle usa las bandas por defecto');
 }
 {
-  const ap = { ...APARIENCIA_DEFECTO.mago, genero: 'm' as const };
+  const ap = { ...APARIENCIA_DEFECTO.mago, genero: 'm' as const, piezas: { pelo: null, torso: null, piernas: null, casco: null } };
   const f = fichaJugador('Ciri', 'mago', ap);
   assert(f.nick === 'Ciri' && f.clase === 'mago', 'la ficha conserva nick y clase');
   assert(f.apariencia.zonas.torso === ap.zonas.torso, 'la ficha conserva la apariencia');

@@ -1,4 +1,4 @@
-import type { ZonaAvatar } from '../core/avatarTintes';
+import type { ZonaAvatar, RanuraPieza } from '../core/avatarTintes';
 
 /** Paletas cerradas por zona (sin color libre: acota la caché y garantiza armonía). */
 export const PALETAS: Record<ZonaAvatar, string[]> = {
@@ -53,10 +53,10 @@ export function bandasPara(estado: string): Record<ZonaAvatar, [number, number]>
 }
 
 /** Defecto por clase ≡ sprite actual (primeros tonos de ORIGEN; piel = primer hex de su paleta). */
-export const APARIENCIA_DEFECTO: Record<string, { formato: 1; zonas: Record<ZonaAvatar, string>; genero: 'm' | 'f' }> = {
-  explorador: { formato: 1, zonas: { piel: '#f2c9a0', pelo: '#4a301a', torso: '#143c1e', piernas: '#8b5a2b' }, genero: 'm' },
-  mago: { formato: 1, zonas: { piel: '#f2c9a0', pelo: '#463c5a', torso: '#2d1455', piernas: '#cdcde1' }, genero: 'm' },
-  guerrero: { formato: 1, zonas: { piel: '#f2c9a0', pelo: '#5a2220', torso: '#525b74', piernas: '#d7cfc0' }, genero: 'm' },
+export const APARIENCIA_DEFECTO: Record<string, { formato: 1; zonas: Record<ZonaAvatar, string>; genero: 'm' | 'f'; piezas: Record<RanuraPieza, string | null> }> = {
+  explorador: { formato: 1, zonas: { piel: '#f2c9a0', pelo: '#4a301a', torso: '#143c1e', piernas: '#8b5a2b' }, genero: 'm', piezas: { pelo: null, torso: null, piernas: null, casco: null } },
+  mago: { formato: 1, zonas: { piel: '#f2c9a0', pelo: '#463c5a', torso: '#2d1455', piernas: '#cdcde1' }, genero: 'm', piezas: { pelo: null, torso: null, piernas: null, casco: null } },
+  guerrero: { formato: 1, zonas: { piel: '#f2c9a0', pelo: '#5a2220', torso: '#525b74', piernas: '#d7cfc0' }, genero: 'm', piezas: { pelo: null, torso: null, piernas: null, casco: null } },
 };
 
 export const UMBRAL_TINTE = 40;

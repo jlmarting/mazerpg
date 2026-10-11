@@ -1,8 +1,9 @@
 export type LobbyMode = 'solo' | 'firebase' | 'http' | 'cooperativo';
 
-import type { AparienciaAvatar, ZonaAvatar } from '../core/avatarTintes';
+import type { AparienciaAvatar, ZonaAvatar, RanuraPieza } from '../core/avatarTintes';
 import { PALETAS, ORIGEN_ZONA, APARIENCIA_DEFECTO } from '../config/apariencia';
-import { aparienciaEfectiva, conservarCoincidencias } from '../core/avatarTintes';
+import { TABLA_PIEZAS, RANURAS } from '../core/avatarTintes';
+import { aparienciaEfectiva, conservarCoincidencias, sanearPiezas } from '../core/avatarTintes';
 
 export interface CharacterData {
   nombre: string;
@@ -54,6 +55,8 @@ export class LobbyManager {
   private avatarZonas: Record<ZonaAvatar, string> = { ...APARIENCIA_DEFECTO.guerrero.zonas };
   /** Género elegido en el modal (se confirma en saveCharacter). */
   private avatarGenero: 'm' | 'f' = 'm';
+  /** Piezas elegidas en el modal (se confirman en saveCharacter). */
+  private avatarPiezas: Record<RanuraPieza, string | null> = { pelo: null, torso: null, piernas: null, casco: null };
 
   constructor(delegate: LobbyDelegate) {
     this.delegate = delegate;
@@ -201,8 +204,10 @@ export class LobbyManager {
     const ef = aparienciaEfectiva(char.clase, char.apariencia);
     this.avatarZonas = { ...ef.zonas };
     this.avatarGenero = ef.genero;
+    this.avatarPiezas = { ...ef.piezas };
     this.selectGenderButton(ef.genero);
     this.renderAvatarRows();
+    this.renderPiezaRows();
     this.recalculateStats();
     this.populateStatsDisplay();
   }
@@ -215,7 +220,7 @@ export class LobbyManager {
     const name = (document.getElementById('charNameInput') as HTMLInputElement).value.trim() || "Héroe";
     const color = (document.getElementById('charColorInput') as HTMLInputElement).value;
     const selectedClass = document.querySelector('.class-btn[data-class].selected')?.getAttribute('data-class') || 'guerrero';
-    const apariencia: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero };
+    const apariencia: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero, piezas: { ...this.avatarPiezas } };
     this.delegate.onSaveCharacter(name, color, selectedClass, apariencia);
     this.closeCharacterModal();
     this.showAccion();
@@ -267,16 +272,17 @@ export class LobbyManager {
   private repaintPreview(): void {
     const canvas = document.getElementById('avatarPreview') as HTMLCanvasElement | null;
     if (!canvas) return;
-    this.delegate.pintarPreviewAvatar(canvas, this.claseActualModal(), { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero });
+    this.delegate.pintarPreviewAvatar(canvas, this.claseActualModal(), { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero, piezas: { ...this.avatarPiezas } });
   }
 
   /** Cambio de clase: lo no personalizado sigue al defecto nuevo; el resto se conserva. */
   private rebaseAvatarAClase(prevClase: string, nuevaClase: string): void {
     const prevDef = APARIENCIA_DEFECTO[prevClase] ?? APARIENCIA_DEFECTO.guerrero;
     const nextDef = APARIENCIA_DEFECTO[nuevaClase] ?? APARIENCIA_DEFECTO.guerrero;
-    const actual: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero };
+    const actual: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero, piezas: { ...this.avatarPiezas } };
     this.avatarZonas = { ...conservarCoincidencias(prevDef, nextDef, actual).zonas };
     this.renderAvatarRows();
+    this.renderPiezaRows();
   }
 
   private selectGenderButton(genero: 'm' | 'f'): void {
@@ -288,7 +294,42 @@ export class LobbyManager {
   private onSelectGenero(genero: 'm' | 'f'): void {
     this.avatarGenero = genero;
     this.selectGenderButton(genero);
-    this.repaintPreview();
+    // Las piezas incompatibles con el género caen (saneado).
+    this.avatarPiezas = sanearPiezas({ ...this.avatarPiezas }, TABLA_PIEZAS, genero);
+    this.renderAvatarRows();
+    this.renderPiezaRows();
+  }
+
+  /** Nombres de variante por ranura para el género actual (v1: una por ranura). */
+  private variantesDisponibles(): { ranura: RanuraPieza; variante: string; nombre: string }[] {
+    const nombres: Record<string, string> = {
+      'pelo-largo-f': 'Melena', 'peto-f': 'Peto', 'botas-f': 'Botas', 'casco': 'Casco',
+    };
+    const out: { ranura: RanuraPieza; variante: string; nombre: string }[] = [];
+    for (const ranura of RANURAS) {
+      const id = Object.keys(TABLA_PIEZAS.variantes).find(
+        (k) => TABLA_PIEZAS.variantes[k].ranura === ranura && TABLA_PIEZAS.variantes[k].generos.includes(this.avatarGenero));
+      if (id) out.push({ ranura, variante: id, nombre: nombres[id] || id });
+    }
+    return out;
+  }
+
+  private renderPiezaRows(): void {
+    const cont = document.getElementById('avatarPiezas');
+    if (!cont) return;
+    cont.innerHTML = '';
+    for (const { ranura, variante, nombre } of this.variantesDisponibles()) {
+      const btn = document.createElement('button');
+      const activa = this.avatarPiezas[ranura] === variante;
+      btn.className = 'pieza-toggle' + (activa ? ' selected' : '');
+      btn.textContent = `${activa ? '[x]' : '[ ]'} ${nombre}`;
+      btn.addEventListener('click', () => {
+        this.avatarPiezas[ranura] = this.avatarPiezas[ranura] === variante ? null : variante;
+        this.renderPiezaRows();
+        this.repaintPreview();
+      });
+      cont.appendChild(btn);
+    }
   }
 
   showDifficultyModal(callback: (diff: string) => void): void {

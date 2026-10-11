@@ -8,9 +8,10 @@
   "tool_pickaxe": "sprites/pickaxe.png",
   "hero_custom": "sprites/hero_custom.png",
   "sheet_house": "sprites/house.png",
-  "sheet_players_f": "sprites/players_f.png",
-  "hero_custom_f": "sprites/hero_custom_f.png"
- },
+   "sheet_players_f": "sprites/players_f.png",
+   "hero_custom_f": "sprites/hero_custom_f.png",
+   "pieces": "sprites/pieces.png"
+  },
  "mapeo": {
   "jugadores": {
    "guerrero": {

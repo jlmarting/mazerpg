@@ -52,6 +52,8 @@ export class LobbyManager {
   private pendingHousingDiff: string | null = null;
   /** Tintes elegidos en el modal (se confirman en saveCharacter). */
   private avatarZonas: Record<ZonaAvatar, string> = { ...APARIENCIA_DEFECTO.guerrero.zonas };
+  /** Género elegido en el modal (se confirma en saveCharacter). */
+  private avatarGenero: 'm' | 'f' = 'm';
 
   constructor(delegate: LobbyDelegate) {
     this.delegate = delegate;
@@ -198,6 +200,8 @@ export class LobbyManager {
     }
     const ef = aparienciaEfectiva(char.clase, char.apariencia);
     this.avatarZonas = { ...ef.zonas };
+    this.avatarGenero = ef.genero;
+    this.selectGenderButton(ef.genero);
     this.renderAvatarRows();
     this.recalculateStats();
     this.populateStatsDisplay();
@@ -210,8 +214,8 @@ export class LobbyManager {
   saveCharacter(): void {
     const name = (document.getElementById('charNameInput') as HTMLInputElement).value.trim() || "Héroe";
     const color = (document.getElementById('charColorInput') as HTMLInputElement).value;
-    const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
-    const apariencia: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas } };
+    const selectedClass = document.querySelector('.class-btn[data-class].selected')?.getAttribute('data-class') || 'guerrero';
+    const apariencia: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero };
     this.delegate.onSaveCharacter(name, color, selectedClass, apariencia);
     this.closeCharacterModal();
     this.showAccion();
@@ -219,7 +223,7 @@ export class LobbyManager {
 
   /** Clase seleccionada ahora mismo en el modal (para tintes y preview). */
   private claseActualModal(): string {
-    return document.querySelector('.class-btn.selected')?.getAttribute('data-class')
+    return document.querySelector('.class-btn[data-class].selected')?.getAttribute('data-class')
       || this.delegate.getCharacterData().clase;
   }
 
@@ -263,16 +267,28 @@ export class LobbyManager {
   private repaintPreview(): void {
     const canvas = document.getElementById('avatarPreview') as HTMLCanvasElement | null;
     if (!canvas) return;
-    this.delegate.pintarPreviewAvatar(canvas, this.claseActualModal(), { formato: 1, zonas: { ...this.avatarZonas } });
+    this.delegate.pintarPreviewAvatar(canvas, this.claseActualModal(), { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero });
   }
 
   /** Cambio de clase: lo no personalizado sigue al defecto nuevo; el resto se conserva. */
   private rebaseAvatarAClase(prevClase: string, nuevaClase: string): void {
     const prevDef = APARIENCIA_DEFECTO[prevClase] ?? APARIENCIA_DEFECTO.guerrero;
     const nextDef = APARIENCIA_DEFECTO[nuevaClase] ?? APARIENCIA_DEFECTO.guerrero;
-    const actual: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas } };
+    const actual: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero };
     this.avatarZonas = { ...conservarCoincidencias(prevDef, nextDef, actual).zonas };
     this.renderAvatarRows();
+  }
+
+  private selectGenderButton(genero: 'm' | 'f'): void {
+    document.querySelectorAll('.genero-btn').forEach(btn => {
+      btn.classList.toggle('selected', btn.getAttribute('data-genero') === genero);
+    });
+  }
+
+  private onSelectGenero(genero: 'm' | 'f'): void {
+    this.avatarGenero = genero;
+    this.selectGenderButton(genero);
+    this.repaintPreview();
   }
 
   showDifficultyModal(callback: (diff: string) => void): void {
@@ -363,7 +379,7 @@ export class LobbyManager {
   }
 
   recalculateStats(): void {
-    const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class')
+    const selectedClass = document.querySelector('.class-btn[data-class].selected')?.getAttribute('data-class')
       || this.delegate.getCharacterData().clase;
     this.delegate.onRerollStats(selectedClass);
     this.populateStatsDisplay();
@@ -427,7 +443,7 @@ export class LobbyManager {
   }
 
   private selectClassButton(clase: string): void {
-    document.querySelectorAll('.class-btn').forEach(btn => {
+    document.querySelectorAll('.class-btn[data-class]').forEach(btn => {
       btn.classList.toggle('selected', btn.getAttribute('data-class') === clase);
     });
     const modalPortrait = document.getElementById('modalPortrait');
@@ -545,10 +561,16 @@ export class LobbyManager {
       });
     });
 
-    document.querySelectorAll('.class-btn').forEach(btn => {
+    document.querySelectorAll('.genero-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const prev = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
-        document.querySelectorAll('.class-btn').forEach(b => b.classList.remove('selected'));
+        this.onSelectGenero(((e.currentTarget as HTMLElement).getAttribute('data-genero') || 'm') as 'm' | 'f');
+      });
+    });
+
+    document.querySelectorAll('.class-btn[data-class]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const prev = document.querySelector('.class-btn[data-class].selected')?.getAttribute('data-class') || 'guerrero';
+        document.querySelectorAll('.class-btn[data-class]').forEach(b => b.classList.remove('selected'));
         (e.currentTarget as HTMLElement).classList.add('selected');
         const next = (e.currentTarget as HTMLElement).getAttribute('data-class') || 'guerrero';
         if (next !== prev) this.rebaseAvatarAClase(prev, next);

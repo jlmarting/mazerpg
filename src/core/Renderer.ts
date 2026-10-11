@@ -217,8 +217,9 @@ export class Renderer {
     this.ctx.save();
 
     const esNPC = entidad.tipo !== undefined;
-    const prefix = esNPC ? 'npc' : 'player';
     const clase = entidad.clase || entidad.tipo?.toLowerCase() || 'guerrero';
+    const genero = !esNPC && aparienciaEfectiva(clase, entidad.apariencia).genero === 'f' ? 'player_f' : 'player';
+    const prefix = esNPC ? 'npc' : genero;
     const keyBase = `${prefix}_${clase}_${entidad.estadoActual}`;
     const spriteKey = `${keyBase}_${entidad.frameActual}`;
 

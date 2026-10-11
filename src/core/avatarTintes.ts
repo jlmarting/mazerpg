@@ -5,6 +5,7 @@ export type ZonaAvatar = 'piel' | 'pelo' | 'torso' | 'piernas';
 export interface AparienciaAvatar {
   formato: 1;
   zonas: Record<ZonaAvatar, string>;
+  genero: 'm' | 'f';
 }
 
 const ZONAS: ZonaAvatar[] = ['piel', 'pelo', 'torso', 'piernas'];
@@ -73,14 +74,14 @@ export function aplicarTintes(
 
 function defectoDe(clase: string): AparienciaAvatar {
   const d = APARIENCIA_DEFECTO[clase] ?? APARIENCIA_DEFECTO.guerrero;
-  return { formato: 1, zonas: { ...d.zonas } };
+  return { formato: 1, zonas: { ...d.zonas }, genero: 'm' };
 }
 
 /** Sanea dato externo (sesión, handshake, Firestore): lo inválido cae al defecto, nunca rompe. */
 export function sanearApariencia(a: unknown, clase: string): AparienciaAvatar {
   const def = defectoDe(clase);
   if (typeof a !== 'object' || a === null) return def;
-  const obj = a as { formato?: unknown; zonas?: unknown };
+  const obj = a as { formato?: unknown; zonas?: unknown; genero?: unknown };
   if (obj.formato !== 1 || typeof obj.zonas !== 'object' || obj.zonas === null) return def;
   const z = obj.zonas as Record<string, unknown>;
   const zonas = { ...def.zonas };
@@ -91,7 +92,7 @@ export function sanearApariencia(a: unknown, clase: string): AparienciaAvatar {
       if (paleta.includes(v.toLowerCase())) zonas[zona] = v.toLowerCase();
     }
   }
-  return { formato: 1, zonas };
+  return { formato: 1, zonas, genero: obj.genero === 'f' ? 'f' : 'm' };
 }
 
 /** Apariencia efectiva para render/red: ausente → defecto de la clase (siempre saneada). */
@@ -115,7 +116,7 @@ export function aplicarAparienciaRemota(
 
 export function claveVariante(clase: string, frame: string, a: AparienciaAvatar): string {
   const z = a.zonas;
-  return `${clase}|${frame}|${z.piel},${z.pelo},${z.torso},${z.piernas}`.toLowerCase();
+  return `${clase}|${a.genero}|${frame}|${z.piel},${z.pelo},${z.torso},${z.piernas}`.toLowerCase();
 }
 
 /**
@@ -132,7 +133,7 @@ export function conservarCoincidencias(
   for (const zona of ZONAS) {
     if (elegida.zonas[zona] === defectoPrevio.zonas[zona]) zonas[zona] = defectoNuevo.zonas[zona];
   }
-  return { formato: 1, zonas };
+  return { formato: 1, zonas, genero: elegida.genero === 'f' ? 'f' : 'm' };
 }
 
 /**

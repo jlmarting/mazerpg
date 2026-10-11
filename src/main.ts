@@ -490,10 +490,11 @@ class Game implements IGame {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const sm = this.renderer.spriteManager;
-    const base = `player_${clase}_idle`;
+    const ef = aparienciaEfectiva(clase, apariencia);
+    const pref = ef.genero === 'f' ? 'player_f' : 'player';
+    const base = `${pref}_${clase}_idle`;
     const nombreBase = sm.obtenerSprite(base) ? base : `${base}_0`;
     if (!sm.obtenerSprite(nombreBase)) return;
-    const ef = aparienciaEfectiva(clase, apariencia);
     const variante = this.renderer.avatarCompositor.obtenerVariante(nombreBase, clase, 'idle', ef) || nombreBase;
     const info = sm.obtenerSprite(variante);
     if (!info || !info.image) return;

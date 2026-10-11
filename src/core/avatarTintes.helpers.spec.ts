@@ -73,7 +73,7 @@ function assert(condicion: boolean, mensaje: string): void {
 // claveVariante determinista y sensible al cambio
 {
   const a = APARIENCIA_DEFECTO.explorador;
-  const b = { formato: 1 as const, zonas: { ...a.zonas, pelo: PALETAS.pelo[1] } };
+  const b = { formato: 1 as const, genero: 'm' as const, zonas: { ...a.zonas, pelo: PALETAS.pelo[1] } };
   assert(claveVariante('explorador', 'idle', a) === claveVariante('explorador', 'idle', a), 'clave determinista');
   assert(claveVariante('explorador', 'idle', a) !== claveVariante('explorador', 'idle', b), 'la clave cambia con la apariencia');
 }
@@ -94,7 +94,7 @@ function assert(condicion: boolean, mensaje: string): void {
 
 // aplicarAparienciaRemota: frontera de red (handshake / mensaje avatar)
 {
-  const valida = { formato: 1 as const, zonas: { piel: '#f2c9a0', pelo: PALETAS.pelo[2], torso: PALETAS.torso[2], piernas: PALETAS.piernas[2] } };
+  const valida = { formato: 1 as const, genero: 'm' as const, zonas: { piel: '#f2c9a0', pelo: PALETAS.pelo[2], torso: PALETAS.torso[2], piernas: PALETAS.piernas[2] } };
   const r1 = aplicarAparienciaRemota(undefined, valida, 'explorador');
   assert(r1.zonas.pelo === PALETAS.pelo[2], 'handshake con apariencia valida se aplica');
   const r2 = aplicarAparienciaRemota(valida, undefined, 'explorador');
@@ -109,19 +109,26 @@ function assert(condicion: boolean, mensaje: string): void {
 {
   const prev = APARIENCIA_DEFECTO.explorador;
   const next = APARIENCIA_DEFECTO.mago;
-  const elegida = { formato: 1 as const, zonas: { ...prev.zonas, torso: PALETAS.torso[4] } };
+  const elegida = { formato: 1 as const, genero: 'm' as const, zonas: { ...prev.zonas, torso: PALETAS.torso[4] } };
   const r = conservarCoincidencias(prev, next, elegida);
   assert(r.zonas.pelo === next.zonas.pelo, 'zona sin personalizar sigue a la nueva clase');
   assert(r.zonas.torso === PALETAS.torso[4], 'zona personalizada se conserva');
 }
 
-// bandasPara: caídos/defensa van en defecto; el resto usa tercios
+// genero: ausente/basura -> 'm'; 'f' se conserva
+{
+  const base = { formato: 1 as const, zonas: { ...APARIENCIA_DEFECTO.mago.zonas } };
+  assert(sanearApariencia(base, 'mago').genero === 'm', 'sin genero se asume m');
+  assert(sanearApariencia({ ...base, genero: 'x' }, 'mago').genero === 'm', 'genero basura cae a m');
+  assert(sanearApariencia({ ...base, genero: 'f' }, 'mago').genero === 'f', 'genero f se conserva');
+  assert(APARIENCIA_DEFECTO.mago.genero === 'm', 'el defecto es m');
+}
 {
   assert(bandasPara('fallen') === null, 'fallen no tiene bandas (defecto)');
   assert(bandasPara('idle') !== null && bandasPara('idle')!.pelo[1] === 0.38, 'idle usa las bandas por defecto');
 }
 {
-  const ap = APARIENCIA_DEFECTO.mago;
+  const ap = { ...APARIENCIA_DEFECTO.mago, genero: 'm' as const };
   const f = fichaJugador('Ciri', 'mago', ap);
   assert(f.nick === 'Ciri' && f.clase === 'mago', 'la ficha conserva nick y clase');
   assert(f.apariencia.zonas.torso === ap.zonas.torso, 'la ficha conserva la apariencia');

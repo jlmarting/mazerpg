@@ -94,6 +94,7 @@ export function inicializarSpritesheets(sm: any) {
 
     // Cargar todos los mapeos definidos en el JSON centralizado
     procesarMapping(c.mapeo.jugadores, 'player');
+    procesarMapping((c.mapeo as any).jugadoras, 'player_f');
     procesarMapping(c.mapeo.npcs, 'npc');
     procesarMapping(c.mapeo.escenario_estatico, 'static');
     procesarMapping(c.mapeo.escenario_dinamico, 'dynamic');

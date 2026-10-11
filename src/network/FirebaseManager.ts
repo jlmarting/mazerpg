@@ -80,6 +80,7 @@ export class FirebaseManager {
         nick: ficha.nick,
         clase: ficha.clase,
         apariencia: ficha.apariencia,
+        genero: ficha.apariencia.genero,
         actualizado: Date.now()
       }, { merge: true });
     } catch (e) {

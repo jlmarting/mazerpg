@@ -49,7 +49,7 @@ service cloud.firestore {
 //   partidas/{pid}/mundos: list (listarNodos) ; get (cargarNodo) -> get,list
 //   partidas/{pid}/mundos/{nodoId}/deltas/{auto}: set 7 campos -> create
 //   ... y list (orderBy/where tick) + delete (compactación) -> get,list,delete
-//   partidas/{pid}/jugadores/{jid}: set(merge) {nick,clase,apariencia,actualizado} -> create,update
+//   partidas/{pid}/jugadores/{jid}: set(merge) {nick,clase,apariencia,genero,actualizado} -> create,update
 //   partidas/{pid}/jugadores: get (pre-hidratar antes del handshake) -> get
 // ============================================================================
 
@@ -270,10 +270,11 @@ service cloud.firestore {
       // además por handshake: si las reglas deniegan, el avatar sigue visible.
       function fichaOk(d) {
         return d is map
-          && d.size() <= 4
-          && d.keys().hasOnly(['nick', 'clase', 'apariencia', 'actualizado'])
+          && d.size() <= 5
+          && d.keys().hasOnly(['nick', 'clase', 'apariencia', 'genero', 'actualizado'])
           && (!('nick' in d) || (d.get('nick') is string && d.get('nick').size() > 0 && d.get('nick').size() <= 32))
           && (!('clase' in d) || (d.get('clase') in ['guerrero', 'explorador', 'mago']))
+          && (!('genero' in d) || (d.get('genero') in ['m', 'f']))
           && (!('apariencia' in d) || (
             d.get('apariencia') is map
             && d.get('apariencia').size() == 2

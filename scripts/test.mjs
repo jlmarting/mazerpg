@@ -21,10 +21,20 @@ function resolverEsbuild() {
 }
 
 const esbuild = resolverEsbuild();
-const dirSpecs = join(raiz, 'src', 'world');
-const specs = readdirSync(dirSpecs)
-  .filter((f) => f.endsWith('.helpers.spec.ts'))
-  .sort();
+const dirSrc = join(raiz, 'src');
+const specs = [];
+{
+  const pendientes = [dirSrc];
+  while (pendientes.length > 0) {
+    const dir = pendientes.pop();
+    for (const f of readdirSync(dir, { withFileTypes: true })) {
+      const ruta = join(dir, f.name);
+      if (f.isDirectory()) pendientes.push(ruta);
+      else if (f.name.endsWith('.helpers.spec.ts')) specs.push(ruta);
+    }
+  }
+  specs.sort();
+}
 
 if (specs.length === 0) {
   console.error('No se encontraron specs *.helpers.spec.ts');
@@ -36,8 +46,9 @@ let fallos = 0;
 
 try {
   for (const spec of specs) {
-    const entrada = join(dirSpecs, spec);
-    const salida = join(tmp, `${spec.replace(/\.ts$/, '')}.mjs`);
+    const entrada = spec;
+    const base = spec.split('/').pop();
+    const salida = join(tmp, `${base.replace(/\.ts$/, '')}.mjs`);
 
     const bundle = spawnSync(
       esbuild,

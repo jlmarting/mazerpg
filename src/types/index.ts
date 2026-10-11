@@ -1,6 +1,8 @@
 import { Celda } from '../world/Celda';
 import type { NodoMundo } from '../world/mundo';
 
+export type { ZonaAvatar, AparienciaAvatar } from '../core/avatarTintes';
+
 export interface GameConfig {
     NUMERO_FILAS: number;
     NUMERO_COLUMNAS: number;

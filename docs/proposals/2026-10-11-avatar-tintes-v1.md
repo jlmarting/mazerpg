@@ -40,7 +40,7 @@ interface AparienciaAvatar { formato: 1; zonas: Record<ZonaAvatar, string>; } //
 - **Modal:** una fila de swatches por zona mapeada (3 en v1: pelo/torso/piernas; piel y guerrero pendientes de máscaras/aplanado — sinergia con acciones-por-dispositivo). Reutiliza clase/stats/preview. Cambio de clase → defecto de la nueva (conserva coincidencias). `onSaveCharacter` suma `apariencia`; `color` legacy se mantiene como acento sin acoplar; sesiones viejas → defecto.
 - **Preview viva:** medallón con el sprite tineado real (idle) en cada cambio — lo que ves es lo que viaja.
 - **Validación:** matriz visual 3 clases × 4 estados × paletas (el mando acepta tolerancia o pide retoque); units (`sanearApariencia`, roundtrip, cota LRU) en `scripts/test.mjs`; `tsc` + build verdes; manual a dos clientes (uno viejo): personalizar → remoto → recarga → reunirse, sin regresión de FPS.
-- **Éxito v1:** 4 zonas personalizables, visibles en remoto, persistentes, sin regresión, retrocompat.
+- **Éxito v1:** zonas mapeadas personalizables (3: pelo/torso/piernas; piel pendiente de máscaras), visibles en remoto, persistentes, sin regresión, retrocompat.
 
 ## Fuera de alcance (propuestas futuras)
 

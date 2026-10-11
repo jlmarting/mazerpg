@@ -2,6 +2,7 @@ import {
   sanearApariencia,
   aparienciaEfectiva,
   aplicarAparienciaRemota,
+  fichaJugador,
   aplicarTintes,
   claveVariante,
   LRUCache,
@@ -105,6 +106,15 @@ function assert(condicion: boolean, mensaje: string): void {
   const r = conservarCoincidencias(prev, next, elegida);
   assert(r.zonas.pelo === next.zonas.pelo, 'zona sin personalizar sigue a la nueva clase');
   assert(r.zonas.torso === PALETAS.torso[4], 'zona personalizada se conserva');
+}
+
+// fichaJugador: forma del doc partidas/{pid}/jugadores/{jid} (paridad con fichaOk de reglas)
+{
+  const ap = APARIENCIA_DEFECTO.mago;
+  const f = fichaJugador('Ciri', 'mago', ap);
+  assert(f.nick === 'Ciri' && f.clase === 'mago', 'la ficha conserva nick y clase');
+  assert(f.apariencia.zonas.torso === ap.zonas.torso, 'la ficha conserva la apariencia');
+  assert(typeof f.actualizado === 'number' && f.actualizado > 0, 'la ficha lleva timestamp');
 }
 
 console.log(`\n${ok}/${total} asserts de avatarTintes en verde`);

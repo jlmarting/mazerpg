@@ -125,6 +125,18 @@ export function conservarCoincidencias(
   return { formato: 1, zonas };
 }
 
+/**
+ * Forma del doc partidas/{pid}/jugadores/{jid} (paridad con fichaOk de reglas).
+ */
+export function fichaJugador(nick: string, clase: string, apariencia: AparienciaAvatar): {
+  nick: string;
+  clase: string;
+  apariencia: AparienciaAvatar;
+  actualizado: number;
+} {
+  return { nick, clase, apariencia: sanearApariencia(apariencia, clase), actualizado: Date.now() };
+}
+
 /** LRU mínima para la caché del compositor (valores opacos, desalojo al superar el máximo). */
 export class LRUCache<T> {
   private readonly mapa = new Map<string, T>();

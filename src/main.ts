@@ -13,7 +13,7 @@ import { SignalingClient, crearSignalingClient, getSignalingUrl } from './networ
 import { eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName } from './utils/session';
-import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia } from './core/avatarTintes';
+import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import {
@@ -383,16 +383,10 @@ class Game implements IGame {
     this.registrarEventoLog(`Personaje guardado: ${nombre} (${clase})`);
     this.actualizarPanelAcciones();
 
-    // Si hay partida activa, la nueva apariencia se publica (Firestore + red).
-    if (this.network && this.network.multiplayerActivo) {
-      const ef = aparienciaEfectiva(clase, this.protagonista.apariencia);
-      this.network.enviarMensaje({ tipo: 'avatar', id: this.network.idLocal, apariencia: ef });
-      if (this.network.idPartidaActual) {
-        this.firebase.guardarAparienciaJugador(
-          this.network.idPartidaActual, this.network.idLocal,
-          { nick: nombre, clase, apariencia: ef });
-      }
-    }
+    // Si hay partida activa, la nueva apariencia se difunde (todos los
+    // transportes activos) y se publica la ficha (solo partida Firebase).
+    this.difundirApariencia();
+    this.publicarFichaEnPartida();
 
     if (this.partidaIdDesdeUrl) {
       this.registrarEventoLog(`Conectando a partida ${this.partidaIdDesdeUrl}...`);
@@ -463,6 +457,31 @@ class Game implements IGame {
       personajeCreado: this.protagonista.personajeCreado,
       apariencia: aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia)
     };
+  }
+
+  /** Difunde la apariencia actual por todos los transportes activos (cambio en caliente). */
+  difundirApariencia(): void {
+    const ef = aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia);
+    if (this.network && this.network.multiplayerActivo) {
+      this.network.enviarMensaje({ tipo: 'avatar', id: this.network.idLocal, apariencia: ef });
+    }
+    if (this.networkHttp && this.networkHttp.multiplayerActivo) {
+      this.networkHttp.enviarMensaje({ tipo: 'avatar', id: this.networkHttp.idLocal, apariencia: ef });
+    }
+  }
+
+  /**
+   * Publica la ficha en partidas/{pid}/jugadores/{idLocal} (solo Firebase;
+   * en modo HTTP el pid no es partida Firestore y se omite — el handshake cubre).
+   */
+  publicarFichaEnPartida(): void {
+    const net = this.network;
+    const pid = net ? net.idPartidaActual : null;
+    if (!pid || !net || !this.firebase.isInitialized()) return;
+    const ef = aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia);
+    this.firebase.guardarAparienciaJugador(
+      pid, net.idLocal,
+      fichaJugador(this.protagonista.nombre, this.protagonista.clase, ef));
   }
 
   /** Pinta el sprite tineado (frame idle) en el canvas del modal: lo que ves es lo que viaja. */
@@ -650,6 +669,7 @@ class Game implements IGame {
     }
 
     await this.firebase.crearPartida(id, this.network.idLocal, this.protagonista.nombre);
+    this.publicarFichaEnPartida();
     this.configurarIntervalosHost();
     this.ui.registrarLogConexion(`Partida creada: ${id}`);
     this.ui.ocultarLobby();
@@ -708,6 +728,7 @@ class Game implements IGame {
     this.network.esHost = false;
     this.registrarEventoLog(`Uniéndote a la partida ${id}...`);
     this.network.setupWebRTCGuest(id, this);
+    this.publicarFichaEnPartida();
   }
 
   async admitirCandidatos() {

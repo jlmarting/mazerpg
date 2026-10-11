@@ -12,6 +12,8 @@ const ZONAS: ZonaAvatar[] = ['piel', 'pelo', 'torso', 'piernas'];
  */
 export class AvatarCompositor {
   private readonly cache: LRUCache<string>;
+  /** Bases que ya fallaron (sprite ausente, sin dimensiones, sin contexto): no reintentar ni reloguear. Clave `${clase}|${nombre}` — finita (sprites base × clases). */
+  private readonly fallos = new Set<string>();
 
   constructor(private readonly sm: SpriteManager) {
     this.cache = new LRUCache<string>(LRU_MAX, (clave) => this.sm.eliminarSprite(clave));
@@ -29,6 +31,14 @@ export class AvatarCompositor {
     const def = APARIENCIA_DEFECTO[clase] ?? APARIENCIA_DEFECTO.guerrero;
     if (mapeadas.every((z) => a.zonas[z] === def.zonas[z])) return null;
 
+    const baseFallida = `${clase}|${nombreSprite}`;
+    if (this.fallos.has(baseFallida)) return null;
+    const fallar = (msg: string, detalle?: unknown): null => {
+      console.warn(`AvatarCompositor: ${msg} (${nombreSprite})`, detalle ?? '');
+      this.fallos.add(baseFallida);
+      return null;
+    };
+
     const clave = `tinte:${claveVariante(clase, nombreSprite, a)}`;
     const hit = this.cache.get(clave);
     if (hit) return hit;
@@ -37,18 +47,17 @@ export class AvatarCompositor {
     try {
       info = this.sm.obtenerSprite(nombreSprite);
     } catch {
-      return null;
+      return fallar('sin acceso al sprite base');
     }
     if (!info || !info.image || !info.sw || !info.sh) {
-      console.warn(`AvatarCompositor: sin sprite base ${nombreSprite}`);
-      return null;
+      return fallar('sin sprite base o sin dimensiones');
     }
     try {
       const canvas = document.createElement('canvas');
       canvas.width = info.sw;
       canvas.height = info.sh;
       const ctx = canvas.getContext('2d');
-      if (!ctx) return null;
+      if (!ctx) return fallar('sin contexto 2d');
       ctx.drawImage(info.image, info.sx, info.sy, info.sw, info.sh, 0, 0, info.sw, info.sh);
       const img = ctx.getImageData(0, 0, info.sw, info.sh);
       aplicarTintes(img.data, origen, a.zonas, UMBRAL_TINTE);
@@ -57,8 +66,7 @@ export class AvatarCompositor {
       this.cache.set(clave, clave);
       return clave;
     } catch (e) {
-      console.warn(`AvatarCompositor: fallo componiendo ${nombreSprite}`, e);
-      return null;
+      return fallar('fallo componiendo', e);
     }
   }
 }

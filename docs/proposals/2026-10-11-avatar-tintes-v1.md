@@ -26,7 +26,7 @@ interface AparienciaAvatar { formato: 1; zonas: Record<ZonaAvatar, string>; } //
 - **Saneado** `sanearApariencia(a: unknown): AparienciaAvatar` en TODA frontera (sesión, handshake, Firestore). Dato malo → defecto; el render nunca recibe dato inválido.
 - **Protocolo:** `apariencia?` opcional en handshake (`NetworkManager`, `NetworkManagerHttp`; retrocompat, viejos lo ignoran) + `{ tipo: 'avatar', id, apariencia }` al cambiar. Nunca por tick (~60 bytes).
 - **Persistencia local:** `mazeRPG_lastSession.avatar?` (ausente = defecto; migración implícita).
-- **Persistencia en partida:** doc `partidas/{id}/jugadores/{idLocal}` = `{ nick, clase, apariencia, actualizado }`, `set(merge:true)` al unirse/cambiar; pre-hidrata antes del handshake (el handshake manda en conflicto). Extender `firestore.rules` al subnivel (lectura miembros, escritura propio id).
+- **Persistencia en partida:** doc `partidas/{id}/jugadores/{idLocal}` = `{ nick, clase, apariencia, actualizado }`, `set(merge:true)` al unirse/cambiar; pre-hidrata antes del handshake (el handshake manda en conflicto). Reglas `jugadores/{jid}` con forma válida (sin auth no hay identidad que exigir: paridad con `mundos/`; el handshake cubre la denegación).
 
 ## §2 Compositor + render
 

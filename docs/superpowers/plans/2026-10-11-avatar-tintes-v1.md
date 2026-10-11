@@ -130,3 +130,17 @@
 - [ ] **Step 2: Dos clientes** — Cliente A (nuevo) + cliente B (viejo, `main` sin campo): A personaliza → B lo ve por defecto y no rompe; B se ve en A por defecto; recarga con sesión; reunirse pre-hidrata desde Firestore; denegar reglas (experimento) → solo handshake, sin rotura.
 - [ ] **Step 3: Puerta de calidad** — Run: `pnpm test`, `pnpm build` — Expected: verde. FPS sin regresión perceptible (caché LRU activa).
 - [ ] **Step 4: Commit final + constancia** — Commit de restos (`test(avatar): ...` / `fix(avatar): ...`); anotar el turno de cierre en la ronda con los commits.
+
+### Task 7: Zonas color+espacio (rediseño tras revisión del mando)
+
+**Contexto:** el remapeo solo-color tiñe el muñeco entero (guerrero 96%; pelo=botas por tonos compartidos). Las zonas pasan a `tonos AND banda vertical`. Matriz espejo v2 validada por el mando. Sobrevive todo lo demás.
+
+**Files:**
+- Modify: `src/config/apariencia.ts` (tonos de piel + `BANDAS` + `bandasPara`), `src/core/avatarTintes.ts` (predicado espacial en `aplicarTintes`), `src/core/avatarTintes.helpers.spec.ts`, `src/core/AvatarCompositor.ts` (firma con estado), `src/core/Renderer.ts` + `src/main.ts` (pasan `estadoActual`/idle)
+
+**Interfaces:**
+- Produces: `BANDAS: Record<ZonaAvatar, [number, number]>` (pelo [0,.38], piel [.30,.48], torso [.40,.70], piernas [.62,1]); `bandasPara(estado: string): Record<ZonaAvatar, [number, number]> | null` (fallen/defending → null); `aplicarTintes(datos, ancho, alto, origen, bandas, destino, umbral = 40)`; `AvatarCompositor.obtenerVariante(nombreSprite, clase, estado, apariencia)`.
+
+- [ ] **Step 1: Actualizar el spec a la nueva firma + asserts espaciales** — Mismo píxel (tono pelo) dentro de banda → se tiñe; fuera de banda → intacto; piel con tonos propios. Run: `pnpm test` — Expected: FAIL.
+- [ ] **Step 2: Implementar predicado + tablas + firmas** — `aplicarTintes` exige tono AND banda; `bandasPara`; compositor resuelve bandas por estado (null → null/defecto); Renderer pasa `entidad.estadoActual`, preview pasa `'idle'`. Run: `pnpm test`, `pnpm build` — Expected: verde.
+- [ ] **Step 3: Re-matriz con el espejo y commit** — Reejecutar `/tmp/matriz_avatar_v2.py`; si difiere de lo validado, parar. Commit `feat(avatar): zonas color+espacio`.

@@ -494,7 +494,7 @@ class Game implements IGame {
     const nombreBase = sm.obtenerSprite(base) ? base : `${base}_0`;
     if (!sm.obtenerSprite(nombreBase)) return;
     const ef = aparienciaEfectiva(clase, apariencia);
-    const variante = this.renderer.avatarCompositor.obtenerVariante(nombreBase, clase, ef) || nombreBase;
+    const variante = this.renderer.avatarCompositor.obtenerVariante(nombreBase, clase, 'idle', ef) || nombreBase;
     const info = sm.obtenerSprite(variante);
     if (!info || !info.image) return;
     ctx.imageSmoothingEnabled = false;

@@ -257,7 +257,7 @@ export class Renderer {
         // (local y remoto por igual; null = ruta actual).
         if (!esNPC) {
             const variante = this.avatarCompositor.obtenerVariante(
-                keyADibujar, clase, aparienciaEfectiva(clase, entidad.apariencia));
+                keyADibujar, clase, entidad.estadoActual, aparienciaEfectiva(clase, entidad.apariencia));
             if (variante) keyADibujar = variante;
         }
         dibujado = this.spriteManager.dibujarSprite(this.ctx, keyADibujar, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);

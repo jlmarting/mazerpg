@@ -23,13 +23,17 @@ function dist2(a: [number, number, number], b: [number, number, number]): number
 }
 
 /**
- * Remapea in-situ los píxeles cercanos a un tono-origen al color destino de su zona,
- * conservando el sombreado (traslada el delta de luminosidad respecto al origen).
- * Transparentes (a === 0) y colores lejanos quedan intactos.
+ * Remapea in-situ los píxeles de una zona: tono cercano a un tono-origen
+ * Y dentro de su banda vertical ((y+0.5)/alto en [y0,y1]).
+ * Conserva el sombreado (traslada el delta de luminosidad respecto al origen).
+ * Transparentes, colores lejanos y píxeles fuera de banda quedan intactos.
  */
 export function aplicarTintes(
   datos: Uint8ClampedArray,
+  ancho: number,
+  alto: number,
   origen: Record<ZonaAvatar, string[]>,
+  bandas: Record<ZonaAvatar, [number, number]>,
   destino: Record<ZonaAvatar, string>,
   umbral = 40,
 ): void {
@@ -45,19 +49,25 @@ export function aplicarTintes(
     torso: hexARgb(destino.torso),
     piernas: hexARgb(destino.piernas),
   };
-  for (let i = 0; i < datos.length; i += 4) {
-    if (datos[i + 3] === 0) continue;
-    const p: [number, number, number] = [datos[i], datos[i + 1], datos[i + 2]];
-    let mejor: { zona: ZonaAvatar; rgb: [number, number, number]; d: number } | null = null;
-    for (const t of tonos) {
-      const d = dist2(p, t.rgb);
-      if (d <= u2 && (mejor === null || d < mejor.d)) mejor = { zona: t.zona, rgb: t.rgb, d };
+  for (let j = 0; j < alto; j++) {
+    const yf = (j + 0.5) / alto;
+    for (let i = 0; i < ancho; i++) {
+      const k = (j * ancho + i) * 4;
+      if (datos[k + 3] === 0) continue;
+      const p: [number, number, number] = [datos[k], datos[k + 1], datos[k + 2]];
+      let mejor: { zona: ZonaAvatar; rgb: [number, number, number]; d: number } | null = null;
+      for (const t of tonos) {
+        const [y0, y1] = bandas[t.zona] ?? [0, 1];
+        if (yf < y0 || yf > y1) continue;
+        const d = dist2(p, t.rgb);
+        if (d <= u2 && (mejor === null || d < mejor.d)) mejor = { zona: t.zona, rgb: t.rgb, d };
+      }
+      if (!mejor) continue;
+      const dst = destRgb[mejor.zona];
+      datos[k] = dst[0] + (p[0] - mejor.rgb[0]);
+      datos[k + 1] = dst[1] + (p[1] - mejor.rgb[1]);
+      datos[k + 2] = dst[2] + (p[2] - mejor.rgb[2]);
     }
-    if (!mejor) continue;
-    const dst = destRgb[mejor.zona];
-    datos[i] = dst[0] + (p[0] - mejor.rgb[0]);
-    datos[i + 1] = dst[1] + (p[1] - mejor.rgb[1]);
-    datos[i + 2] = dst[2] + (p[2] - mejor.rgb[2]);
   }
 }
 

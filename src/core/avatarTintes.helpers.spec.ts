@@ -9,7 +9,7 @@ import {
   hexARgb,
   conservarCoincidencias,
 } from './avatarTintes';
-import { PALETAS, APARIENCIA_DEFECTO } from '../config/apariencia';
+import { PALETAS, APARIENCIA_DEFECTO, bandasPara } from '../config/apariencia';
 
 let ok = 0;
 let total = 0;
@@ -36,17 +36,24 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(a.zonas.pelo === APARIENCIA_DEFECTO.mago.zonas.pelo, 'color fuera de paleta cae al defecto de la zona');
 }
 
-// aplicarTintes sobre 2x2: origen exacto, transparente, lejano, sombreado cercano
+// aplicarTintes 3x2 con bandas: pelo solo en mitad superior
 {
   const origen = { piel: [], pelo: ['#4a301a'], torso: [], piernas: [] };
+  const bandas = { piel: [0, 1] as [number, number], pelo: [0, 0.5] as [number, number], torso: [0, 1] as [number, number], piernas: [0, 1] as [number, number] };
   const destino = { piel: '#ffffff', pelo: '#ff0000', torso: '#ffffff', piernas: '#ffffff' };
-  // rgba: [origen exacto, transparente, color lejano, sombreado (+10,+4,+4 del origen)]
-  const datos = new Uint8ClampedArray([74, 48, 26, 255, 0, 0, 0, 0, 20, 60, 30, 255, 84, 52, 30, 255]);
-  aplicarTintes(datos, origen, destino, 40);
-  assert(datos[0] === 255 && datos[1] === 0 && datos[2] === 0 && datos[3] === 255, 'origen exacto se sustituye por destino exacto');
-  assert(datos[4] === 0 && datos[5] === 0 && datos[6] === 0 && datos[7] === 0, 'transparente queda intacto');
-  assert(datos[8] === 20 && datos[9] === 60 && datos[10] === 30 && datos[11] === 255, 'color lejano queda intacto');
-  assert(datos[12] === 255 && datos[13] === 4 && datos[14] === 4 && datos[15] === 255, 'sombreado cercano conserva su delta de luminosidad');
+  // fila0 (yf~0.25, dentro): [origen exacto, sombreado cercano, transparente]
+  // fila1 (yf~0.75, fuera):  [origen exacto, color lejano, origen exacto]
+  const datos = new Uint8ClampedArray([
+    74, 48, 26, 255, 84, 52, 30, 255, 0, 0, 0, 0,
+    74, 48, 26, 255, 20, 60, 30, 255, 74, 48, 26, 255,
+  ]);
+  aplicarTintes(datos, 3, 2, origen, bandas, destino, 40);
+  assert(datos[0] === 255 && datos[1] === 0 && datos[2] === 0 && datos[3] === 255, 'origen exacto en banda se sustituye por destino exacto');
+  assert(datos[4] === 255 && datos[5] === 4 && datos[6] === 4 && datos[7] === 255, 'sombreado cercano en banda conserva su delta de luminosidad');
+  assert(datos[8] === 0 && datos[9] === 0 && datos[10] === 0 && datos[11] === 0, 'transparente queda intacto');
+  assert(datos[12] === 74 && datos[13] === 48 && datos[14] === 26 && datos[15] === 255, 'mismo tono FUERA de banda queda intacto');
+  assert(datos[16] === 20 && datos[17] === 60 && datos[18] === 30 && datos[19] === 255, 'color lejano queda intacto');
+  assert(datos[20] === 74 && datos[21] === 48 && datos[22] === 26 && datos[23] === 255, 'segundo pixel fuera de banda intacto');
 }
 
 // LRU desaloja la entrada 65
@@ -108,7 +115,11 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(r.zonas.torso === PALETAS.torso[4], 'zona personalizada se conserva');
 }
 
-// fichaJugador: forma del doc partidas/{pid}/jugadores/{jid} (paridad con fichaOk de reglas)
+// bandasPara: caídos/defensa van en defecto; el resto usa tercios
+{
+  assert(bandasPara('fallen') === null, 'fallen no tiene bandas (defecto)');
+  assert(bandasPara('idle') !== null && bandasPara('idle')!.pelo[1] === 0.38, 'idle usa las bandas por defecto');
+}
 {
   const ap = APARIENCIA_DEFECTO.mago;
   const f = fichaJugador('Ciri', 'mago', ap);

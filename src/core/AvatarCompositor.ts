@@ -1,7 +1,7 @@
 import { SpriteManager } from './SpriteManager';
 import type { AparienciaAvatar, ZonaAvatar } from './avatarTintes';
 import { sanearApariencia, aplicarTintes, claveVariante, LRUCache } from './avatarTintes';
-import { ORIGEN_ZONA, APARIENCIA_DEFECTO, UMBRAL_TINTE, LRU_MAX } from '../config/apariencia';
+import { ORIGEN_ZONA, APARIENCIA_DEFECTO, UMBRAL_TINTE, LRU_MAX, bandasPara } from '../config/apariencia';
 
 const ZONAS: ZonaAvatar[] = ['piel', 'pelo', 'torso', 'piernas'];
 
@@ -21,13 +21,15 @@ export class AvatarCompositor {
 
   /**
    * Devuelve el nombre registrado de la variante (`tinte:<clave>`) o null
-   * (defecto, clase sin zonas mapeadas, o fallo) — el llamador dibuja la ruta actual.
+   * (defecto, sin zonas, estado sin bandas, o fallo) — el llamador dibuja la ruta actual.
    */
-  obtenerVariante(nombreSprite: string, clase: string, apariencia: AparienciaAvatar): string | null {
+  obtenerVariante(nombreSprite: string, clase: string, estado: string, apariencia: AparienciaAvatar): string | null {
     const a = sanearApariencia(apariencia, clase);
     const origen = ORIGEN_ZONA[clase] ?? ORIGEN_ZONA.guerrero;
     const mapeadas = ZONAS.filter((z) => (origen[z] ?? []).length > 0);
     if (mapeadas.length === 0) return null;
+    const bandas = bandasPara(estado);
+    if (!bandas) return null;
     const def = APARIENCIA_DEFECTO[clase] ?? APARIENCIA_DEFECTO.guerrero;
     if (mapeadas.every((z) => a.zonas[z] === def.zonas[z])) return null;
 
@@ -60,7 +62,7 @@ export class AvatarCompositor {
       if (!ctx) return fallar('sin contexto 2d');
       ctx.drawImage(info.image, info.sx, info.sy, info.sw, info.sh, 0, 0, info.sw, info.sh);
       const img = ctx.getImageData(0, 0, info.sw, info.sh);
-      aplicarTintes(img.data, origen, a.zonas, UMBRAL_TINTE);
+      aplicarTintes(img.data, info.sw, info.sh, origen, bandas, a.zonas, UMBRAL_TINTE);
       ctx.putImageData(img, 0, 0);
       this.sm.definirSpriteCanvas(clave, canvas);
       this.cache.set(clave, clave);

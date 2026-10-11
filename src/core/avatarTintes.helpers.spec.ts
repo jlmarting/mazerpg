@@ -68,7 +68,15 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(claveVariante('explorador', 'idle', a) !== claveVariante('explorador', 'idle', b), 'la clave cambia con la apariencia');
 }
 
-// hexARgb
+// LRU avisa al desalojar (el compositor borra el sprite desalojado)
+{
+  const desalojadas: string[] = [];
+  const cache = new LRUCache<string>(2, (k) => desalojadas.push(k));
+  cache.set('a', '1');
+  cache.set('b', '2');
+  cache.set('c', '3');
+  assert(desalojadas.join(',') === 'a', 'el desalojo notifica la clave expulsada');
+}
 {
   const [r, g, b] = hexARgb('#4a301a');
   assert(r === 74 && g === 48 && b === 26, 'hexARgb convierte bien');

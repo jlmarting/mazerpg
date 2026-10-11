@@ -98,7 +98,10 @@ export function claveVariante(clase: string, frame: string, a: AparienciaAvatar)
 /** LRU mínima para la caché del compositor (valores opacos, desalojo al superar el máximo). */
 export class LRUCache<T> {
   private readonly mapa = new Map<string, T>();
-  constructor(private readonly maximo = 64) {}
+  constructor(
+    private readonly maximo = 64,
+    private readonly alDesalojar?: (clave: string) => void,
+  ) {}
 
   get(clave: string): T | undefined {
     const v = this.mapa.get(clave);
@@ -115,6 +118,7 @@ export class LRUCache<T> {
       const primera = this.mapa.keys().next();
       if (primera.done) break;
       this.mapa.delete(primera.value);
+      this.alDesalojar?.(primera.value);
     }
   }
 }

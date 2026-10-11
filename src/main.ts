@@ -13,7 +13,7 @@ import { SignalingClient, crearSignalingClient, getSignalingUrl } from './networ
 import { eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName } from './utils/session';
-import { aparienciaEfectiva, aplicarAparienciaRemota } from './core/avatarTintes';
+import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia } from './core/avatarTintes';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import {
@@ -917,6 +917,7 @@ class Game implements IGame {
         name: this.protagonista.nombre,
         class: this.protagonista.clase,
         color: this.protagonista.color,
+        avatar: this.protagonista.apariencia,
         diff: this.config.dificultad
     }));
   }
@@ -929,6 +930,7 @@ class Game implements IGame {
     this.protagonista.nombre = data.name;
     this.protagonista.clase = data.class;
     this.protagonista.color = data.color;
+    this.protagonista.apariencia = sanearApariencia(data.avatar, data.class || 'guerrero');
     this.config.dificultad = data.diff || 'medio';
     this.protagonista.personajeCreado = true;
     (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;

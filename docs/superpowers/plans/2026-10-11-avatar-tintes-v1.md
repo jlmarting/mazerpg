@@ -70,7 +70,7 @@
 
 **Interfaces:**
 - Consumes: `sanearApariencia`, `aplicarTintes`, `claveVariante`, `LRUCache`, `UMBRAL_TINTE`, `LRU_MAX` (Task 1).
-- Produces: `AvatarCompositor.obtenerVariante(sm: SpriteManager, nombreSprite: string, clase: string, apariencia: AparienciaAvatar): string | null` (nombre registrado `tinte:<claveVariante>` o `null` si falla); `SpriteManager.definirSpriteCanvas(nombre, canvas)`, `SpriteManager.eliminarSprite(nombre)`.
+- Produces: `AvatarCompositor.obtenerVariante(nombreSprite, clase, apariencia): string | null` (el `SpriteManager` va inyectado en el constructor; nombre registrado `tinte:<claveVariante>` o `null` si falla); `SpriteManager.definirSpriteCanvas(nombre, canvas)`, `SpriteManager.eliminarSprite(nombre)`.
 
 - [ ] **Step 1: Test de `definirSpriteCanvas`/`eliminarSprite`** — Añadir a un spec node-compatible un test que falle sin los métodos (puede ser un spec mínimo `src/core/spriteManager.helpers.spec.ts` que importe solo tipos… `SpriteManager` usa `Image`/`document` solo dentro de métodos, no en import — verificar al implementar; si el import rompe node, el test se limita a `eliminarSprite` sobre mapa interno vía `definirSprite` simulado). Run: `pnpm test` — Expected: FAIL.
 - [ ] **Step 2: Implementar cambios de SpriteManager** — `SpriteInfo.image: CanvasImageSource`; `definirSpriteCanvas(nombre, canvas: HTMLCanvasElement)` registra `{image: canvas, sx: 0, sy: 0, sw: canvas.width, sh: canvas.height}`; `eliminarSprite(nombre)` borra del mapa. Run: `pnpm test` + `pnpm build` — Expected: PASS/verde.

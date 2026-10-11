@@ -1,5 +1,7 @@
 import { EntidadRPG } from './EntidadRPG';
 import { IGame } from '../types';
+import type { AparienciaAvatar } from '../core/avatarTintes';
+import { APARIENCIA_DEFECTO } from '../config/apariencia';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
@@ -9,6 +11,7 @@ export class Jugador extends EntidadRPG {
   ultimaVezHabilidad: { fireball: number, bow: number, food: number, radar: number, whirlwind: number, freeze: number } = { fireball: 0, bow: 0, food: 0, radar: 0, whirlwind: 0, freeze: 0 };
   clase: string = 'guerrero';
   color: string = '#007bff';
+  apariencia: AparienciaAvatar = { formato: 1, zonas: { ...APARIENCIA_DEFECTO.guerrero.zonas } };
   spriteKey: string = 'player_idle';
   personajeCreado: boolean = false;
 
@@ -18,7 +21,15 @@ export class Jugador extends EntidadRPG {
   }
 
   generarStats(nuevaClase?: string) {
-    if (nuevaClase) this.clase = nuevaClase;
+    if (nuevaClase && nuevaClase !== this.clase) {
+        this.clase = nuevaClase;
+        // La apariencia siempre es defecto de su clase hasta personalizar (Task 5):
+        // evita teñir una clase con los colores de otra.
+        const def = APARIENCIA_DEFECTO[nuevaClase] ?? APARIENCIA_DEFECTO.guerrero;
+        this.apariencia = { formato: 1, zonas: { ...def.zonas } };
+    } else if (nuevaClase) {
+        this.clase = nuevaClase;
+    }
 
     this.fuerza = Math.floor(Math.random() * 10) + 1;
     this.agilidad = Math.floor(Math.random() * 10) + 1;

@@ -1,6 +1,7 @@
 import {
   sanearApariencia,
   aparienciaEfectiva,
+  aplicarAparienciaRemota,
   aplicarTintes,
   claveVariante,
   LRUCache,
@@ -80,6 +81,19 @@ function assert(condicion: boolean, mensaje: string): void {
 {
   const [r, g, b] = hexARgb('#4a301a');
   assert(r === 74 && g === 48 && b === 26, 'hexARgb convierte bien');
+}
+
+// aplicarAparienciaRemota: frontera de red (handshake / mensaje avatar)
+{
+  const valida = { formato: 1 as const, zonas: { piel: '#f2c9a0', pelo: PALETAS.pelo[2], torso: PALETAS.torso[2], piernas: PALETAS.piernas[2] } };
+  const r1 = aplicarAparienciaRemota(undefined, valida, 'explorador');
+  assert(r1.zonas.pelo === PALETAS.pelo[2], 'handshake con apariencia valida se aplica');
+  const r2 = aplicarAparienciaRemota(valida, undefined, 'explorador');
+  assert(r2.zonas.pelo === valida.zonas.pelo, 'handshake sin apariencia conserva la actual');
+  const r2b = aplicarAparienciaRemota(valida, {}, 'explorador');
+  assert(r2b.zonas.pelo === APARIENCIA_DEFECTO.explorador.zonas.pelo, 'campo presente pero malformado cae al defecto');
+  const r3 = aplicarAparienciaRemota(valida, { formato: 99 }, 'mago');
+  assert(r3.zonas.torso === APARIENCIA_DEFECTO.mago.zonas.torso, 'handshake con basura cae al defecto');
 }
 
 console.log(`\n${ok}/${total} asserts de avatarTintes en verde`);

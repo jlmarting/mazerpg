@@ -90,6 +90,19 @@ export function aparienciaEfectiva(clase: string, a?: AparienciaAvatar): Aparien
   return sanearApariencia(a, clase);
 }
 
+/**
+ * Frontera de red: aplica la apariencia que trae un mensaje al estado actual.
+ * Ausente → conserva la actual (o defecto); basura → defecto de la clase.
+ */
+export function aplicarAparienciaRemota(
+  actual: AparienciaAvatar | undefined,
+  recibida: unknown,
+  clase: string,
+): AparienciaAvatar {
+  if (recibida === undefined) return actual ?? defectoDe(clase);
+  return sanearApariencia(recibida, clase);
+}
+
 export function claveVariante(clase: string, frame: string, a: AparienciaAvatar): string {
   const z = a.zonas;
   return `${clase}|${frame}|${z.piel},${z.pelo},${z.torso},${z.piernas}`.toLowerCase();

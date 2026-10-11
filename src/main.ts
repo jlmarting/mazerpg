@@ -13,6 +13,7 @@ import { SignalingClient, crearSignalingClient, getSignalingUrl } from './networ
 import { eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName } from './utils/session';
+import { aparienciaEfectiva, aplicarAparienciaRemota } from './core/avatarTintes';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import {
@@ -3013,6 +3014,7 @@ class Game implements IGame {
             if (!jInfo.entidad) {
                 jInfo.entidad = new JugadorRemoto(0, 0, msg.nick, idSujeto);
                 if (msg.clase) jInfo.entidad.clase = msg.clase;
+                jInfo.entidad.apariencia = aplicarAparienciaRemota(jInfo.entidad.apariencia, msg.apariencia, jInfo.entidad.clase);
                 if (msg.stats) {
                     jInfo.entidad.fuerza = msg.stats.fue;
                     jInfo.entidad.agilidad = msg.stats.agi;
@@ -3036,7 +3038,8 @@ class Game implements IGame {
                         nick: this.protagonista.nombre,
                         id: this.network.idLocal,
                         clase: this.protagonista.clase,
-                        stats: hostStats
+                        stats: hostStats,
+                        apariencia: aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia)
                     }));
                 }
             } else {
@@ -3044,6 +3047,15 @@ class Game implements IGame {
                 this.network.enviarMensaje({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.network.idLocal, stats });
             }
             break;
+        case 'avatar': {
+            const avInfo = this.network.jugadoresRemotos.get(idSujeto);
+            if (avInfo && avInfo.entidad) {
+                avInfo.entidad.apariencia = aplicarAparienciaRemota(avInfo.entidad.apariencia, msg.apariencia, avInfo.entidad.clase || 'guerrero');
+            } else {
+                this.registrarEventoLog(`Avatar recibido sin entidad (${idSujeto}); ignorado.`);
+            }
+            break;
+        }
         case 'handshake_ack':
             if (this.esHost) {
                 const jInfoAck = this.network.jugadoresRemotos.get(idSujeto);

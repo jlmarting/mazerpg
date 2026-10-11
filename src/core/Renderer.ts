@@ -1,6 +1,8 @@
 import { Celda } from '../world/Celda';
 import { CameraOffset, GameConfig, IEntidadRPG } from '../types';
 import { SpriteManager } from './SpriteManager';
+import { AvatarCompositor } from './AvatarCompositor';
+import { aparienciaEfectiva } from './avatarTintes';
 import { carasHaciaSuelo, hashCelda, varianteSuelo } from '../world/autotile';
 
 /**
@@ -11,6 +13,7 @@ export class Renderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   public spriteManager: SpriteManager;
+  public avatarCompositor: AvatarCompositor;
   private mazeCache: HTMLCanvasElement | null = null;
   private mazeCacheCtx: CanvasRenderingContext2D | null = null;
   private mazeCacheValida: boolean = false;
@@ -24,6 +27,7 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.spriteManager = new SpriteManager();
+    this.avatarCompositor = new AvatarCompositor(this.spriteManager);
   }
 
   /**
@@ -249,6 +253,13 @@ export class Renderer {
 
     let dibujado = false;
     if (keyADibujar) {
+        // Avatar personalizado: variante tineada si la apariencia no es el defecto
+        // (local y remoto por igual; null = ruta actual).
+        if (!esNPC) {
+            const variante = this.avatarCompositor.obtenerVariante(
+                keyADibujar, clase, aparienciaEfectiva(clase, entidad.apariencia));
+            if (variante) keyADibujar = variante;
+        }
         dibujado = this.spriteManager.dibujarSprite(this.ctx, keyADibujar, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
     }
 

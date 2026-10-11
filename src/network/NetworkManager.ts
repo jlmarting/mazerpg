@@ -1,4 +1,5 @@
 import { IGame } from '../types';
+import { aparienciaEfectiva } from '../core/avatarTintes';
 
 /**
  * Gestor de red para comunicaciones peer-to-peer (P2P) usando WebRTC.
@@ -75,7 +76,8 @@ export class NetworkManager {
             const nick = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
             const clase = game.protagonista.clase;
             const stats = { fue: game.protagonista.fuerza, agi: game.protagonista.agilidad, int: game.protagonista.inteligencia };
-            this.enviarMensaje({ tipo: 'handshake', nick, id: this.idLocal, clase, stats });
+            const apariencia = aparienciaEfectiva(game.protagonista.clase || 'guerrero', game.protagonista.apariencia);
+            this.enviarMensaje({ tipo: 'handshake', nick, id: this.idLocal, clase, stats, apariencia });
 
             if (this.esHost) {
                 game.registrarEventoLog(`Jugador conectado (${idEmisor})`);

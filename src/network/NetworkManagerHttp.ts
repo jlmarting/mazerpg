@@ -1,4 +1,5 @@
 import { IGame } from '../types';
+import { aparienciaEfectiva } from '../core/avatarTintes';
 import { SignalingClient, SignalPayload } from './SignalingClient';
 
 export interface RemotePlayer {
@@ -43,7 +44,8 @@ export class NetworkManagerHttp {
             const nick = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
             const clase = game.protagonista.clase;
             const stats = { fue: game.protagonista.fuerza, agi: game.protagonista.agilidad, int: game.protagonista.inteligencia };
-            this.enviarMensaje({ tipo: 'handshake', nick, id: this.idLocal, clase, stats });
+            const apariencia = aparienciaEfectiva(game.protagonista.clase || 'guerrero', game.protagonista.apariencia);
+            this.enviarMensaje({ tipo: 'handshake', nick, id: this.idLocal, clase, stats, apariencia });
 
             if (this.esHost) {
                 game.registrarEventoLog(`Jugador conectado (${idEmisor})`);

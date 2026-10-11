@@ -1,5 +1,6 @@
 import { Celda } from '../world/Celda';
 import type { NodoMundo } from '../world/mundo';
+import type { AparienciaAvatar } from '../core/avatarTintes';
 
 export type { ZonaAvatar, AparienciaAvatar } from '../core/avatarTintes';
 
@@ -51,6 +52,7 @@ export interface IEntidadRPG {
     clase?: string;
     tipo?: string;
     color?: string;
+    apariencia?: AparienciaAvatar;
 
     recibirDano(cantidad: number, atacante?: IEntidadRPG | null): number;
     obtenerIniciativa(): number;

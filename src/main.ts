@@ -149,9 +149,9 @@ class Game implements IGame {
     });
 
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.motorIniciado && !this.network.multiplayerActivo) {
+      if (document.hidden && this.motorIniciado && !this.mpActivo) {
         this.pausarJuego();
-      } else if (!document.hidden && this.juegoPausado && !this.network.multiplayerActivo) {
+      } else if (!document.hidden && this.juegoPausado && !this.mpActivo) {
         this.reanudarJuego();
       }
     });
@@ -363,7 +363,7 @@ class Game implements IGame {
     window.addEventListener('keyup', (e) => {
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
             this.protagonista.estaCaminando = false;
-            if (this.network && this.network.multiplayerActivo) {
+            if (this.mpActivo) {
                 if (this.esHost) {
                     // El host ya actualiza a su protagonista localmente
                 } else {
@@ -916,7 +916,7 @@ class Game implements IGame {
     }, 10000);
 
     this.firebaseNpcSyncInterval = window.setInterval(() => {
-        if (this.esHost && this.network.multiplayerActivo) {
+        if (this.esHost && this.mpActivo) {
             // Sincronizar NPCs
             const listaNpcs = this.listaDeEnemigos.map(e => ({
                 id: (e as any).id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
@@ -987,7 +987,7 @@ class Game implements IGame {
 
   abandonarPartida() {
     if (confirm("¿Seguro que quieres abandonar la partida?")) {
-        if (this.esHost && this.network.multiplayerActivo) {
+        if (this.esHost && this.mpActivo) {
             this.enviarMultiplayer({ tipo: 'host_migration_trigger', reason: 'host_abandoned' });
         }
         this.detenerMotorJuego();
@@ -1275,7 +1275,7 @@ class Game implements IGame {
         const color = (e instanceof EnemigoNPC) ? "#00ff00" : "#ff0000";
         this.ui.crearTextoFlotanteEnCelda(e.fila, e.columna, `-${amount}`, color, this);
 
-        if (e instanceof EnemigoNPC && this.network && this.network.multiplayerActivo) {
+        if (e instanceof EnemigoNPC && this.mpActivo) {
             if (this.esHost) {
                 this.enviarMultiplayer({
                     tipo: 'npc_update',
@@ -1293,7 +1293,7 @@ class Game implements IGame {
             }
         }
 
-        if (e instanceof JugadorRemoto && this.esHost && this.network && this.network.multiplayerActivo) {
+        if (e instanceof JugadorRemoto && this.esHost && this.mpActivo) {
             this.enviarMultiplayer({
                 tipo: 'hp_loss',
                 id: e.id,
@@ -1449,7 +1449,7 @@ class Game implements IGame {
         } else {
           this.fpsBajoContador += delta / 1000;
         }
-        if (this.fpsBajoContador >= this.FPS_UMBRAL_SEGUNDOS && !this.network.multiplayerActivo) {
+        if (this.fpsBajoContador >= this.FPS_UMBRAL_SEGUNDOS && !this.mpActivo) {
           this.registrarEventoLog(`⚠️ FPS bajo detectado (${fps.toFixed(1)}). Pausando automáticamente.`);
           this.pausarJuego();
           return;
@@ -1744,7 +1744,7 @@ class Game implements IGame {
                 title.textContent = "HAS CAÍDO";
                 title.style.color = "#ff4444";
                 msg.textContent = "¿Quieres volver a intentarlo?";
-                if (this.esHost && this.network.multiplayerActivo) {
+                if (this.esHost && this.mpActivo) {
                     this.enviarMultiplayer({ tipo: 'host_migration_trigger', reason: 'death' });
                     this.iniciarEleccionHost();
                 }
@@ -1764,7 +1764,7 @@ class Game implements IGame {
 
     const ahora = Date.now();
 
-    if (!this.network.multiplayerActivo && !this.esHost) {
+    if (!this.mpActivo && !this.esHost) {
         this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
     }
 
@@ -1865,6 +1865,17 @@ class Game implements IGame {
     if (id === this.idLocalActivo) return this.protagonista;
     const j = this.remotosActivos.get(id);
     return j ? j.entidad : null;
+  }
+
+  /** Garantiza que haya una entidad remota para `id` (robustez ante handshake perdido). */
+  asegurarEntidadRemota(id: string): void {
+    const m = this.remotosActivos;
+    let j = m.get(id);
+    if (!j) { j = { pc: null, dc: null, entidad: null, unsubscribes: [] }; m.set(id, j); }
+    if (!j.entidad) {
+      j.entidad = new JugadorRemoto(0, 0, 'Invitado', id);
+      this.setupEntity(j.entidad);
+    }
   }
 
   enBurbujaSim(fila: number, columna: number): boolean {
@@ -2320,7 +2331,7 @@ class Game implements IGame {
   }
 
   teletransportarAliados(lider: any, esLocal: boolean) {
-    if (!this.esHost && this.network.multiplayerActivo && esLocal) {
+    if (!this.esHost && this.mpActivo && esLocal) {
         this.enviarMultiplayer({ tipo: 'request_guard_teleport' });
     }
 
@@ -2389,7 +2400,7 @@ class Game implements IGame {
         if (ahora - emisor.ultimaVezHabilidad.freeze < cooldown) return;
         emisor.ultimaVezHabilidad.freeze = ahora;
 
-        if (this.network && this.network.multiplayerActivo) {
+        if (this.mpActivo) {
             if (this.esHost) {
                 this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'freeze' } });
             } else {
@@ -2408,7 +2419,7 @@ class Game implements IGame {
         duracion: duracion
     });
 
-    if (this.esHost || (this.network && !this.network.multiplayerActivo)) {
+    if (this.esHost || (!this.mpActivo)) {
         // Inmovilizar NPCs en el área
         this.listaDeEnemigos.forEach(e => {
             if (e.estaVivo && Math.sqrt(Math.pow(e.fila - emisor.fila, 2) + Math.pow(e.columna - emisor.columna, 2)) <= 4) {
@@ -2418,7 +2429,7 @@ class Game implements IGame {
         });
     }
 
-    if (this.esHost && this.network && this.network.multiplayerActivo) {
+    if (this.esHost && this.mpActivo) {
         this.enviarMultiplayer({
             tipo: 'freeze_spawn',
             x: emisor.columna,
@@ -2437,7 +2448,7 @@ class Game implements IGame {
         if (ahora - emisor.ultimaVezHabilidad.whirlwind < cooldown) return;
         emisor.ultimaVezHabilidad.whirlwind = ahora;
 
-        if (this.network && this.network.multiplayerActivo) {
+        if (this.mpActivo) {
             if (this.esHost) {
                 this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'whirlwind' } });
             } else {
@@ -2454,7 +2465,7 @@ class Game implements IGame {
         duracion: 800
     });
 
-    if (this.esHost || (this.network && !this.network.multiplayerActivo)) {
+    if (this.esHost || (!this.mpActivo)) {
         // Daño a NPCs circundantes
         const danoExtra = 1 + (10 * emisor.fuerza / 100);
         this.listaDeEnemigos.forEach(e => {
@@ -2468,7 +2479,7 @@ class Game implements IGame {
         });
     }
 
-    if (this.esHost && this.network && this.network.multiplayerActivo) {
+    if (this.esHost && this.mpActivo) {
         this.enviarMultiplayer({
             tipo: 'whirlwind_spawn',
             x: emisor.columna,
@@ -2485,7 +2496,7 @@ class Game implements IGame {
         if (ahora - emisor.ultimaVezHabilidad.fireball < cooldown) return;
         emisor.ultimaVezHabilidad.fireball = ahora;
 
-        if (this.network && this.network.multiplayerActivo) {
+        if (this.mpActivo) {
             if (this.esHost) {
                 this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'fireball' } });
             } else {
@@ -2523,12 +2534,12 @@ class Game implements IGame {
             targetY: target.fila,
             targetRef: target,
             pct: 0,
-            aplicarDano: this.esHost || !this.network.multiplayerActivo,
+            aplicarDano: this.esHost || !this.mpActivo,
             color: "#ff4500"
         });
         this.registrarEventoLog(`¡${emisor.nombre} lanza una bola de fuego!`);
 
-        if (this.esHost && this.network.multiplayerActivo) {
+        if (this.esHost && this.mpActivo) {
             this.enviarMultiplayer({
                 tipo: 'fireball_spawn',
                 ex: emisor.columna,
@@ -2555,7 +2566,7 @@ class Game implements IGame {
 
   /** Envía a los peers por el transporte multijugador activo (Firebase o HTTP). */
   private enviarMultiplayer(msg: any, exceptId: string | null = null): void {
-    if (this.network && this.network.multiplayerActivo) this.network.enviarMensaje(msg, exceptId);
+    if (this.mpActivo) this.network.enviarMensaje(msg, exceptId);
     if (this.networkHttp && this.networkHttp.multiplayerActivo) this.networkHttp.enviarMensaje(msg, exceptId);
   }
 
@@ -2569,6 +2580,11 @@ class Game implements IGame {
   private get idLocalActivo(): string {
     if (this.networkHttp && this.networkHttp.multiplayerActivo) return this.networkHttp.idLocal;
     return this.network.idLocal;
+  }
+
+  /** ¿Hay algún transporte multijugador activo (Firebase o HTTP)? */
+  private get mpActivo(): boolean {
+    return !!(this.network && this.network.multiplayerActivo) || !!(this.networkHttp && this.networkHttp.multiplayerActivo);
   }
 
   /** Difunde un mensaje de loot por todos los transportes activos. */
@@ -2611,7 +2627,7 @@ class Game implements IGame {
           }
           emisor.ultimaVezHabilidad.bow = ahora;
 
-          if (this.network && this.network.multiplayerActivo) {
+          if (this.mpActivo) {
               if (this.esHost) {
                   this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'bow' } });
               } else {
@@ -2649,13 +2665,13 @@ class Game implements IGame {
               targetRef: target,
               pct: 0,
               speed: 0.05,
-              aplicarDano: this.esHost || !this.network.multiplayerActivo,
+              aplicarDano: this.esHost || !this.mpActivo,
               color: "#aaa",
               esFlecha: true
           });
           this.registrarEventoLog(`¡${emisor.nombre} dispara una flecha!`);
 
-          if (this.esHost && this.network.multiplayerActivo) {
+          if (this.esHost && this.mpActivo) {
               this.enviarMultiplayer({
                   tipo: 'arrow_spawn',
                   ex: emisor.columna,
@@ -2675,7 +2691,7 @@ class Game implements IGame {
           if (ahora - emisor.ultimaVezHabilidad.food < cooldown) return;
           emisor.ultimaVezHabilidad.food = ahora;
 
-          if (this.network && this.network.multiplayerActivo) {
+          if (this.mpActivo) {
               if (this.esHost) {
                   this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'create_food' } });
               } else {
@@ -2685,7 +2701,7 @@ class Game implements IGame {
           }
       }
 
-      if (!this.esHost && this.network.multiplayerActivo) return;
+      if (!this.esHost && this.mpActivo) return;
 
       let f: number, c: number;
       let intentos = 0;
@@ -2713,7 +2729,7 @@ class Game implements IGame {
           this.registrarEventoLog(`${emisor.nombre} ha creado ${alimento.tipo}.`);
           this.ui.crearTextoFlotanteEnCelda(f, c, "¡COMIDA!", "#ffcc00", this);
 
-          if (this.esHost && this.network.multiplayerActivo) {
+          if (this.esHost && this.mpActivo) {
               this.enviarMultiplayer({
                   tipo: 'object_spawned',
                   f, c, a: alimento,
@@ -2731,7 +2747,7 @@ class Game implements IGame {
         if (ahora - emisor.ultimaVezHabilidad.radar < cooldown) return;
         emisor.ultimaVezHabilidad.radar = ahora;
 
-        if (this.network && this.network.multiplayerActivo) {
+        if (this.mpActivo) {
             if (this.esHost) {
                 this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'radar' } });
             } else {
@@ -2780,7 +2796,7 @@ class Game implements IGame {
 
     this.radares.push(radarObj);
 
-    if (this.esHost && this.network && this.network.multiplayerActivo) {
+    if (this.esHost && this.mpActivo) {
         this.enviarMultiplayer({
             tipo: 'radar_spawn',
             x: emisor.columna,

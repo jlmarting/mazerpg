@@ -41,6 +41,8 @@ export class NetworkManagerHttp {
         canal.addEventListener('open', () => {
             this.activo = true;
             this.multiplayerActivo = true;
+            // Robustez: asegura la entidad remota aunque el handshake se pierda.
+            (game as any).asegurarEntidadRemota?.(idEmisor);
             const nick = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
             const clase = game.protagonista.clase;
             const stats = { fue: game.protagonista.fuerza, agi: game.protagonista.agilidad, int: game.protagonista.inteligencia };
@@ -109,6 +111,8 @@ export class NetworkManagerHttp {
 
         dc.addEventListener('open', () => {
             game.ui.registrarLogConexion(`✅ CANAL P2P ABIERTO con ${guestId}.`);
+            // Envío robusto del mundo: no depende de la cadena de handshake.
+            (game as any).enviarMapaAlInvitado(guestId);
             const unsub = this.unsubscribes.get(guestId);
             if (unsub) { unsub(); this.unsubscribes.delete(guestId); }
             pc.onicecandidate = null;

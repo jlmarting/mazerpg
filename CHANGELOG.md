@@ -8,7 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Modal de personaje compacto: caja de 1076px a 667px — GUARDAR visible sin scroll desde 667px de alto, piezas en fila y stats en línea; tema mazmorra aplicado a los modales (vars `--oro*` movidas a `:root`, antes no heredaban desde `#lobby`) (`75f45f1`)
+- **Inventario y equipamiento**: catálogo de items (`ItemDef`: tipo equipo/consumible/material, ranura, manos, bonos, peso, dano, pieza visual) + dominio puro (7 ranuras, reglas de empuñadura, bonos, stats efectivos = base + equipo, mochila con peso) (`3bd12c8`, `f8a959a`, `7296804`)
+- **Panel de equipo y mochila** estilo RPG clásico (muñeco + bulto) con **arrastrar y soltar** (equipar/desequipar, validación por ranura, clic como fallback), stats `base→total` y preview; **usable in-game** (botón 🎒 / tecla E) (`1c2692d`, `73a172e`, `ba173b7`)
+- **Loot**: los mobs sueltan botín al suelo que se recoge al pisar (tabla ponderada `config/botin.ts`), **propiedad real** (bulto con kit inicial que se llena al lootear, equipo acumulable) (`f462393`, `4b7bcd7`)
+- **Pico** empuñable (habilita cavar, −1 al daño) y **flechas como munición** del arco; **peso máximo según fuerza** con **penalizaciones de sobrecarga** (ataque/defensa/movimiento) (`14734ed`, `a6a8df7`, `5451cfd`)
+- **Persistencia** del equipo y la mochila en la sesión guardada (contrato versionado `InventarioGuardado`, migración de IDs legados) (`6f716b4`, `54658f8`, `7512070`)
+- Multijugador **SERVIDOR LOCAL**: conexión + **admisión automática** (check cada 10 s), mapa, movimiento y **efectos sincronizados** en host e invitados (`328d239`, `2f22fc7`, `099357f`, `1f5b406`, `b6eb3e0`, `23a6fc9`)
 - Piezas de avatar por capas v1: casco, melena, peto y botas componibles sobre el sprite intacto (arte programático `scripts/gen_piezas.py` + registro `piezas.json`), ranuras on/off en el modal, kit unisex con migración de IDs guardados y casco v2 (`1a352cd`, `f8a959a`, `498ef26`, `7296804`)
 - Género de punta a punta: sheets femeninos (`players_f`, `hero_custom_f`, `jugadoras`), selector HOMBRE/MUJER en la creación de personaje y base F ligera (dimorfismo resuelto en piezas) (`7d017f7`, `f049919`, `9682ecd`)
 - Avatar con tintes por zonas (piel, pelo, torso, piernas): compositor canvas con remapeo de paletas por clase, editor en el modal de personaje con preview, persistencia en sesión/partida y apariencia viajando en el protocolo a remotos (`3d5469b`…`7bec1bd`)
@@ -72,6 +77,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Firebase unificado al proyecto `mazerpg-b2aa4` (`.firebaserc`, `projectId` y service account) (`0a354b4`)
 
 ### Fixed
+- Multijugador SERVIDOR LOCAL: el invitado no conectaba, se quedaba en el spinner, no recibía el mapa y no sincronizaba movimiento ni efectos — el código estaba cableado al transporte Firebase en vez del activo HTTP (`9711054`, `c3f862b`, `1f5b406`, `b6eb3e0`, `23a6fc9`)
+- Errores de Firestore se muestran en el front (banner + log) y el flujo hace fail-fast (no se crea sala si Firebase falla) (`773f159`, `1728f5c`)
+- Modal de personaje compacto: caja de 1076px a 667px — GUARDAR visible sin scroll desde 667px de alto; tema mazmorra aplicado a los modales (vars `--oro*` movidas a `:root`) (`75f45f1`)
 - Host-authoritative en portales: una entidad remota (invitada) o un NPC que pisa el portal del host ya no conmuta el nodo activo global — el anfitrión cruza y el reenvío lleva a los invitados al nuevo nodo; además, un NPC con coordenadas fuera de la rejilla activa se abstiene y lo delata con `[DIAG]` en vez de tumbar el game loop
 - Crash del game loop del invitado al cruzar el host de nodo: el estado completo (mapa v2 + enemigos + objetos) se reenvía tras cada cruce con el nodo ya rehidratado, la foto de enemigos se acota a las dims del destino (`restaurarEnemigos`) y el invitado descarta NPCs con coordenadas fuera de su rejilla
 - Arbitraje LWW real: el tick del autor viaja por red y se respeta entre clientes (`67fe781`)

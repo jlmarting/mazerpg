@@ -1183,6 +1183,9 @@ class Game implements IGame {
   iniciarMotorJuego() {
     if (this.motorIniciado) return;
     this.motorIniciado = true;
+    // Quita el overlay de "conectando" (p. ej. el invitado ya tiene el canal P2P).
+    this.lobbyManager.hideConnecting();
+    this.ui.ocultarLobby();
     this.iniciarDiagnostico();
 
     // Mostrar menús

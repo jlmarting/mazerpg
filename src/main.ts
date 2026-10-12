@@ -500,12 +500,14 @@ class Game implements IGame {
   equiparItem(id: string): void {
     this.protagonista.equiparItem(id);
     this.lobbyManager.renderEquipo();
+    this.guardarSesionActual();
     this.registrarEventoLog(`Equipado: ${id}`);
   }
 
   desequiparRanura(ranura: import('./core/equipo').RanuraEquipo): void {
     this.protagonista.desequiparRanura(ranura);
     this.lobbyManager.renderEquipo();
+    this.guardarSesionActual();
   }
 
   consumirItem(id: string): void {
@@ -525,6 +527,7 @@ class Game implements IGame {
     const curado = this.protagonista.vidaActual - antes;
     this.registrarEventoLog(curado > 0 ? `Usado ${id}: +${curado} vida` : `Usado ${id}`);
     this.lobbyManager.renderEquipo();
+    this.guardarSesionActual();
   }
 
   /** Difunde la apariencia actual por todos los transportes activos (cambio en caliente). */
@@ -1040,8 +1043,19 @@ class Game implements IGame {
         class: this.protagonista.clase,
         color: this.protagonista.color,
         avatar: this.protagonista.apariencia,
+        inventario: this.protagonista.exportarInventario(),
         diff: this.config.dificultad
     }));
+  }
+
+  /** Re-guarda la sesión actual (si existe) preservando rol/roomId — al cambiar equipo/mochila. */
+  private guardarSesionActual(): void {
+    const dataStr = localStorage.getItem('mazeRPG_lastSession');
+    if (!dataStr) return;
+    try {
+      const d = JSON.parse(dataStr);
+      this.guardarSesion(d.rol, d.roomId ?? null);
+    } catch { /* sesión corrupta: no re-guarda */ }
   }
 
   async reanudarPartida() {
@@ -1053,6 +1067,7 @@ class Game implements IGame {
     this.protagonista.clase = data.class;
     this.protagonista.color = data.color;
     this.protagonista.apariencia = sanearApariencia(data.avatar, data.class || 'guerrero');
+    this.protagonista.importarInventario(data.inventario);
     this.config.dificultad = data.diff || 'medio';
     this.protagonista.personajeCreado = true;
     (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
@@ -2492,6 +2507,7 @@ class Game implements IGame {
       .map((b) => `${ITEMS[b.id]?.nombre ?? b.id}${b.cantidad > 1 ? ' ×' + b.cantidad : ''}`)
       .join(', ');
     this.registrarEventoLog(`¡Botín: ${txt}!`);
+    this.guardarSesionActual();
     if (document.getElementById('equipoModal')?.style.display === 'flex') this.lobbyManager.renderEquipo();
   }
 

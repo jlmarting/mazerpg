@@ -15,6 +15,8 @@ import {
   consumir,
   piezasDeEquipo,
   destinoValido,
+  capacidadMaxima,
+  penalizacionSobrecarga,
 } from './equipo';
 
 function assert(condicion: boolean, mensaje: string): void {
@@ -169,6 +171,21 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(!destinoValido('arco_largo', 'mano_izquierda', ITEMS), 'arco NO → mano izquierda (vive en la derecha)');
   assert(!destinoValido('pocion_vida', 'cabeza', ITEMS), 'consumible NO → ranura de equipo');
   assert(!destinoValido('no_existe', 'cabeza', ITEMS), 'desconocido NO → ranura');
+}
+
+// --- Capacidad por fuerza y penalización por sobrecarga ---
+{
+  assert(capacidadMaxima(10) === 30, 'capacidad = 10 + 2·fuerza');
+  assert(capacidadMaxima(0) === 10, 'fuerza 0 → 10');
+  const max = capacidadMaxima(10); // 30, mitad 15
+  assert(JSON.stringify(penalizacionSobrecarga(0, max)) === '{"ataque":0,"defensa":0,"movimiento":0}', 'sin peso, sin penalización');
+  assert(JSON.stringify(penalizacionSobrecarga(15, max)) === '{"ataque":0,"defensa":0,"movimiento":0}', 'justo en la mitad → sin penalización');
+  const mid = penalizacionSobrecarga(22.5, max);
+  assert(mid.ataque === 2 && mid.defensa === 2 && Math.abs(mid.movimiento - 0.5) < 1e-9, 'mitad de sobrecarga → 2/2/0.5');
+  const tope = penalizacionSobrecarga(30, max);
+  assert(tope.ataque === 3 && tope.defensa === 3 && tope.movimiento === 1, 'a tope → 3/3/1');
+  const exceso = penalizacionSobrecarga(100, max);
+  assert(exceso.ataque === 3 && exceso.movimiento === 1, 'por encima del máximo se acota a 3/1');
 }
 
 console.log('equipo.helpers: todas las comprobaciones pasan');

@@ -23,8 +23,27 @@ export const RANURAS_EQUIPO: RanuraEquipo[] = [
   'cabeza', 'torso', 'piernas', 'mano_derecha', 'mano_izquierda', 'escudo', 'accesorio',
 ];
 
-/** Capacidad de mochila (suma de pesos, kg) — valor inicial del piloto. */
+/** Capacidad de mochila (suma de pesos, kg) — valor por defecto del piloto. */
 export const CAPACIDAD_BASE = 20;
+
+/** Capacidad máxima de carga según la fuerza efectiva (kg). */
+export function capacidadMaxima(fuerza: number): number {
+  return 10 + 2 * fuerza;
+}
+
+/**
+ * Penalización por sobrecarga: nula hasta la mitad de la capacidad; desde ahí
+ * crece (lineal, acotada a 1) y golpea ataque, defensa y coste de movimiento.
+ */
+export function penalizacionSobrecarga(
+  peso: number,
+  capacidadMax: number,
+): { ataque: number; defensa: number; movimiento: number } {
+  const mitad = capacidadMax / 2;
+  if (capacidadMax <= 0 || peso <= mitad) return { ataque: 0, defensa: 0, movimiento: 0 };
+  const s = Math.min(1, (peso - mitad) / (capacidadMax - mitad));
+  return { ataque: Math.ceil(3 * s), defensa: Math.ceil(3 * s), movimiento: s };
+}
 
 export function equipoVacio(): Equipo {
   return { cabeza: null, torso: null, piernas: null, mano_derecha: null, mano_izquierda: null, escudo: null, accesorio: null };

@@ -115,13 +115,13 @@ export class NetworkManagerHttp {
 
         pc.onicecandidate = (event) => {
             if (event.candidate && this.idPartidaActual) {
-                this.enviarSenal('*', { type: 'ice', data: event.candidate.toJSON() });
+                this.enviarSenal(guestId, { type: 'ice', data: event.candidate.toJSON() });
             }
         };
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        await this.enviarSenal('*', { type: 'offer', data: { type: offer.type, sdp: offer.sdp } });
+        await this.enviarSenal(guestId, { type: 'offer', data: { type: offer.type, sdp: offer.sdp } });
 
         const unsub = this.signaling.onSignal((fromId, payload) => {
             if (fromId !== guestId) return;
@@ -167,23 +167,25 @@ export class NetworkManagerHttp {
             });
         };
 
+        let hostId: string | null = null;
         pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                this.enviarSenal('host', { type: 'ice', data: event.candidate.toJSON() });
+            if (event.candidate && hostId) {
+                this.enviarSenal(hostId, { type: 'ice', data: event.candidate.toJSON() });
             }
         };
 
-        const unsub = this.signaling.onSignal(async (_fromId, payload) => {
+        const unsub = this.signaling.onSignal(async (fromId, payload) => {
             if (payload.type === 'offer' && !pc.currentRemoteDescription) {
+                hostId = fromId; // el buzón del host es su id real (fromId del offer)
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.data));
-                
+
                 while(iceBuffer.length > 0) {
                     pc.addIceCandidate(new RTCIceCandidate(iceBuffer.shift()));
                 }
-                
+
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
-                await this.enviarSenal(this.idLocal, { type: 'answer', data: { type: answer.type, sdp: answer.sdp } });
+                await this.enviarSenal(hostId, { type: 'answer', data: { type: answer.type, sdp: answer.sdp } });
             } else if (payload.type === 'ice') {
                 if (pc.remoteDescription) {
                     pc.addIceCandidate(new RTCIceCandidate(payload.data));

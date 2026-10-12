@@ -84,6 +84,8 @@ class Game implements IGame {
   private heartbeatInterval: number | null = null;
   private npcSyncInterval: number | null = null;
   private guestPollingInterval: number | null = null;
+  /** Timer de auto-admisión (check "ADMITIR JUGADORES", cada 10 s). */
+  private autoAdmisionTimer: number | null = null;
   private persistenciaMundo: PersistenciaMundo | null = null;
   private housingDecision: 'usar' | 'nueva' | null = null;
   /** Espejo local (mazerpg.mundo.*) de la casa: SU persistencia cuando no hay Firebase. */
@@ -256,12 +258,7 @@ class Game implements IGame {
     });
 
     document.getElementById('btnChat')?.addEventListener('click', () => this.ui.toggleChat(this));
-
-    document.getElementById('btnAceptarJugadores')?.addEventListener('click', () => {
-      if (this.esHost && this.firebase.isInitialized()) {
-        this.admitirCandidatos();
-      }
-    });
+    document.getElementById('chkAdmitir')?.addEventListener('change', () => this.iniciarAutoAdmision());
 
     document.getElementById('btnLogPanel')?.addEventListener('click', () => {
       document.getElementById('logPanel')?.classList.toggle('visible');
@@ -616,7 +613,7 @@ class Game implements IGame {
     this.esHost = true;
     this.network.esHost = true;
     this.modoMultijugador = 'firebase';
-    (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
+    this.iniciarAutoAdmision();
     const hc = document.getElementById('hostControls');
     if (hc) hc.style.display = 'flex';
     this.crearPartidaFirestore();
@@ -630,7 +627,7 @@ class Game implements IGame {
     this.signaling = crearSignalingClient();
     this.networkHttp = new NetworkManagerHttp();
     this.networkHttp.setSignaling(this.signaling);
-    (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
+    this.iniciarAutoAdmision();
     const hc = document.getElementById('hostControls');
     if (hc) hc.style.display = 'flex';
     this.crearPartidaHttp();
@@ -837,34 +834,36 @@ class Game implements IGame {
             }
         });
     } else if (this.modoMultijugador === 'http' && this.networkHttp) {
-        this.ui.registrarLogConexion("Buscando Guests...");
-        
-        // Obtener lista inicial de Guests pendientes
+        // Obtener lista de Guests esperando y conectar cada uno
         const guests = await this.signaling!.getGuests(this.networkHttp.idPartidaActual!);
-        this.ui.registrarLogConexion(`Found ${guests.length} Guest(s) waiting`);
-        
         for (const guest of guests) {
             if (!this.networkHttp.jugadoresRemotos.has(guest.guestId)) {
-                this.ui.registrarLogConexion(`Connecting to ${guest.nick}...`);
+                this.ui.registrarLogConexion(`Conectando con ${guest.nick}...`);
                 await this.networkHttp.setupWebRTCHost(guest.guestId, this);
             }
         }
-        
-        // Iniciar polling para detectar nuevos Guests
-        this.signaling!.iniciarPolling(this.networkHttp.idLocal);
-        
-        // Polling adicional para detectar Guests que se unan mientras jugamos
-        this.guestPollingInterval = window.setInterval(async () => {
-            if (this.esHost && this.networkHttp) {
-                const newGuests = await this.signaling!.getGuests(this.networkHttp.idPartidaActual!);
-                for (const guest of newGuests) {
-                    if (!this.networkHttp.jugadoresRemotos.has(guest.guestId)) {
-                        this.ui.registrarLogConexion(`New player ${guest.nick} joined!`);
-                        await this.networkHttp.setupWebRTCHost(guest.guestId, this);
-                    }
-                }
-            }
-        }, 3000);
+    }
+  }
+
+  /** Auto-admisión: si el check está marcado, revisa candidatos cada 10 s (reemplaza al botón). */
+  private iniciarAutoAdmision(): void {
+    this.detenerAutoAdmision();
+    const chk = document.getElementById('chkAdmitir') as HTMLInputElement | null;
+    if (!chk?.checked || !this.esHost) return;
+    // Host HTTP: arranca el polling de su buzón para recibir answer/ice
+    if (this.modoMultijugador === 'http' && this.networkHttp) {
+      this.signaling!.iniciarPolling(this.networkHttp.idLocal);
+    }
+    this.admitirCandidatos();
+    this.autoAdmisionTimer = window.setInterval(() => {
+      if (this.esHost) this.admitirCandidatos();
+    }, 10000);
+  }
+
+  private detenerAutoAdmision(): void {
+    if (this.autoAdmisionTimer !== null) {
+      window.clearInterval(this.autoAdmisionTimer);
+      this.autoAdmisionTimer = null;
     }
   }
 
@@ -909,7 +908,7 @@ class Game implements IGame {
         });
         this.registrarEventoLog("Ahora eres el Host de la partida.");
         this.configurarIntervalosHost();
-        (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
+        this.iniciarAutoAdmision();
     }
   }
 
@@ -1114,7 +1113,7 @@ class Game implements IGame {
         this.persistenciaMundo = this.firebase.crearPersistenciaMundo(data.roomId);
         const hc = document.getElementById('hostControls');
         if (hc) hc.style.display = 'flex';
-        (document.getElementById('btnAceptarJugadores') as HTMLButtonElement).disabled = false;
+        this.iniciarAutoAdmision();
 
         const roomDisp = document.getElementById('roomDisplay');
         const roomIdVal = document.getElementById('roomIdVal');

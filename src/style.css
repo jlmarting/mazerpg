@@ -977,10 +977,14 @@ canvas {
 }
 
 /* ===== Tema Mazmorra: dragones y piedra (sesion 20261007a) ===== */
-#lobby {
+/* Vars en :root: los modales (#characterModal/#difficultyModal) están fuera de #lobby
+   y antes no las heredaban (gradiente del GUARDAR e h2 quedaban inválidos). */
+:root {
     --oro: #c9a227;
     --oro-brillo: #f0d060;
     --sangre: #8e1f1f;
+}
+#lobby {
     position: relative;
     background:
         radial-gradient(140px 70px at 12% 0%, rgba(255, 140, 40, 0.12), transparent 70%),
@@ -1184,3 +1188,44 @@ canvas {
 @media (prefers-reduced-motion: reduce) {
     #lobby::before { animation: none; }
 }
+
+/* Modal de personaje compacto: los botones inferiores deben caber en pantalla.
+   Baseline medido 2026-10-11: caja 1076px (GUARDAR cortado en 667/768/800p). */
+.character-modal-box {
+    max-height: 96vh;
+    overflow-y: auto;
+    padding: 16px 18px;
+    box-sizing: border-box;
+}
+.character-modal-box h2 { margin: 0 0 8px 0; font-size: 20px; }
+.modal-crest { display: none; }
+#modalPortrait { width: 56px; height: 56px; border-width: 2px; }
+.modal-hero-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+}
+.modal-hero-row #modalPortrait { margin: 0; }
+.modal-hero-row .avatar-preview { margin: 0; }
+.avatar-preview { margin-bottom: 8px; }
+.character-modal-box .form-group { margin-bottom: 7px; }
+.character-modal-box .form-label { margin-bottom: 3px; }
+.character-modal-box .char-color-input { height: 26px; }
+.avatar-zona-row { margin-bottom: 4px; }
+.avatar-swatch { width: 24px; height: 24px; }
+#avatarPiezas { display: flex; flex-wrap: wrap; gap: 4px; }
+#avatarPiezas .pieza-toggle { display: inline-block; width: auto; margin: 0; padding: 5px 8px; }
+.character-modal-box .stats-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 12px;
+    margin-bottom: 9px;
+}
+.character-modal-box .stats-box-title { display: none; }
+.character-modal-box .stats-grid-display { flex: 1; }
+.character-modal-box .stat-display-value { font-size: 18px; }
+.character-modal-box .btn-reroll { display: inline-block; width: auto; margin-top: 0; white-space: nowrap; }

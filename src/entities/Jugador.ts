@@ -122,8 +122,7 @@ export class Jugador extends EntidadRPG {
       const it = ITEMS[b.id];
       if (!it) continue;
       if (it.tipo === 'equipo') {
-        const puesto = Object.values(this.equipo).includes(b.id);
-        if (!puesto && !this.bulto.includes(b.id)) this.bulto.push(b.id);
+        this.bulto.push(b.id);
       } else {
         this.inventario = anadirAlInventario(this.inventario, b.id, b.cantidad);
       }

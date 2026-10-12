@@ -38,7 +38,7 @@ export function sanearEquipoGuardado(raw: unknown, cat: Record<string, ItemDef> 
     for (const id of obj.bulto) {
       if (typeof id !== 'string') continue;
       if (cat[id]?.tipo !== 'equipo') continue;
-      if (!bulto.includes(id)) bulto.push(id);
+      bulto.push(id);
     }
     out.bulto = bulto;
   }

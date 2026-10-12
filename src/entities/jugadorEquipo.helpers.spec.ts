@@ -81,11 +81,11 @@ j2.recibirBotin([
   { id: 'no_existe', cantidad: 1 },
 ]);
 assert(j2.bulto.includes('espada_corta'), 'el equipo del botín va al bulto');
-assert(j2.bulto.filter((x) => x === 'espada_corta').length === 1, 'el equipo no se duplica en el bulto');
+assert(j2.bulto.filter((x) => x === 'espada_corta').length === 2, 'el equipo se acumula en el bulto (duplicados)');
 assert(j2.inventario.flecha === 24, 'el material del botín se apila (20+4)');
 j2.equiparItem('daga');
 j2.recibirBotin([{ id: 'daga', cantidad: 1 }]);
-assert(j2.bulto.filter((x) => x === 'daga').length === 1, 'no duplica equipo ya poseído/equipado');
+assert(j2.bulto.filter((x) => x === 'daga').length === 2, 'el equipo ya poseído también se acumula');
 
 assert(j2.consumirFlecha() && j2.inventario.flecha === 23, 'el arco consume una flecha');
 j2.inventario = { ...j2.inventario, flecha: 0 };
@@ -112,5 +112,13 @@ j4.importarInventario(null);
 assert(j4.equipo.cabeza === 'casco_hierro', 'payload inválido no altera el estado');
 j4.importarInventario({ formato: 1, puesto: { cabeza: 'no_existe' }, bulto: ['basura'], mochila: { basura: 2 } });
 assert(j4.equipo.cabeza === null && j4.bulto.length === 0, 'payload saneado se aplica');
+
+// --- Pico: cavar requiere empuñarlo; −1 al daño ---
+const j5 = new Jugador('Pico');
+assert(j5.puedeCavar() === false, 'sin pico no se cava');
+assert(j5.danoArma() === 0, 'sin arma, daño 0');
+j5.equiparItem('pico');
+assert(j5.puedeCavar() === true, 'con el pico empuñado se cava');
+assert(j5.danoArma() === -1, 'el pico resta 1 al daño');
 
 console.log('jugadorEquipo.helpers: todas las comprobaciones pasan');

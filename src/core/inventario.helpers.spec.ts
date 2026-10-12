@@ -30,7 +30,7 @@ assert(g!.puesto.cabeza === 'casco_hierro', 'pieza válida se conserva');
 assert(g!.puesto.torso === null, 'id desconocido en ranura → null');
 assert(g!.puesto.mano_izquierda === null, 'arma a dos manos en mano izquierda → null');
 assert(g!.puesto.escudo === null, 'no-equipo en ranura de equipo → null');
-assert(JSON.stringify(g!.bulto) === JSON.stringify(['daga', 'espada_corta']), 'bulto: dedupe + solo equipo válido');
+assert(JSON.stringify(g!.bulto) === JSON.stringify(['daga', 'daga', 'espada_corta']), 'bulto: conserva duplicados + solo equipo válido');
 assert(g!.mochila.flecha === 3, 'mochila válida se conserva');
 assert(g!.mochila.pocion_vida === undefined && g!.mochila.basura === undefined && g!.mochila.espada_corta === undefined, 'mochila: descarta 0/desconocidos/equipo');
 

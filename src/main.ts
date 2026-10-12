@@ -1791,6 +1791,7 @@ class Game implements IGame {
     // is_update: el receptor limpia sus objetos antes del overlay para que el
     // host sea la verdad absoluta (imprescindible en re-syncs tras un cruce).
     jInfo.dc.send(JSON.stringify({ tipo: 'objetos', lista: objetos, is_update: true }));
+    jInfo.dc.send(JSON.stringify({ tipo: 'loot_sync', lista: this.dropsSuelo }));
 
     const posSpawn = this.obtenerPosicionInicioAleatoria();
     jInfo.dc.send(JSON.stringify({ tipo: 'spawn', f: posSpawn.f, c: posSpawn.c }));
@@ -2527,10 +2528,19 @@ class Game implements IGame {
     if (document.getElementById('equipoModal')?.style.display === 'flex') this.lobbyManager.renderEquipo();
   }
 
+  /** Difunde un mensaje de loot por todos los transportes activos. */
+  private difundirLoot(msg: any): void {
+    if (this.network && this.network.multiplayerActivo) this.network.enviarMensaje(msg);
+    if (this.networkHttp && this.networkHttp.multiplayerActivo) this.networkHttp.enviarMensaje(msg);
+  }
+
   /** Suelta botín en el suelo (al morir un mob): queda como drop que se recoge al pisar. */
   soltarBotin(f: number, c: number, veces: number = 1 + Math.floor(Math.random() * 2)): void {
     const botin = elegirBotin(Math.random, veces);
-    for (const b of botin) this.dropsSuelo.push({ f, c, id: b.id, cantidad: b.cantidad });
+    for (const b of botin) {
+      this.dropsSuelo.push({ f, c, id: b.id, cantidad: b.cantidad });
+      this.difundirLoot({ tipo: 'loot_spawn', f, c, id: b.id, cantidad: b.cantidad });
+    }
     this.registrarEventoLog(`¡Botín en el suelo (${f},${c}): ${botin.map((b) => ITEMS[b.id]?.nombre ?? b.id).join(', ')}!`);
   }
 
@@ -2540,6 +2550,7 @@ class Game implements IGame {
     const aqui = this.dropsSuelo.filter((d) => d.f === f && d.c === c);
     if (aqui.length === 0) return;
     this.dropsSuelo = this.dropsSuelo.filter((d) => !(d.f === f && d.c === c));
+    this.difundirLoot({ tipo: 'loot_picked', f, c });
     this.protagonista.recibirBotin(aqui.map((d) => ({ id: d.id, cantidad: d.cantidad })));
     this.guardarSesionActual();
     this.registrarEventoLog(`Recogido: ${aqui.map((d) => `${ITEMS[d.id]?.nombre ?? d.id}${d.cantidad > 1 ? ' ×' + d.cantidad : ''}`).join(', ')}`);
@@ -3242,6 +3253,23 @@ class Game implements IGame {
                 this.network.enviarMensaje({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.network.idLocal, stats });
             }
             break;
+        case 'loot_spawn': {
+            if (!this.dropsSuelo.some((d) => d.f === msg.f && d.c === msg.c && d.id === msg.id)) {
+                this.dropsSuelo.push({ f: msg.f, c: msg.c, id: msg.id, cantidad: msg.cantidad ?? 1 });
+            }
+            break;
+        }
+        case 'loot_picked': {
+            this.dropsSuelo = this.dropsSuelo.filter((d) => !(d.f === msg.f && d.c === msg.c));
+            break;
+        }
+        case 'loot_sync': {
+            if (Array.isArray(msg.lista)) {
+                this.dropsSuelo = msg.lista.map((d: any) => ({ f: d.f, c: d.c, id: d.id, cantidad: d.cantidad ?? 1 }));
+            }
+            break;
+        }
+
         case 'avatar': {
             const avInfo = this.network.jugadoresRemotos.get(idSujeto);
             if (avInfo && avInfo.entidad) {

@@ -15,6 +15,7 @@ import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
+import { ITEMS } from './config/items';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import {
@@ -476,9 +477,12 @@ class Game implements IGame {
   getEstadoEquipo(): import('./ui/LobbyManager').EstadoEquipo {
     const p = this.protagonista;
     const bonos = bonosEquipo(p.equipo);
+    const puestoIds = new Set(Object.values(p.equipo).filter((v): v is string => !!v));
+    const disponibles = Object.values(ITEMS).filter((it) => it.tipo === 'equipo' && !puestoIds.has(it.id)).map((it) => it.id);
     return {
       equipo: { ...p.equipo },
       inventario: { ...p.inventario },
+      disponibles,
       base: { fuerza: p.fuerza, agilidad: p.agilidad, inteligencia: p.inteligencia },
       total: {
         fuerza: p.fuerza + bonos.fuerza,

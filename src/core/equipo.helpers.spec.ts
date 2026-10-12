@@ -14,6 +14,7 @@ import {
   anadirAlInventario,
   consumir,
   piezasDeEquipo,
+  destinoValido,
 } from './equipo';
 
 function assert(condicion: boolean, mensaje: string): void {
@@ -158,6 +159,16 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(p.pelo === null, 'el pelo no es equipo');
   const vacio = piezasDeEquipo(equipoVacio(), ITEMS);
   assert(vacio.casco === null && vacio.torso === null && vacio.piernas === null && vacio.pelo === null, 'sin equipo no hay piezas');
+}
+
+// --- Destino válido (drag&drop) ---
+{
+  assert(destinoValido('casco_hierro', 'cabeza', ITEMS), 'casco → cabeza');
+  assert(!destinoValido('casco_hierro', 'torso', ITEMS), 'casco NO → torso');
+  assert(destinoValido('arco_largo', 'mano_derecha', ITEMS), 'arco (2 manos) → mano derecha');
+  assert(!destinoValido('arco_largo', 'mano_izquierda', ITEMS), 'arco NO → mano izquierda (vive en la derecha)');
+  assert(!destinoValido('pocion_vida', 'cabeza', ITEMS), 'consumible NO → ranura de equipo');
+  assert(!destinoValido('no_existe', 'cabeza', ITEMS), 'desconocido NO → ranura');
 }
 
 console.log('equipo.helpers: todas las comprobaciones pasan');

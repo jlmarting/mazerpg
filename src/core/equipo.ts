@@ -159,6 +159,12 @@ export function consumir(inv: Inventario, id: string, n: number = 1): Inventario
   return out;
 }
 
+/** ¿Este item puede ir en esta ranura? (para el drag&drop: soltar solo donde encaja). */
+export function destinoValido(id: string, ranura: RanuraEquipo, cat: Record<string, ItemDef> = ITEMS): boolean {
+  const item = cat[id];
+  return !!item && item.tipo === 'equipo' && item.ranura === ranura;
+}
+
 /** Puente visual: piezas del avatar que impone la armadura equipada.
  *  El item declara la variante (`pieza`); su ranura se resuelve con la tabla real. */
 export function piezasDeEquipo(equipo: Equipo, cat: Record<string, ItemDef> = ITEMS): Record<RanuraPieza, string | null> {

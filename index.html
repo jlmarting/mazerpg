@@ -314,13 +314,14 @@
             <h2>EQUIPO Y MOCHILA</h2>
             <canvas id="equipoPreview" class="avatar-preview" width="64" height="64" aria-label="Vista previa del avatar equipado"></canvas>
             <div id="equipoStats" class="equipo-stats"></div>
-            <div class="form-group">
-                <label class="form-label">EQUIPO:</label>
-                <div id="equipoRanuras"></div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">MOCHILA:</label>
-                <div id="equipoMochila"></div>
+            <div class="equipo-layout">
+                <div id="equipoRanuras" class="equipo-doll" aria-label="Ranuras de equipo"></div>
+                <div class="equipo-pack">
+                    <div class="equipo-pack-titulo">BULTO (EQUIPO)</div>
+                    <div id="equipoPack" class="equipo-pack-grid" aria-label="Equipo disponible para arrastrar"></div>
+                    <div class="equipo-pack-titulo">OBJETOS</div>
+                    <div id="equipoMochila" class="equipo-objetos"></div>
+                </div>
             </div>
             <button id="btnCerrarEquipo" class="btn-save-character">CERRAR</button>
         </div>

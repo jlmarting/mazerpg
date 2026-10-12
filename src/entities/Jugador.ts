@@ -228,11 +228,20 @@ export class Jugador extends EntidadRPG {
     if (ahora - this.ultimaInteraccion < costePaso) return false;
     this.ultimaInteraccion = ahora;
 
-    if (game.network && game.network.multiplayerActivo) {
+    const net: any = game.network;
+    const netHttp: any = (game as any).networkHttp;
+    const mpActivo = !!(net && net.multiplayerActivo) || !!(netHttp && netHttp.multiplayerActivo);
+    const idLocal = (net && net.multiplayerActivo ? net.idLocal : (netHttp?.idLocal ?? 'local'));
+    const enviar = (msg: any) => {
+      if (net && net.multiplayerActivo) net.enviarMensaje(msg);
+      else if (netHttp && netHttp.multiplayerActivo) netHttp.enviarMensaje(msg);
+    };
+
+    if (mpActivo) {
         if (game.esHost) {
-            (game as any).colaAcciones.push({ id: game.network.idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
+            (game as any).colaAcciones.push({ id: idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
         } else {
-            game.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
+            enviar({ tipo: 'action', accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
 
             // Predicción local para feedback inmediato
             const sigF = this.fila + deltaFila;
@@ -257,7 +266,7 @@ export class Jugador extends EntidadRPG {
         return true;
     } else {
         if ((game as any).juegoPausado) return false;
-        (game as any).colaAcciones.push({ id: game.network.idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
+        (game as any).colaAcciones.push({ id: idLocal, accion: { tipo: 'mover', df: deltaFila, dc: deltaColumna } });
         return true;
     }
   }

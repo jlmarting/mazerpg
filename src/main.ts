@@ -1137,8 +1137,9 @@ class Game implements IGame {
         `cola:${this.colaAcciones.length} bolas:${this.bolasDeFuego.length} ` +
         `radar:${this.radares.length} whirl:${this.whirlwinds.length} ` +
         `freeze:${this.freezes.length} enem:${this.listaDeEnemigos.filter((e:any) => e.estaVivo).length}/${this.listaDeEnemigos.length} ` +
-        `rem:${this.network?.jugadoresRemotos?.size ?? 0} ` +
-        `pause:${this.juegoPausado} host:${this.esHost} mp:${this.network?.multiplayerActivo}`);
+        `rem:${this.remotosActivos.size} ` +
+        `pause:${this.juegoPausado} host:${this.esHost} mp:${(this.network?.multiplayerActivo || this.networkHttp?.multiplayerActivo) ?? false} ` +
+        `mpHttp:${this.networkHttp?.multiplayerActivo ?? false} idLocal:${this.idLocalActivo}`);
       this.diagFrameCount = 0;
       this.diagLastLog = ahora;
     }, 10000);
@@ -2100,7 +2101,7 @@ class Game implements IGame {
   resolverAccion(id: string, accion: any) {
     const entidad = this.obtenerEntidadPorId(id);
     if (!entidad) {
-        console.warn(`resolverAccion: No se encontró entidad para ID ${id}`);
+        console.warn(`resolverAccion: No se encontró entidad para ID ${id} · idLocalActivo=${this.idLocalActivo} · remotosActivos=[${[...this.remotosActivos.keys()].join(',')}]`);
         return;
     }
     if (!entidad.estaVivo) {

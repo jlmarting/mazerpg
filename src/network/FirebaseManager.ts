@@ -47,10 +47,14 @@ export class FirebaseManager {
     return new PersistenciaMundo(this.db, idPartida);
   }
 
-  async crearPartida(idPartida: string, hostId: string, hostNick: string) {
-    if (!this.db) return;
+  /** Crea la partida. Devuelve `true` solo si Firestore la aceptó. */
+  async crearPartida(idPartida: string, hostId: string, hostNick: string): Promise<boolean> {
+    if (!this.db) {
+      this.reportar('crear partida', new Error('Firebase no configurado'));
+      return false;
+    }
     try {
-      return await this.db.collection('partidas').doc(idPartida).set({
+      await this.db.collection('partidas').doc(idPartida).set({
         hostId: hostId,
         hostNick: hostNick,
         creacion: Date.now(),
@@ -58,8 +62,10 @@ export class FirebaseManager {
         estado: 'activa',
         lastSeen: Date.now()
       });
+      return true;
     } catch (e) {
       this.reportar('crear partida', e);
+      return false;
     }
   }
 

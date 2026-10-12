@@ -742,6 +742,13 @@ class Game implements IGame {
 
   async crearPartidaFirestore() {
     const id = generateSessionName();
+    // Primero creamos; si Firebase falla (reglas/permisos), NO se crea sala ni se arranca.
+    const ok = await this.firebase.crearPartida(id, this.network.idLocal, this.protagonista.nombre);
+    if (!ok) {
+      this.ui.registrarLogConexion('No se pudo crear la partida en Firebase (reglas/permisos).');
+      this.mostrarAvisoFirebase('⚠ No se pudo crear la partida en Firebase. Prueba el modo SERVIDOR LOCAL.');
+      return;
+    }
     this.network.idPartidaActual = id;
     this.persistenciaMundo = this.firebase.crearPersistenciaMundo(id);
     this.guardarSesion('host', id);
@@ -753,7 +760,6 @@ class Game implements IGame {
         roomIdVal.textContent = id;
     }
 
-    await this.firebase.crearPartida(id, this.network.idLocal, this.protagonista.nombre);
     this.publicarFichaEnPartida();
     this.configurarIntervalosHost();
     this.ui.registrarLogConexion(`Partida creada: ${id}`);
@@ -801,6 +807,11 @@ class Game implements IGame {
   }
 
   async unirseAPartidaFirestore(id: string) {
+    if (!this.firebase.isInitialized()) {
+      this.ui.registrarLogConexion('Firebase no configurado: no se puede unir. Prueba el modo SERVIDOR LOCAL.');
+      this.mostrarAvisoFirebase('⚠ Firebase no configurado. Usa el modo SERVIDOR LOCAL.');
+      return;
+    }
     this.network.idPartidaActual = id;
     this.guardarSesion('guest', id);
     const roomDisp = document.getElementById('roomDisplay');

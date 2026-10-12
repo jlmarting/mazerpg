@@ -1,0 +1,136 @@
+import { Jugador } from './Jugador';
+import { equipoVacio } from '../core/equipo';
+import { ITEMS } from '../config/items';
+
+function assert(condicion: boolean, mensaje: string): void {
+  if (!condicion) throw new Error(mensaje);
+}
+
+// Crear un jugador y fijar la base (los stats base los sirve generarStats con azar)
+const j = new Jugador('Test');
+j.fuerza = 10;
+j.agilidad = 5;
+j.inteligencia = 3;
+
+// --- Estado inicial ---
+assert(JSON.stringify(j.equipo) === JSON.stringify(equipoVacio()), 'sin equipo al crear');
+assert(j.inventario.pocion_vida === 3 && j.inventario.flecha === 20, 'mochila inicial sembrada');
+let st = j.statsEfectivos();
+assert(st.fuerza === 10 && st.agilidad === 5 && st.vida === 0, 'sin equipo los stats efectivos son la base');
+
+// --- Equipar: bonos sobre la base (sin mutarla) ---
+j.equiparItem('casco_hierro');
+st = j.statsEfectivos();
+assert(st.fuerza === 11, 'casco +1 FUE');
+assert(j.fuerza === 10, 'la base no se muta');
+assert(j.apariencia.piezas.casco === 'casco', 'el casco viste al avatar');
+assert(j.apariencia.piezas.torso === null, 'las demás ranuras quedan intactas');
+
+// --- El pelo es cosmético y el equipo no lo toca ---
+j.apariencia.piezas.pelo = 'pelo-largo';
+j.equiparItem('peto_cuero');
+assert(j.apariencia.piezas.pelo === 'pelo-largo', 'equipar conserva el pelo');
+assert(j.apariencia.piezas.torso === 'peto', 'el peto viste el torso');
+
+// --- Vida máxima: base + bonus de vida del equipo ---
+const vidaSinEscudo = j.vidaMaxima;
+j.equiparItem('escudo_madera');
+assert(j.vidaMaxima === vidaSinEscudo + 5, 'escudo +5 vida máxima');
+j.desequiparRanura('escudo');
+assert(j.vidaMaxima === vidaSinEscudo, 'desequipar revierte la vida máxima');
+
+// --- Desequipar revierte piezas ---
+j.desequiparRanura('torso');
+assert(j.apariencia.piezas.torso === null, 'desequipar quita la pieza del avatar');
+assert(j.apariencia.piezas.pelo === 'pelo-largo', 'desequipar conserva el pelo');
+
+// --- Empuñadura desde el jugador ---
+j.equiparItem('escudo_madera');
+j.equiparItem('arco_largo');
+assert(j.equipo.escudo === null && j.equipo.mano_derecha === 'arco_largo', 'arco a dos manos desaloja el escudo');
+st = j.statsEfectivos();
+assert(st.agilidad === j.agilidad + 3, 'arco +3 AGI');
+
+// --- Mochila: consumir y añadir ---
+j.consumirItem('pocion_vida', 1);
+assert(j.inventario.pocion_vida === 2, 'consumir descuenta una poción');
+j.anadirItem('flecha', 5);
+assert(j.inventario.flecha === 25, 'añadir acumula flechas');
+
+// --- Usar consumible: cura y se gasta (in-game) ---
+j.vidaActual = 1;
+const pocionesAntes = j.inventario.pocion_vida;
+const usado = j.usarItem('pocion_vida');
+assert(usado, 'usar devuelve true con efecto');
+assert(j.vidaActual === Math.min(j.vidaMaxima, 1 + ITEMS.pocion_vida.curacion!), 'la poción cura 25 (con tope en vida máxima)');
+assert(j.inventario.pocion_vida === pocionesAntes - 1, 'la poción usada se gasta');
+j.vidaActual = j.vidaMaxima;
+j.usarItem('pocion_vida');
+assert(j.vidaActual === j.vidaMaxima, 'usar a vida llena no la supera');
+assert(j.usarItem('flecha') === false, 'un material no se usa');
+assert(j.usarItem('no_existe') === false, 'un desconocido no se usa');
+
+// --- Loot: el botín llena bulto y mochila; el arco gasta flechas ---
+const j2 = new Jugador('Loot');
+const bultoIni = j2.bulto.length;
+assert(bultoIni > 0, 'kit inicial en el bulto');
+j2.recibirBotin([
+  { id: 'espada_corta', cantidad: 1 },
+  { id: 'flecha', cantidad: 4 },
+  { id: 'espada_corta', cantidad: 1 },
+  { id: 'no_existe', cantidad: 1 },
+]);
+assert(j2.bulto.includes('espada_corta'), 'el equipo del botín va al bulto');
+assert(j2.bulto.filter((x) => x === 'espada_corta').length === 2, 'el equipo se acumula en el bulto (duplicados)');
+assert(j2.inventario.flecha === 24, 'el material del botín se apila (20+4)');
+j2.equiparItem('daga');
+j2.recibirBotin([{ id: 'daga', cantidad: 1 }]);
+assert(j2.bulto.filter((x) => x === 'daga').length === 2, 'el equipo ya poseído también se acumula');
+
+assert(j2.consumirFlecha() && j2.inventario.flecha === 23, 'el arco consume una flecha');
+j2.inventario = { ...j2.inventario, flecha: 0 };
+assert(j2.consumirFlecha() === false, 'sin flechas no se dispara');
+
+// --- Persistencia: exportar/importar inventario (roundtrip) ---
+const j3 = new Jugador('Persist');
+j3.fuerza = 8; j3.agilidad = 4; j3.inteligencia = 2;
+j3.equiparItem('casco_hierro');
+j3.recibirBotin([{ id: 'espada_corta', cantidad: 1 }, { id: 'flecha', cantidad: 6 }]);
+const guardado = j3.exportarInventario();
+assert(guardado.formato === 1 && guardado.puesto.cabeza === 'casco_hierro', 'exporta el puesto');
+assert(guardado.bulto.includes('espada_corta'), 'exporta el bulto');
+assert(guardado.mochila.flecha === 26, 'exporta la mochila');
+
+const j4 = new Jugador('Persist');
+j4.fuerza = 8; j4.agilidad = 4; j4.inteligencia = 2;
+j4.importarInventario(guardado);
+assert(j4.equipo.cabeza === 'casco_hierro', 'importa el puesto');
+assert(j4.apariencia.piezas.casco === 'casco', 'importar re-aplica las piezas del avatar');
+assert(j4.bulto.includes('espada_corta') && j4.inventario.flecha === 26, 'importa bulto y mochila');
+
+j4.importarInventario(null);
+assert(j4.equipo.cabeza === 'casco_hierro', 'payload inválido no altera el estado');
+j4.importarInventario({ formato: 1, puesto: { cabeza: 'no_existe' }, bulto: ['basura'], mochila: { basura: 2 } });
+assert(j4.equipo.cabeza === null && j4.bulto.length === 0, 'payload saneado se aplica');
+
+// --- Pico: cavar requiere empuñarlo; −1 al daño ---
+const j5 = new Jugador('Pico');
+assert(j5.puedeCavar() === false, 'sin pico no se cava');
+assert(j5.danoArma() === 0, 'sin arma, daño 0');
+j5.equiparItem('pico');
+assert(j5.puedeCavar() === true, 'con el pico empuñado se cava');
+assert(j5.danoArma() === -1, 'el pico resta 1 al daño');
+
+// --- Peso, capacidad y penalización por sobrecarga ---
+const j6 = new Jugador('Peso');
+j6.fuerza = 5; j6.agilidad = 5; j6.inteligencia = 5;
+assert(j6.capacidadMaxima() === 20, 'capacidad 10 + 2·fuerza = 20');
+j6.equipo = equipoVacio();
+j6.bulto = [];
+j6.inventario = {};
+assert(j6.peso() === 0 && j6.penalizacion().ataque === 0, 'sin carga no hay penalización');
+j6.inventario = { flecha: 150 }; // 15 kg > mitad (10)
+const pen = j6.penalizacion();
+assert(pen.ataque === 2 && Math.abs(pen.movimiento - 0.5) < 1e-9, 'sobrecarga al 50% → ataque 2, movimiento 0.5');
+
+console.log('jugadorEquipo.helpers: todas las comprobaciones pasan');

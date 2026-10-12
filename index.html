@@ -20,7 +20,10 @@
         <div id="menuToggle">MENU</div>
         <div class="menu-content">
             <div id="roomDisplay" style="color: #007bff; font-weight: bold; margin-right: 15px; display: none;">SALA: <span id="roomIdVal">---</span></div>
-            <button id="btnAceptarJugadores" class="menu-btn" disabled>ADMITIR JUGADORES</button>
+            <label style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: #fff; font-family: monospace; font-size: 11px; cursor: pointer;">
+                <input type="checkbox" id="chkAdmitir" checked style="cursor: pointer;">
+                ADMITIR JUGADORES (auto)
+            </label>
             <button id="btnChat" class="menu-btn">CHAT (Enter)</button>
 
             <!-- Dropdown OPCIONES -->
@@ -73,6 +76,7 @@
         </div>
     </div>
 
+    <div id="firebaseError" class="firebase-error" style="display: none;"></div>
     <div id="lobby">
         <svg class="svg-defs" width="0" height="0" aria-hidden="true">
             <defs>
@@ -147,6 +151,7 @@
                     <div class="stat-int">INT: <span id="previewInt">-</span></div>
                 </div>
                 <button id="btnEditCharacter" class="btn-edit-character">EDITAR PERSONAJE</button>
+                <button id="btnEquipo" class="btn-edit-character">EQUIPO Y MOCHILA</button>
             </div>
 
             <div id="charCreationSection" class="char-creation-section">
@@ -308,6 +313,24 @@
         </div>
     </div>
 
+    <div id="equipoModal" class="lobby-modal-overlay z-50">
+        <div class="character-modal-box">
+            <h2>EQUIPO Y MOCHILA</h2>
+            <canvas id="equipoPreview" class="avatar-preview" width="64" height="64" aria-label="Vista previa del avatar equipado"></canvas>
+            <div id="equipoStats" class="equipo-stats"></div>
+            <div class="equipo-layout">
+                <div id="equipoRanuras" class="equipo-doll" aria-label="Ranuras de equipo"></div>
+                <div class="equipo-pack">
+                    <div class="equipo-pack-titulo">BULTO (EQUIPO)</div>
+                    <div id="equipoPack" class="equipo-pack-grid" aria-label="Equipo disponible para arrastrar"></div>
+                    <div class="equipo-pack-titulo">OBJETOS</div>
+                    <div id="equipoMochila" class="equipo-objetos"></div>
+                </div>
+            </div>
+            <button id="btnCerrarEquipo" class="btn-save-character">CERRAR</button>
+        </div>
+    </div>
+
     <div id="difficultyModal" class="lobby-modal-overlay z-50">
         <div class="difficulty-modal-box">
             <h2>ELIGE DIFICULTAD</h2>
@@ -362,6 +385,8 @@
             <button id="btnGuardAction" class="action-btn" title="A mí la guardia" style="display: none;">🎺 LA GUARDIA<div class="cooldown-overlay"></div></button>
             <button id="btnRestartAction" class="action-btn" title="Reiniciar Partida" style="display: none;">🔄 REINICIAR<div class="cooldown-overlay"></div></button>
             <button id="btnTeleportHousing" class="action-btn" title="Teletransporte a mi casa / al mapa" style="display: none;">🏠 A MI CASA<div class="cooldown-overlay"></div></button>
+            <button id="btnEquipoAction" class="action-btn" title="Equipo y mochila (E)">🎒 EQUIPO<div class="cooldown-overlay"></div></button>
+            <button id="btnBotinAction" class="action-btn" title="Botín de prueba (debug)" style="display: none;">🎁 BOTÍN<div class="cooldown-overlay"></div></button>
         </div>
     </div>
 

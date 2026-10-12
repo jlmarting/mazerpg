@@ -4,6 +4,8 @@ import type { AparienciaAvatar, ZonaAvatar, RanuraPieza } from '../core/avatarTi
 import { PALETAS, ORIGEN_ZONA, APARIENCIA_DEFECTO } from '../config/apariencia';
 import { TABLA_PIEZAS, RANURAS } from '../core/avatarTintes';
 import { aparienciaEfectiva, conservarCoincidencias, sanearPiezas } from '../core/avatarTintes';
+import { ITEMS } from '../config/items';
+import { RANURAS_EQUIPO, destinoValido, type RanuraEquipo } from '../core/equipo';
 
 export interface CharacterData {
   nombre: string;
@@ -35,10 +37,39 @@ export interface LobbyDelegate {
   hayHousingPrevio(): boolean;
   /** Registra la decisión del usuario sobre el housing encontrado. */
   resolverHousingPrevio(usar: boolean): void;
+  /** Estado de equipo/inventario para el panel (piloto). */
+  getEstadoEquipo(): EstadoEquipo;
+  equiparItem(id: string): void;
+  desequiparRanura(ranura: RanuraEquipo): void;
+  usarItem(id: string): void;
+}
+
+/** Vista del dominio de equipo que consume el panel. */
+export interface EstadoEquipo {
+  equipo: Record<RanuraEquipo, string | null>;
+  inventario: Record<string, number>;
+  /** Equipo en el bulto (disponible para arrastrar a una ranura). */
+  disponibles: string[];
+  base: { fuerza: number; agilidad: number; inteligencia: number };
+  total: { fuerza: number; agilidad: number; inteligencia: number; vida: number };
+  peso: number;
+  capacidad: number;
+  sobrecarga: { ataque: number; defensa: number; movimiento: number };
+  clase: string;
+  apariencia: AparienciaAvatar;
 }
 
 const CLASS_ICONS: Record<string, string> = { guerrero: '\u{1FA96}', explorador: '\u{1F3F9}', mago: '\u{1FA84}' };
 const CLASS_NAMES: Record<string, string> = { guerrero: 'GUERRERO', explorador: 'EXPLORADOR', mago: 'MAGO' };
+const ETIQUETA_RANURA: Record<RanuraEquipo, string> = {
+  cabeza: 'Cabeza', torso: 'Torso', piernas: 'Piernas',
+  mano_derecha: 'Mano der.', mano_izquierda: 'Mano izq.', escudo: 'Escudo', accesorio: 'Accesorio',
+};
+/** Áreas del grid del muñeco (CSS grid-template-areas). */
+const AREA_RANURA: Record<RanuraEquipo, string> = {
+  cabeza: 'cabeza', torso: 'torso', piernas: 'piernas',
+  mano_derecha: 'der', mano_izquierda: 'izq', escudo: 'escudo', accesorio: 'accesorio',
+};
 const FANTASY_NAMES = [
   "Tharos", "Elowen", "Grombrindal", "Luthien", "Drizzt", "Ciri", "Geralt", "Yennefer",
   "Boromir", "Galadriel", "Aragorn", "Legolas", "Gimli", "Saruman", "Gandalf", "Radagast",
@@ -214,6 +245,162 @@ export class LobbyManager {
 
   closeCharacterModal(): void {
     this.hideElement('characterModal');
+  }
+
+  // --- Panel de equipo y mochila (piloto inventario v1) ---
+
+  openEquipoModal(): void {
+    this.showElement('equipoModal', 'flex');
+    this.renderEquipo();
+  }
+
+  closeEquipoModal(): void {
+    this.hideElement('equipoModal');
+  }
+
+  /** Item que se está arrastrando y su ranura de origen (para el drag&drop). */
+  private arrastrando: string | null = null;
+  private slotArrastrado: RanuraEquipo | null = null;
+
+  /** Repinta el panel (muñeco + bulto) desde el estado real del protagonista. */
+  renderEquipo(): void {
+    const st = this.delegate.getEstadoEquipo();
+    const doll = document.getElementById('equipoRanuras');
+    const pack = document.getElementById('equipoPack');
+    const objetos = document.getElementById('equipoMochila');
+    const stats = document.getElementById('equipoStats');
+    if (!doll || !pack || !objetos || !stats) return;
+
+    const bono = (t: number, base: number) => (t > base ? ` (${base}→${t})` : '');
+    stats.textContent =
+      `FUE ${st.total.fuerza}${bono(st.total.fuerza, st.base.fuerza)} · ` +
+      `AGI ${st.total.agilidad}${bono(st.total.agilidad, st.base.agilidad)} · ` +
+      `INT ${st.total.inteligencia}${bono(st.total.inteligencia, st.base.inteligencia)}` +
+      (st.total.vida > 0 ? ` · VIDA +${st.total.vida}` : '') +
+      ` · PESO ${st.peso.toFixed(1)}/${st.capacidad}kg` +
+      (st.sobrecarga.movimiento > 0 || st.sobrecarga.ataque > 0
+        ? ` ⚠ SOBRECARGA (−${st.sobrecarga.ataque} ataque · +${st.sobrecarga.defensa} daño · ×${(1 + st.sobrecarga.movimiento).toFixed(2)} paso)`
+        : '');
+
+    // --- Muñeco: ranuras (destino de las piezas) ---
+    doll.innerHTML = '';
+    for (const ranura of RANURAS_EQUIPO) {
+      const cell = document.createElement('div');
+      cell.className = 'equipo-slot';
+      cell.dataset.ranura = ranura;
+      cell.style.gridArea = AREA_RANURA[ranura];
+      const nom = document.createElement('span');
+      nom.className = 'equipo-slot-nombre';
+      nom.textContent = ETIQUETA_RANURA[ranura];
+      cell.appendChild(nom);
+
+      const puesto = st.equipo[ranura];
+      if (puesto) {
+        cell.classList.add('lleno');
+        const it = document.createElement('span');
+        it.className = 'equipo-slot-item';
+        it.textContent = ITEMS[puesto]?.nombre ?? puesto;
+        cell.appendChild(it);
+        cell.draggable = true;
+        cell.addEventListener('dragstart', (e) => {
+          this.arrastrando = puesto;
+          this.slotArrastrado = ranura;
+          (e as DragEvent).dataTransfer?.setData('text/plain', puesto);
+          if ((e as DragEvent).dataTransfer) (e as DragEvent).dataTransfer!.effectAllowed = 'move';
+        });
+        cell.addEventListener('dragend', () => this.limpiarArrastre());
+        cell.addEventListener('click', () => { this.delegate.desequiparRanura(ranura); this.renderEquipo(); });
+      } else {
+        cell.classList.add('vacio');
+      }
+
+      cell.addEventListener('dragover', (e) => {
+        if (!this.arrastrando) return;
+        e.preventDefault();
+        const ok = destinoValido(this.arrastrando, ranura);
+        cell.classList.toggle('drag-over', ok);
+        cell.classList.toggle('drag-invalid', !ok);
+        if ((e as DragEvent).dataTransfer) (e as DragEvent).dataTransfer!.dropEffect = ok ? 'move' : 'none';
+      });
+      cell.addEventListener('dragleave', () => cell.classList.remove('drag-over', 'drag-invalid'));
+      cell.addEventListener('drop', (e) => {
+        e.preventDefault();
+        cell.classList.remove('drag-over', 'drag-invalid');
+        const id = this.arrastrando || (e as DragEvent).dataTransfer?.getData('text/plain') || '';
+        if (id && destinoValido(id, ranura)) {
+          this.delegate.equiparItem(id);
+          this.renderEquipo();
+        }
+        this.limpiarArrastre();
+      });
+      doll.appendChild(cell);
+    }
+
+    // --- Bulto: equipo suelto (origen de las piezas) ---
+    pack.innerHTML = '';
+    pack.classList.remove('drag-over');
+    for (const id of st.disponibles) {
+      const it = ITEMS[id];
+      if (!it) continue;
+      const chip = document.createElement('div');
+      chip.className = 'equipo-chip';
+      chip.textContent = `${it.nombre}${it.manos === 2 ? ' (2 manos)' : ''}`;
+      chip.title = it.bonos ? Object.entries(it.bonos).map(([k, v]) => `${k}+${v}`).join(' ') : '';
+      chip.draggable = true;
+      chip.addEventListener('dragstart', (e) => {
+        this.arrastrando = id;
+        this.slotArrastrado = null;
+        (e as DragEvent).dataTransfer?.setData('text/plain', id);
+        if ((e as DragEvent).dataTransfer) (e as DragEvent).dataTransfer!.effectAllowed = 'move';
+      });
+      chip.addEventListener('dragend', () => this.limpiarArrastre());
+      chip.addEventListener('click', () => { this.delegate.equiparItem(id); this.renderEquipo(); });
+      pack.appendChild(chip);
+    }
+    if (st.disponibles.length === 0) {
+      const v = document.createElement('span');
+      v.style.cssText = 'font-family:monospace;font-size:9px;color:#6b5320;';
+      v.textContent = '(sin equipo suelto)';
+      pack.appendChild(v);
+    }
+
+    // --- Objetos (consumibles/materiales) ---
+    objetos.innerHTML = '';
+    const entradas = Object.entries(st.inventario);
+    if (entradas.length === 0) {
+      const vacio = document.createElement('div');
+      vacio.className = 'equipo-mochila-row';
+      vacio.textContent = '(vacía)';
+      objetos.appendChild(vacio);
+    }
+    for (const [id, n] of entradas) {
+      const it = ITEMS[id];
+      if (!it) continue;
+      const fila = document.createElement('div');
+      fila.className = 'equipo-mochila-row';
+      const txt = document.createElement('span');
+      txt.textContent = `${it.nombre} ×${n}  ·  ${(it.peso * n).toFixed(1)} kg`;
+      fila.appendChild(txt);
+      if (it.tipo === 'consumible') {
+        const btn = document.createElement('button');
+        btn.className = 'equipo-mochila-btn';
+        btn.textContent = 'CONSUMIR';
+        btn.addEventListener('click', () => { this.delegate.usarItem(id); this.renderEquipo(); });
+        fila.appendChild(btn);
+      }
+      objetos.appendChild(fila);
+    }
+
+    const canvas = document.getElementById('equipoPreview') as HTMLCanvasElement | null;
+    if (canvas) this.delegate.pintarPreviewAvatar(canvas, st.clase, st.apariencia);
+  }
+
+  /** Limpia el estado de arrastre y los resaltados de drop. */
+  private limpiarArrastre(): void {
+    this.arrastrando = null;
+    this.slotArrastrado = null;
+    document.querySelectorAll('.equipo-slot.drag-over, .equipo-slot.drag-invalid, .equipo-pack-grid.drag-over')
+      .forEach((el) => el.classList.remove('drag-over', 'drag-invalid'));
   }
 
   saveCharacter(): void {
@@ -550,6 +737,27 @@ export class LobbyManager {
   private setupEventListeners(): void {
     document.getElementById('btnOpenCharacterModal')?.addEventListener('click', () => this.openCharacterModal());
     document.getElementById('btnEditCharacter')?.addEventListener('click', () => this.openCharacterModal());
+    document.getElementById('btnEquipo')?.addEventListener('click', () => this.openEquipoModal());
+    document.getElementById('btnCerrarEquipo')?.addEventListener('click', () => this.closeEquipoModal());
+
+    // Bulto como destino de drop (una sola vez: el elemento persiste entre renders).
+    const pack = document.getElementById('equipoPack');
+    pack?.addEventListener('dragover', (e) => {
+      if (this.slotArrastrado) { e.preventDefault(); pack.classList.add('drag-over'); }
+    });
+    pack?.addEventListener('dragleave', () => pack.classList.remove('drag-over'));
+    pack?.addEventListener('drop', (e) => {
+      e.preventDefault();
+      pack.classList.remove('drag-over');
+      const id = this.arrastrando || (e as DragEvent).dataTransfer?.getData('text/plain') || '';
+      let ranura = this.slotArrastrado;
+      if (!ranura && id) {
+        const st = this.delegate.getEstadoEquipo();
+        ranura = RANURAS_EQUIPO.find((r) => st.equipo[r] === id) ?? null;
+      }
+      if (ranura) { this.delegate.desequiparRanura(ranura); this.renderEquipo(); }
+      this.limpiarArrastre();
+    });
     document.getElementById('btnRandomName')?.addEventListener('click', () => this.generateRandomName());
     document.getElementById('btnCharReroll')?.addEventListener('click', () => this.recalculateStats());
     document.getElementById('btnSaveCharacter')?.addEventListener('click', () => this.saveCharacter());

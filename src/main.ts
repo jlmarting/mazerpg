@@ -492,6 +492,9 @@ class Game implements IGame {
         inteligencia: p.inteligencia + bonos.inteligencia,
         vida: bonos.vida,
       },
+      peso: p.peso(),
+      capacidad: p.capacidadMaxima(),
+      sobrecarga: p.penalizacion(),
       clase: p.clase,
       apariencia: aparienciaEfectiva(p.clase, p.apariencia),
     };
@@ -2174,7 +2177,7 @@ class Game implements IGame {
             console.warn(`resolverAccion: Movimiento inválido para ${entidad.nombre} hacia (${sigFila}, ${sigColumna}) desde (${entidad.fila}, ${entidad.columna})`);
         }
 
-        if (!esMovimientoValido && (entidad as any).tienePico) {
+        if (!esMovimientoValido && (typeof (entidad as any).puedeCavar === 'function' ? (entidad as any).puedeCavar() : (entidad as any).tienePico)) {
             const celdaObjetivo = this.mapaLaberinto[sigFila][sigColumna];
             if ((entidad as any).ultimaCasillaAtacada && (entidad as any).ultimaCasillaAtacada.f === sigFila && (entidad as any).ultimaCasillaAtacada.c === sigColumna) {
                 celdaObjetivo.golpesCavar++;
@@ -2214,21 +2217,28 @@ class Game implements IGame {
             const celdaNueva = this.mapaLaberinto[sigFila][sigColumna];
 
             if (celdaNueva.tienePico) {
-                (entidad as any).tienePico = true;
+                // El pico del suelo se recoge como item (se empuña para cavar).
+                if (entidad === this.protagonista) this.protagonista.recibirBotin([{ id: 'pico', cantidad: 1 }]);
+                else (entidad as any).tienePico = true;
                 const deltaPico = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'tienePico', valor: false }, id);
                 this.aplicarDeltaAutorizado(deltaPico);
                 this.renderer.invalidarCacheLaberinto();
                 this.network.enviarMensaje({ tipo: 'pick_collected', f: sigFila, c: sigColumna, tick: deltaPico.tick });
+                if (entidad === this.protagonista) { this.guardarSesionActual(); this.registrarEventoLog('Recogido: Pico (empúñalo para cavar).'); }
             }
             if (celdaNueva.alimento) {
-                const PC = celdaNueva.alimento.pc;
-                const CC = ((3 * entidad.fuerza) + (2 * entidad.agilidad) + (1 * entidad.inteligencia)) / 6;
-                const recuperacion = Math.floor(PC / CC);
-                entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + Math.max(1, recuperacion));
+                // La comida del suelo se recoge como item de mochila (se consumirá desde el panel).
+                if (entidad === this.protagonista) this.protagonista.recibirBotin([{ id: 'comida', cantidad: 1 }]);
+                else {
+                    const PC = celdaNueva.alimento.pc;
+                    const CC = ((3 * entidad.fuerza) + (2 * entidad.agilidad) + (1 * entidad.inteligencia)) / 6;
+                    entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + Math.max(1, Math.floor(PC / CC)));
+                }
                 const deltaAlimento = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'alimento', valor: null }, id);
                 this.aplicarDeltaAutorizado(deltaAlimento);
                 this.renderer.invalidarCacheLaberinto();
                 this.network.enviarMensaje({ tipo: 'food_consumed', f: sigFila, c: sigColumna, tick: deltaAlimento.tick });
+                if (entidad === this.protagonista) { this.guardarSesionActual(); this.registrarEventoLog('Recogido: Comida.'); }
             }
             if (celdaNueva.burbuja) {
                 const deltaEscudo = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'burbuja', valor: null }, id);
@@ -2417,7 +2427,7 @@ class Game implements IGame {
         const danoExtra = 1 + (10 * emisor.fuerza / 100);
         this.listaDeEnemigos.forEach(e => {
             if (e.estaVivo && Math.abs(e.fila - emisor.fila) <= 1 && Math.abs(e.columna - emisor.columna) <= 1) {
-                const vA = emisor.generarAtaque() * danoExtra;
+                const vA = emisor.generarAtaque() * danoExtra + (emisor === this.protagonista ? (emisor.danoArma() - emisor.penalizacion().ataque) : 0);
                 const vD = e.generarDefensa();
                 const d = Math.max(1, Math.floor(vA - vD));
                 e.recibirDano(d);
@@ -2970,9 +2980,12 @@ class Game implements IGame {
         if (!l.estaVivo) return;
         const o = order[1 - i];
         if (!o.estaVivo) return;
-        const vA = l.generarAtaque();
+        const vA = l.generarAtaque() + (l === this.protagonista ? (l.danoArma() - l.penalizacion().ataque) : 0);
         const vD = o.generarDefensa();
         let d = Math.max(0, vA - vD);
+
+        // Sobrecarga: el protagonista sobrecargado recibe más daño.
+        if (o === this.protagonista) d += this.protagonista.penalizacion().defensa;
 
         // Inmunidad en modo debug para el protagonista
         if (o === this.protagonista && this.config.vistaDebugActivada) {

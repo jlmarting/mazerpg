@@ -4,6 +4,7 @@ import type { AparienciaAvatar } from '../core/avatarTintes';
 import { APARIENCIA_DEFECTO } from '../config/apariencia';
 import {
   equipoVacio, equipar, desequipar, bonosEquipo, aplicarBonos, piezasDeEquipo, danoArma,
+  capacidadMaxima, pesoTotal, penalizacionSobrecarga,
   anadirAlInventario, consumir, type Equipo, type Inventario, type RanuraEquipo,
 } from '../core/equipo';
 import { ITEMS } from '../config/items';
@@ -141,6 +142,21 @@ export class Jugador extends EntidadRPG {
     return this.equipo.mano_derecha === 'pico' || this.equipo.mano_izquierda === 'pico';
   }
 
+  /** Capacidad máxima de carga según la fuerza efectiva (kg). */
+  capacidadMaxima(): number {
+    return capacidadMaxima(this.statsEfectivos().fuerza);
+  }
+
+  /** Peso actual (equipo puesto + mochila). */
+  peso(): number {
+    return pesoTotal(this.equipo, this.inventario);
+  }
+
+  /** Penalización por sobrecarga (ataque, defensa, coste de movimiento). */
+  penalizacion(): { ataque: number; defensa: number; movimiento: number } {
+    return penalizacionSobrecarga(this.peso(), this.capacidadMaxima());
+  }
+
   /** Daño de las armas empuñadas (el pico resta 1). */
   danoArma(): number {
     return danoArma(this.equipo);
@@ -208,7 +224,8 @@ export class Jugador extends EntidadRPG {
     if (!this.estaVivo) return false;
 
     const ahora = Date.now();
-    if (ahora - this.ultimaInteraccion < 100) return false;
+    const costePaso = 100 * (1 + this.penalizacion().movimiento);
+    if (ahora - this.ultimaInteraccion < costePaso) return false;
     this.ultimaInteraccion = ahora;
 
     if (game.network && game.network.multiplayerActivo) {

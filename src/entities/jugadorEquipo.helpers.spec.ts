@@ -121,4 +121,16 @@ j5.equiparItem('pico');
 assert(j5.puedeCavar() === true, 'con el pico empuñado se cava');
 assert(j5.danoArma() === -1, 'el pico resta 1 al daño');
 
+// --- Peso, capacidad y penalización por sobrecarga ---
+const j6 = new Jugador('Peso');
+j6.fuerza = 5; j6.agilidad = 5; j6.inteligencia = 5;
+assert(j6.capacidadMaxima() === 20, 'capacidad 10 + 2·fuerza = 20');
+j6.equipo = equipoVacio();
+j6.bulto = [];
+j6.inventario = {};
+assert(j6.peso() === 0 && j6.penalizacion().ataque === 0, 'sin carga no hay penalización');
+j6.inventario = { flecha: 150 }; // 15 kg > mitad (10)
+const pen = j6.penalizacion();
+assert(pen.ataque === 2 && Math.abs(pen.movimiento - 0.5) < 1e-9, 'sobrecarga al 50% → ataque 2, movimiento 0.5');
+
 console.log('jugadorEquipo.helpers: todas las comprobaciones pasan');

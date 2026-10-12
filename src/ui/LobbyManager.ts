@@ -52,6 +52,9 @@ export interface EstadoEquipo {
   disponibles: string[];
   base: { fuerza: number; agilidad: number; inteligencia: number };
   total: { fuerza: number; agilidad: number; inteligencia: number; vida: number };
+  peso: number;
+  capacidad: number;
+  sobrecarga: { ataque: number; defensa: number; movimiento: number };
   clase: string;
   apariencia: AparienciaAvatar;
 }
@@ -273,7 +276,11 @@ export class LobbyManager {
       `FUE ${st.total.fuerza}${bono(st.total.fuerza, st.base.fuerza)} · ` +
       `AGI ${st.total.agilidad}${bono(st.total.agilidad, st.base.agilidad)} · ` +
       `INT ${st.total.inteligencia}${bono(st.total.inteligencia, st.base.inteligencia)}` +
-      (st.total.vida > 0 ? ` · VIDA +${st.total.vida}` : '');
+      (st.total.vida > 0 ? ` · VIDA +${st.total.vida}` : '') +
+      ` · PESO ${st.peso.toFixed(1)}/${st.capacidad}kg` +
+      (st.sobrecarga.movimiento > 0 || st.sobrecarga.ataque > 0
+        ? ` ⚠ SOBRECARGA (−${st.sobrecarga.ataque} ataque · +${st.sobrecarga.defensa} daño · ×${(1 + st.sobrecarga.movimiento).toFixed(2)} paso)`
+        : '');
 
     // --- Muñeco: ranuras (destino de las piezas) ---
     doll.innerHTML = '';
@@ -377,7 +384,7 @@ export class LobbyManager {
       if (it.tipo === 'consumible') {
         const btn = document.createElement('button');
         btn.className = 'equipo-mochila-btn';
-        btn.textContent = 'USAR';
+        btn.textContent = 'CONSUMIR';
         btn.addEventListener('click', () => { this.delegate.usarItem(id); this.renderEquipo(); });
         fila.appendChild(btn);
       }

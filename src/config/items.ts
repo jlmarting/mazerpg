@@ -95,6 +95,10 @@ export const ITEMS: Record<string, ItemDef> = {
     id: 'pocion_vida', nombre: 'Poción de vida', tipo: 'consumible', peso: 0.5, apilable: true,
     curacion: 25, descripcion: 'Restaura 25 de vida al usarla.',
   },
+  comida: {
+    id: 'comida', nombre: 'Comida', tipo: 'consumible', peso: 0.5, apilable: true,
+    curacion: 15, descripcion: 'Recogida del suelo; restaura 15 de vida al consumirla.',
+  },
   flecha: {
     id: 'flecha', nombre: 'Flecha', tipo: 'material', peso: 0.1, apilable: true,
     descripcion: 'Munición para arcos.',

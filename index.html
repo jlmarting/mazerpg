@@ -147,6 +147,7 @@
                     <div class="stat-int">INT: <span id="previewInt">-</span></div>
                 </div>
                 <button id="btnEditCharacter" class="btn-edit-character">EDITAR PERSONAJE</button>
+                <button id="btnEquipo" class="btn-edit-character">EQUIPO Y MOCHILA</button>
             </div>
 
             <div id="charCreationSection" class="char-creation-section">
@@ -305,6 +306,23 @@
             </div>
 
             <button id="btnSaveCharacter" class="btn-save-character">GUARDAR Y CONTINUAR</button>
+        </div>
+    </div>
+
+    <div id="equipoModal" class="lobby-modal-overlay z-50">
+        <div class="character-modal-box">
+            <h2>EQUIPO Y MOCHILA</h2>
+            <canvas id="equipoPreview" class="avatar-preview" width="64" height="64" aria-label="Vista previa del avatar equipado"></canvas>
+            <div id="equipoStats" class="equipo-stats"></div>
+            <div class="form-group">
+                <label class="form-label">EQUIPO:</label>
+                <div id="equipoRanuras"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">MOCHILA:</label>
+                <div id="equipoMochila"></div>
+            </div>
+            <button id="btnCerrarEquipo" class="btn-save-character">CERRAR</button>
         </div>
     </div>
 

@@ -496,8 +496,9 @@ export class Renderer {
     this.ctx.fillText("HÉROE", 20, 20);
     this.ctx.font = '11px monospace';
     this.ctx.fillText(`HP: ${game.protagonista.vidaActual}/${game.protagonista.vidaMaxima}`, 20, 32);
-    this.ctx.fillText(`FUE:${game.protagonista.fuerza} AGI:${game.protagonista.agilidad}`, 20, 44);
-    this.ctx.fillText(`INT:${game.protagonista.inteligencia} XP:${game.protagonista.puntosExperiencia}`, 20, 56);
+    const stHeroe = game.protagonista.statsEfectivos();
+    this.ctx.fillText(`FUE:${stHeroe.fuerza} AGI:${stHeroe.agilidad}`, 20, 44);
+    this.ctx.fillText(`INT:${stHeroe.inteligencia} XP:${game.protagonista.puntosExperiencia}`, 20, 56);
 
     let enemigoVisible = game.obtenerEnemigoAMostrar();
     if (enemigoVisible) {

@@ -4,6 +4,8 @@ import type { AparienciaAvatar, ZonaAvatar, RanuraPieza } from '../core/avatarTi
 import { PALETAS, ORIGEN_ZONA, APARIENCIA_DEFECTO } from '../config/apariencia';
 import { TABLA_PIEZAS, RANURAS } from '../core/avatarTintes';
 import { aparienciaEfectiva, conservarCoincidencias, sanearPiezas } from '../core/avatarTintes';
+import { ITEMS } from '../config/items';
+import { RANURAS_EQUIPO, type RanuraEquipo } from '../core/equipo';
 
 export interface CharacterData {
   nombre: string;
@@ -35,10 +37,29 @@ export interface LobbyDelegate {
   hayHousingPrevio(): boolean;
   /** Registra la decisión del usuario sobre el housing encontrado. */
   resolverHousingPrevio(usar: boolean): void;
+  /** Estado de equipo/inventario para el panel (piloto). */
+  getEstadoEquipo(): EstadoEquipo;
+  equiparItem(id: string): void;
+  desequiparRanura(ranura: RanuraEquipo): void;
+  consumirItem(id: string): void;
+}
+
+/** Vista del dominio de equipo que consume el panel. */
+export interface EstadoEquipo {
+  equipo: Record<RanuraEquipo, string | null>;
+  inventario: Record<string, number>;
+  base: { fuerza: number; agilidad: number; inteligencia: number };
+  total: { fuerza: number; agilidad: number; inteligencia: number; vida: number };
+  clase: string;
+  apariencia: AparienciaAvatar;
 }
 
 const CLASS_ICONS: Record<string, string> = { guerrero: '\u{1FA96}', explorador: '\u{1F3F9}', mago: '\u{1FA84}' };
 const CLASS_NAMES: Record<string, string> = { guerrero: 'GUERRERO', explorador: 'EXPLORADOR', mago: 'MAGO' };
+const ETIQUETA_RANURA: Record<RanuraEquipo, string> = {
+  cabeza: 'Cabeza', torso: 'Torso', piernas: 'Piernas',
+  mano_derecha: 'Mano der.', mano_izquierda: 'Mano izq.', escudo: 'Escudo', accesorio: 'Accesorio',
+};
 const FANTASY_NAMES = [
   "Tharos", "Elowen", "Grombrindal", "Luthien", "Drizzt", "Ciri", "Geralt", "Yennefer",
   "Boromir", "Galadriel", "Aragorn", "Legolas", "Gimli", "Saruman", "Gandalf", "Radagast",
@@ -214,6 +235,94 @@ export class LobbyManager {
 
   closeCharacterModal(): void {
     this.hideElement('characterModal');
+  }
+
+  // --- Panel de equipo y mochila (piloto inventario v1) ---
+
+  openEquipoModal(): void {
+    this.showElement('equipoModal', 'flex');
+    this.renderEquipo();
+  }
+
+  closeEquipoModal(): void {
+    this.hideElement('equipoModal');
+  }
+
+  /** Repinta el panel desde el estado real del protagonista. */
+  renderEquipo(): void {
+    const st = this.delegate.getEstadoEquipo();
+    const cont = document.getElementById('equipoRanuras');
+    const mochila = document.getElementById('equipoMochila');
+    const stats = document.getElementById('equipoStats');
+    if (!cont || !mochila || !stats) return;
+
+    const bono = (t: number, base: number) => (t > base ? ` (${base}→${t})` : '');
+    stats.textContent =
+      `FUE ${st.total.fuerza}${bono(st.total.fuerza, st.base.fuerza)} · ` +
+      `AGI ${st.total.agilidad}${bono(st.total.agilidad, st.base.agilidad)} · ` +
+      `INT ${st.total.inteligencia}${bono(st.total.inteligencia, st.base.inteligencia)}` +
+      (st.total.vida > 0 ? ` · VIDA +${st.total.vida}` : '');
+
+    cont.innerHTML = '';
+    for (const ranura of RANURAS_EQUIPO) {
+      const fila = document.createElement('div');
+      fila.className = 'equipo-ranura-row';
+      const nom = document.createElement('span');
+      nom.className = 'equipo-ranura-nombre';
+      nom.textContent = ETIQUETA_RANURA[ranura];
+      fila.appendChild(nom);
+
+      const puesto = st.equipo[ranura];
+      const candidatos = Object.values(ITEMS).filter((it) => it.tipo === 'equipo' && it.ranura === ranura);
+      if (candidatos.length === 0) {
+        const txt = document.createElement('span');
+        txt.style.cssText = 'font-family:monospace;font-size:10px;color:#888;';
+        txt.textContent = puesto ? (ITEMS[puesto]?.nombre ?? '—') : (ranura === 'mano_izquierda' && st.equipo.mano_derecha && ITEMS[st.equipo.mano_derecha]?.manos === 2 ? `ocupada por ${ITEMS[st.equipo.mano_derecha].nombre}` : 'libre');
+        fila.appendChild(txt);
+      }
+      for (const it of candidatos) {
+        const activo = puesto === it.id;
+        const btn = document.createElement('button');
+        btn.className = 'equipo-slot-btn' + (activo ? ' selected' : '');
+        btn.textContent = `${activo ? '[x]' : '[ ]'} ${it.nombre}`;
+        btn.addEventListener('click', () => {
+          if (activo) this.delegate.desequiparRanura(ranura);
+          else this.delegate.equiparItem(it.id);
+          this.renderEquipo();
+        });
+        fila.appendChild(btn);
+      }
+      cont.appendChild(fila);
+    }
+
+    mochila.innerHTML = '';
+    const entradas = Object.entries(st.inventario);
+    if (entradas.length === 0) {
+      const vacio = document.createElement('div');
+      vacio.className = 'equipo-mochila-row';
+      vacio.textContent = '(vacía)';
+      mochila.appendChild(vacio);
+    }
+    for (const [id, n] of entradas) {
+      const it = ITEMS[id];
+      if (!it) continue;
+      const fila = document.createElement('div');
+      fila.className = 'equipo-mochila-row';
+      const txt = document.createElement('span');
+      txt.textContent = `${it.nombre} ×${n}  ·  ${(it.peso * n).toFixed(1)} kg`;
+      fila.appendChild(txt);
+      if (it.tipo === 'consumible') {
+        const btn = document.createElement('button');
+        btn.className = 'equipo-mochila-btn';
+        btn.textContent = 'USAR';
+        btn.addEventListener('click', () => { this.delegate.consumirItem(id); this.renderEquipo(); });
+        fila.appendChild(btn);
+      }
+      mochila.appendChild(fila);
+    }
+
+    const canvas = document.getElementById('equipoPreview') as HTMLCanvasElement | null;
+    if (canvas) this.delegate.pintarPreviewAvatar(canvas, st.clase, st.apariencia);
   }
 
   saveCharacter(): void {
@@ -550,6 +659,8 @@ export class LobbyManager {
   private setupEventListeners(): void {
     document.getElementById('btnOpenCharacterModal')?.addEventListener('click', () => this.openCharacterModal());
     document.getElementById('btnEditCharacter')?.addEventListener('click', () => this.openCharacterModal());
+    document.getElementById('btnEquipo')?.addEventListener('click', () => this.openEquipoModal());
+    document.getElementById('btnCerrarEquipo')?.addEventListener('click', () => this.closeEquipoModal());
     document.getElementById('btnRandomName')?.addEventListener('click', () => this.generateRandomName());
     document.getElementById('btnCharReroll')?.addEventListener('click', () => this.recalculateStats());
     document.getElementById('btnSaveCharacter')?.addEventListener('click', () => this.saveCharacter());

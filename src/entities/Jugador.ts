@@ -2,6 +2,10 @@ import { EntidadRPG } from './EntidadRPG';
 import { IGame } from '../types';
 import type { AparienciaAvatar } from '../core/avatarTintes';
 import { APARIENCIA_DEFECTO } from '../config/apariencia';
+import {
+  equipoVacio, equipar, desequipar, bonosEquipo, aplicarBonos, piezasDeEquipo,
+  anadirAlInventario, consumir, type Equipo, type Inventario, type RanuraEquipo,
+} from '../core/equipo';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
@@ -14,6 +18,11 @@ export class Jugador extends EntidadRPG {
   apariencia: AparienciaAvatar = { formato: 1, zonas: { ...APARIENCIA_DEFECTO.guerrero.zonas }, genero: 'm', piezas: { pelo: null, torso: null, piernas: null, casco: null } };
   spriteKey: string = 'player_idle';
   personajeCreado: boolean = false;
+  /** Equipo puesto (7 ranuras) e inventario (pilas de consumibles/materiales). */
+  equipo: Equipo = equipoVacio();
+  inventario: Inventario = { pocion_vida: 3, flecha: 20 };
+  /** Vida máxima sin equipo; `vidaMaxima` = base + bonus de vida del equipo. */
+  vidaMaximaBase: number = 0;
 
   constructor(nombre: string = "Jugador") {
     super(0, 0, nombre);
@@ -74,8 +83,52 @@ export class Jugador extends EntidadRPG {
       }
     }
 
-    this.vidaMaxima = Math.floor(10 * ((this.fuerza * 2 + this.agilidad) / 3));
+    this.vidaMaximaBase = Math.floor(10 * ((this.fuerza * 2 + this.agilidad) / 3));
+    this.recalcularVidaMaxima();
     this.vidaActual = this.vidaMaxima;
+  }
+
+  /** Stats efectivos = base + bonos del equipo (no mutan la base). */
+  statsEfectivos(): { fuerza: number; agilidad: number; inteligencia: number; vida: number } {
+    return aplicarBonos(
+      { fuerza: this.fuerza, agilidad: this.agilidad, inteligencia: this.inteligencia },
+      bonosEquipo(this.equipo),
+    );
+  }
+
+  /** Equipa un item del catálogo (resuelve conflictos de empuñadura) y reaplica efectos. */
+  equiparItem(id: string): void {
+    this.equipo = equipar(this.equipo, id);
+    this.aplicarEquipo();
+  }
+
+  /** Vacía una ranura del equipo y reaplica efectos. */
+  desequiparRanura(ranura: RanuraEquipo): void {
+    this.equipo = desequipar(this.equipo, ranura);
+    this.aplicarEquipo();
+  }
+
+  anadirItem(id: string, cantidad: number = 1): void {
+    this.inventario = anadirAlInventario(this.inventario, id, cantidad);
+  }
+
+  consumirItem(id: string, cantidad: number = 1): void {
+    this.inventario = consumir(this.inventario, id, cantidad);
+  }
+
+  /** Sincroniza apariencia (equipo viste al avatar; el pelo es cosmético) y vida máxima. */
+  aplicarEquipo(): void {
+    const p = piezasDeEquipo(this.equipo);
+    this.apariencia = {
+      ...this.apariencia,
+      piezas: { ...this.apariencia.piezas, torso: p.torso, piernas: p.piernas, casco: p.casco },
+    };
+    this.recalcularVidaMaxima();
+  }
+
+  private recalcularVidaMaxima(): void {
+    this.vidaMaxima = this.vidaMaximaBase + bonosEquipo(this.equipo).vida;
+    if (this.vidaActual > this.vidaMaxima) this.vidaActual = this.vidaMaxima;
   }
 
 

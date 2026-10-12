@@ -14,6 +14,7 @@ import { eliminarMurosEntre } from './world/generation';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
+import { bonosEquipo } from './core/equipo';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import {
@@ -378,6 +379,7 @@ class Game implements IGame {
     this.protagonista.color = color;
     this.protagonista.clase = clase;
     this.protagonista.apariencia = sanearApariencia(apariencia, clase);
+    this.protagonista.aplicarEquipo();
     this.protagonista.personajeCreado = true;
     (document.getElementById('nickInput') as HTMLInputElement).value = nombre;
     this.registrarEventoLog(`Personaje guardado: ${nombre} (${clase})`);
@@ -457,6 +459,42 @@ class Game implements IGame {
       personajeCreado: this.protagonista.personajeCreado,
       apariencia: aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia)
     };
+  }
+
+  // --- Panel de equipo/inventario (piloto): opera sobre el protagonista ---
+
+  getEstadoEquipo(): import('./ui/LobbyManager').EstadoEquipo {
+    const p = this.protagonista;
+    const bonos = bonosEquipo(p.equipo);
+    return {
+      equipo: { ...p.equipo },
+      inventario: { ...p.inventario },
+      base: { fuerza: p.fuerza, agilidad: p.agilidad, inteligencia: p.inteligencia },
+      total: {
+        fuerza: p.fuerza + bonos.fuerza,
+        agilidad: p.agilidad + bonos.agilidad,
+        inteligencia: p.inteligencia + bonos.inteligencia,
+        vida: bonos.vida,
+      },
+      clase: p.clase,
+      apariencia: aparienciaEfectiva(p.clase, p.apariencia),
+    };
+  }
+
+  equiparItem(id: string): void {
+    this.protagonista.equiparItem(id);
+    this.lobbyManager.renderEquipo();
+    this.registrarEventoLog(`Equipado: ${id}`);
+  }
+
+  desequiparRanura(ranura: import('./core/equipo').RanuraEquipo): void {
+    this.protagonista.desequiparRanura(ranura);
+    this.lobbyManager.renderEquipo();
+  }
+
+  consumirItem(id: string): void {
+    this.protagonista.consumirItem(id);
+    this.lobbyManager.renderEquipo();
   }
 
   /** Difunde la apariencia actual por todos los transportes activos (cambio en caliente). */

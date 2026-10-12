@@ -122,7 +122,7 @@ class Game implements IGame {
     (window as any).game = this;
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas);
-    this.housing = new HousingLocal(this.network.idLocal);
+    this.housing = new HousingLocal(this.idLocalActivo);
     this.inicializarAssets();
     this.setupEntity(this.protagonista);
     this.initMap();
@@ -367,7 +367,7 @@ class Game implements IGame {
                 if (this.esHost) {
                     // El host ya actualiza a su protagonista localmente
                 } else {
-                    this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'stop_walking' } });
+                    this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'stop_walking' } });
                 }
             }
         }
@@ -543,12 +543,7 @@ class Game implements IGame {
   difundirApariencia(): void {
     const ef = aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia);
     const inventario = this.protagonista.exportarInventario();
-    if (this.network && this.network.multiplayerActivo) {
-      this.network.enviarMensaje({ tipo: 'avatar', id: this.network.idLocal, apariencia: ef, inventario });
-    }
-    if (this.networkHttp && this.networkHttp.multiplayerActivo) {
-      this.networkHttp.enviarMensaje({ tipo: 'avatar', id: this.networkHttp.idLocal, apariencia: ef, inventario });
-    }
+    this.enviarMultiplayer({ tipo: 'avatar', id: this.idLocalActivo, apariencia: ef, inventario });
   }
 
   /**
@@ -740,7 +735,7 @@ class Game implements IGame {
   async crearPartidaFirestore() {
     const id = generateSessionName();
     // Primero creamos; si Firebase falla (reglas/permisos), NO se crea sala ni se arranca.
-    const ok = await this.firebase.crearPartida(id, this.network.idLocal, this.protagonista.nombre);
+    const ok = await this.firebase.crearPartida(id, this.idLocalActivo, this.protagonista.nombre);
     if (!ok) {
       this.ui.registrarLogConexion('No se pudo crear la partida en Firebase (reglas/permisos).');
       this.mostrarAvisoFirebase('⚠ No se pudo crear la partida en Firebase. Prueba el modo SERVIDOR LOCAL.');
@@ -829,7 +824,7 @@ class Game implements IGame {
         this.ui.registrarLogConexion("Buscando candidatos...");
         const snapshot = await this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual!).collection('conexiones').get();
         snapshot.forEach((doc: any) => {
-            if (doc.id !== this.network.idLocal && !this.network.jugadoresRemotos.has(doc.id)) {
+            if (doc.id !== this.idLocalActivo && !this.remotosActivos.has(doc.id)) {
                 this.network.setupWebRTCHost(doc.id, this);
             }
         });
@@ -868,13 +863,13 @@ class Game implements IGame {
   }
 
   iniciarEleccionHost() {
-    const misJugadores = Array.from(this.network.jugadoresRemotos.keys())
+    const misJugadores = Array.from(this.remotosActivos.keys())
         .filter(id => id !== 'host');
-    misJugadores.push(this.network.idLocal);
+    misJugadores.push(this.idLocalActivo);
     misJugadores.sort();
 
     const candidatoId = misJugadores[0];
-    if (candidatoId === this.network.idLocal) {
+    if (candidatoId === this.idLocalActivo) {
         this.registrarEventoLog("Has sido elegido como nuevo Host.");
         this.promocionarAHost();
     } else {
@@ -888,7 +883,7 @@ class Game implements IGame {
     const unsub = this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual)
         .onSnapshot((doc: any) => {
             const data = doc.data();
-            if (data && data.hostId && data.hostId !== this.network.idLocal && data.hostId !== 'L_placeholder') {
+            if (data && data.hostId && data.hostId !== this.idLocalActivo && data.hostId !== 'L_placeholder') {
                 this.registrarEventoLog(`Nuevo Host detectado: ${data.hostNick}. Reconectando...`);
                 unsub();
                 this.unirseAPartidaFirestore(this.network.idPartidaActual!);
@@ -903,7 +898,7 @@ class Game implements IGame {
     if (hc) hc.style.display = 'flex';
     if (this.network.idPartidaActual) {
         await this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual).update({
-            hostId: this.network.idLocal,
+            hostId: this.idLocalActivo,
             hostNick: this.protagonista.nombre
         });
         this.registrarEventoLog("Ahora eres el Host de la partida.");
@@ -916,7 +911,7 @@ class Game implements IGame {
     this.detenerIntervalosFirebase();
     this.firebaseHeartbeatInterval = window.setInterval(() => {
         if (this.esHost && this.network.idPartidaActual) {
-            this.firebase.updateHeartbeat(this.network.idPartidaActual, this.network.jugadoresRemotos.size + 1);
+            this.firebase.updateHeartbeat(this.network.idPartidaActual, this.remotosActivos.size + 1);
         }
     }, 10000);
 
@@ -926,7 +921,7 @@ class Game implements IGame {
             const listaNpcs = this.listaDeEnemigos.map(e => ({
                 id: (e as any).id, f: e.fila, c: e.columna, v: e.vidaActual, vm: e.vidaMaxima
             }));
-            this.network.enviarMensaje({ tipo: 'npc_sync_all', lista: listaNpcs });
+            this.enviarMultiplayer({ tipo: 'npc_sync_all', lista: listaNpcs });
 
             // Sincronizar objetos del mundo (fuente de verdad absoluta)
             const objetos: any[] = [];
@@ -939,7 +934,7 @@ class Game implements IGame {
                     }
                 }
             }
-            this.network.enviarMensaje({ tipo: 'objetos', lista: objetos, is_update: true });
+            this.enviarMultiplayer({ tipo: 'objetos', lista: objetos, is_update: true });
         }
     }, 5000);
   }
@@ -993,7 +988,7 @@ class Game implements IGame {
   abandonarPartida() {
     if (confirm("¿Seguro que quieres abandonar la partida?")) {
         if (this.esHost && this.network.multiplayerActivo) {
-            this.network.enviarMensaje({ tipo: 'host_migration_trigger', reason: 'host_abandoned' });
+            this.enviarMultiplayer({ tipo: 'host_migration_trigger', reason: 'host_abandoned' });
         }
         this.detenerMotorJuego();
         this.detenerIntervalosHttp();
@@ -1233,7 +1228,7 @@ class Game implements IGame {
     const sembrado = sembrarMundoBase({
       gestor: this.gestorMundo,
       housing: this.housing,
-      idLocal: this.network.idLocal,
+      idLocal: this.idLocalActivo,
       filas: this.config.NUMERO_FILAS,
       columnas: this.config.NUMERO_COLUMNAS,
       casaPrevia,
@@ -1281,7 +1276,7 @@ class Game implements IGame {
 
         if (e instanceof EnemigoNPC && this.network && this.network.multiplayerActivo) {
             if (this.esHost) {
-                this.network.enviarMensaje({
+                this.enviarMultiplayer({
                     tipo: 'npc_update',
                     id: e.id,
                     f: e.fila,
@@ -1289,7 +1284,7 @@ class Game implements IGame {
                     v: e.vidaActual
                 });
             } else {
-                this.network.enviarMensaje({
+                this.enviarMultiplayer({
                     tipo: 'npc_damaged_by_guest',
                     id: e.id,
                     dano: amount
@@ -1298,7 +1293,7 @@ class Game implements IGame {
         }
 
         if (e instanceof JugadorRemoto && this.esHost && this.network && this.network.multiplayerActivo) {
-            this.network.enviarMensaje({
+            this.enviarMultiplayer({
                 tipo: 'hp_loss',
                 id: e.id,
                 amount: amount
@@ -1413,12 +1408,12 @@ class Game implements IGame {
     this.registrarEventoLog("Has renacido en el inicio.");
 
     if (this.network && this.network.activo) {
-        this.network.enviarMensaje({
+        this.enviarMultiplayer({
             tipo: 'posicion',
             f: this.protagonista.fila,
             c: this.protagonista.columna,
             cam: false,
-            id: this.network.idLocal,
+            id: this.idLocalActivo,
             nick: this.protagonista.nombre,
             hp: this.protagonista.vidaActual,
             maxHp: this.protagonista.vidaMaxima,
@@ -1483,13 +1478,13 @@ class Game implements IGame {
 
     // Actualizar estados de animación antes de dibujar
     this.protagonista.actualizarEstado();
-    this.network.jugadoresRemotos.forEach(j => { if (j.entidad) j.entidad.actualizarEstado(); });
+    this.remotosActivos.forEach(j => { if (j.entidad) j.entidad.actualizarEstado(); });
     this.listaDeEnemigos.forEach(e => { if (e.estaVivo) e.actualizarEstado(); });
 
     // Renderizado de Entidades
     this.renderer.dibujarEntidad(this.protagonista, offset, this.config, this.mapaLaberinto);
 
-    this.network.jugadoresRemotos.forEach(j => {
+    this.remotosActivos.forEach(j => {
         if (j.entidad) {
             this.renderer.dibujarEntidad(j.entidad, offset, this.config, this.mapaLaberinto);
         }
@@ -1542,7 +1537,7 @@ class Game implements IGame {
         if (ahoraR - r.inicio > r.duracion) {
             this.radares.splice(i, 1);
         } else {
-            this.renderer.dibujarRadar(r, offset, this.config, this.network.idLocal);
+            this.renderer.dibujarRadar(r, offset, this.config, this.idLocalActivo);
         }
     }
 
@@ -1641,7 +1636,7 @@ class Game implements IGame {
     };
 
     snapshot.entities.push({
-        id: this.network.idLocal,
+        id: this.idLocalActivo,
         f: this.protagonista.fila,
         c: this.protagonista.columna,
         v: this.protagonista.vidaActual,
@@ -1654,7 +1649,7 @@ class Game implements IGame {
         fr: this.protagonista.frameActual
     });
 
-    this.network.jugadoresRemotos.forEach((j: any, id: string) => {
+    this.remotosActivos.forEach((j: any, id: string) => {
         if (j.entidad && id !== 'host') {
             snapshot.entities.push({
                 id: id,
@@ -1684,7 +1679,7 @@ class Game implements IGame {
         fr: e.frameActual
     })));
 
-    this.network.enviarMensaje(snapshot);
+    this.enviarMultiplayer(snapshot);
   }
 
   actualizar() {
@@ -1749,7 +1744,7 @@ class Game implements IGame {
                 title.style.color = "#ff4444";
                 msg.textContent = "¿Quieres volver a intentarlo?";
                 if (this.esHost && this.network.multiplayerActivo) {
-                    this.network.enviarMensaje({ tipo: 'host_migration_trigger', reason: 'death' });
+                    this.enviarMultiplayer({ tipo: 'host_migration_trigger', reason: 'death' });
                     this.iniciarEleccionHost();
                 }
             } else {
@@ -1791,11 +1786,12 @@ class Game implements IGame {
   /** Reenvío del estado completo del nodo activo a TODOS los invitados conectados: mapa v2 (re-dimensiona la rejilla del invitado) + enemigos + objetos + spawn. El invitado debe conocer el nodo del host en cada cruce, no solo al join. */
   private reenviarEstadoAInvitados(): void {
     if (!this.network?.activo) return;
-    this.network.jugadoresRemotos.forEach((_, guestId: string) => this.enviarMapaAlInvitado(guestId));
+    this.remotosActivos.forEach((_, guestId: string) => this.enviarMapaAlInvitado(guestId));
   }
 
   enviarMapaAlInvitado(guestId: string) {
-    const jInfo = this.network.jugadoresRemotos.get(guestId);
+    const jInfo = this.remotosActivos.get(guestId);
+    this.registrarEventoLog(`[net] enviarMapaAlInvitado a ${guestId}: ${jInfo ? ('dc=' + (jInfo.dc?.readyState ?? 'null')) : 'sin jInfo'} (remotos=${this.remotosActivos.size})`);
     if (!jInfo || !jInfo.dc || jInfo.dc.readyState !== "open") return;
 
     const mapaCompacto = serializarMapa(this.mapaLaberinto, { v2: true });
@@ -1830,7 +1826,7 @@ class Game implements IGame {
         jInfo.entidad.columna = posSpawn.c;
     }
 
-    this.network.jugadoresRemotos.forEach((other, otherId) => {
+    this.remotosActivos.forEach((other, otherId) => {
         if (otherId !== guestId && other.entidad) {
             jInfo.dc.send(JSON.stringify({
                 tipo: 'posicion', f: other.entidad.fila, c: other.entidad.columna,
@@ -1841,7 +1837,7 @@ class Game implements IGame {
     });
     jInfo.dc.send(JSON.stringify({
         tipo: 'posicion', f: this.protagonista.fila, c: this.protagonista.columna,
-        cam: false, nick: this.protagonista.nombre, id: this.network.idLocal,
+        cam: false, nick: this.protagonista.nombre, id: this.idLocalActivo,
         hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
     }));
   }
@@ -1850,7 +1846,7 @@ class Game implements IGame {
     if (this.protagonista.fila === this.config.NUMERO_FILAS - 1 && this.protagonista.columna === this.config.NUMERO_COLUMNAS - 1) {
         this.juegoTerminado = true;
         this.registrarEventoLog("¡Has escapado!");
-        if (this.network.activo) this.network.enviarMensaje({ tipo: 'victoria', nick: this.protagonista.nombre });
+        if (this.network.activo) this.enviarMultiplayer({ tipo: 'victoria', nick: this.protagonista.nombre });
     }
   }
 
@@ -1858,15 +1854,15 @@ class Game implements IGame {
   obtenerEntidadPorNombre(nombre: string) {
     if (nombre === this.protagonista.nombre) return this.protagonista;
     let found = null;
-    this.network.jugadoresRemotos.forEach(j => {
+    this.remotosActivos.forEach(j => {
         if (j.entidad && j.entidad.nombre === nombre) found = j.entidad;
     });
     return found;
   }
 
   obtenerEntidadPorId(id: string) {
-    if (id === this.network.idLocal) return this.protagonista;
-    const j = this.network.jugadoresRemotos.get(id);
+    if (id === this.idLocalActivo) return this.protagonista;
+    const j = this.remotosActivos.get(id);
     return j ? j.entidad : null;
   }
 
@@ -1876,7 +1872,7 @@ class Game implements IGame {
         return true;
     }
     let dentro = false;
-    this.network.jugadoresRemotos.forEach(j => {
+    this.remotosActivos.forEach(j => {
         if (j.entidad && dentroDeBurbuja(fila, columna, j.entidad.fila, j.entidad.columna, radio)) {
             dentro = true;
         }
@@ -1885,9 +1881,9 @@ class Game implements IGame {
   }
 
   onlineIds(): Set<string> {
-    const ids = new Set<string>([this.network.idLocal]);
+    const ids = new Set<string>([this.idLocalActivo]);
     if (this.network.idRealDelHost) ids.add(this.network.idRealDelHost);
-    this.network.jugadoresRemotos.forEach((jugador, id) => {
+    this.remotosActivos.forEach((jugador, id) => {
         ids.add(id);
         const idReal: unknown = jugador?.entidad?.id;
         if (typeof idReal === 'string' && idReal.length > 0) ids.add(idReal);
@@ -1985,7 +1981,7 @@ class Game implements IGame {
       nodoId: this.gestorMundo.nodoActivoId || 'raiz',
       fila,
       columna,
-      autoria: autoria || this.network.idLocal,
+      autoria: autoria || this.idLocalActivo,
       cambio,
     };
     return conTickAutor(base, tickAutor, this.siguienteTickMundo());
@@ -2129,11 +2125,11 @@ class Game implements IGame {
             let jugadorChocadoId: string | null = null;
             let jugadorChocado: any = null;
 
-            if (id !== this.network.idLocal && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
-                jugadorChocadoId = this.network.idLocal;
+            if (id !== this.idLocalActivo && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
+                jugadorChocadoId = this.idLocalActivo;
                 jugadorChocado = this.protagonista;
             } else {
-                this.network.jugadoresRemotos.forEach((v: any, k: string) => {
+                this.remotosActivos.forEach((v: any, k: string) => {
                     if (k !== id && v.entidad && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
                         jugadorChocadoId = k;
                         jugadorChocado = v.entidad;
@@ -2151,13 +2147,13 @@ class Game implements IGame {
                         this.registrarEventoLog(`${entidad.nombre} transfirió 1 HP a ${jugadorChocado.nombre}`);
 
                         // Notificar a todos para efectos visuales (texto flotante)
-                        this.network.enviarMensaje({
+                        this.enviarMultiplayer({
                             tipo: 'hp_transfer',
                             fromId: id,
                             toId: jugadorChocadoId,
                             amount: 1
                         });
-                        this.network.enviarMensaje({
+                        this.enviarMultiplayer({
                             tipo: 'hp_loss',
                             id: id,
                             amount: 1
@@ -2225,7 +2221,7 @@ class Game implements IGame {
                 this.aplicarDeltaAutorizado(deltaCavar);
                 this.renderer.invalidarCacheLaberinto();
                 eliminarMurosEntre(this.mapaLaberinto[entidad.fila][entidad.columna], celdaObjetivo);
-                this.network.enviarMensaje({
+                this.enviarMultiplayer({
                     tipo: 'dig_completed',
                     f: sigFila,
                     c: sigColumna,
@@ -2258,7 +2254,7 @@ class Game implements IGame {
                 const deltaPico = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'tienePico', valor: false }, id);
                 this.aplicarDeltaAutorizado(deltaPico);
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'pick_collected', f: sigFila, c: sigColumna, tick: deltaPico.tick });
+                this.enviarMultiplayer({ tipo: 'pick_collected', f: sigFila, c: sigColumna, tick: deltaPico.tick });
                 if (entidad === this.protagonista) { this.guardarSesionActual(); this.registrarEventoLog('Recogido: Pico (empúñalo para cavar).'); }
             }
             if (celdaNueva.alimento) {
@@ -2272,7 +2268,7 @@ class Game implements IGame {
                 const deltaAlimento = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'alimento', valor: null }, id);
                 this.aplicarDeltaAutorizado(deltaAlimento);
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'food_consumed', f: sigFila, c: sigColumna, tick: deltaAlimento.tick });
+                this.enviarMultiplayer({ tipo: 'food_consumed', f: sigFila, c: sigColumna, tick: deltaAlimento.tick });
                 if (entidad === this.protagonista) { this.guardarSesionActual(); this.registrarEventoLog('Recogido: Comida.'); }
             }
             if (celdaNueva.burbuja) {
@@ -2280,7 +2276,7 @@ class Game implements IGame {
                 this.aplicarDeltaAutorizado(deltaEscudo);
                 entidad.inmunidadHasta = Date.now() + 30000;
                 this.renderer.invalidarCacheLaberinto();
-                this.network.enviarMensaje({ tipo: 'shield_collected', f: sigFila, c: sigColumna, tick: deltaEscudo.tick });
+                this.enviarMultiplayer({ tipo: 'shield_collected', f: sigFila, c: sigColumna, tick: deltaEscudo.tick });
                 this.registrarEventoLog(`${entidad.nombre} recoge escudo: inmunidad 30 s.`);
             }
             if (enBurbuja) {
@@ -2324,7 +2320,7 @@ class Game implements IGame {
 
   teletransportarAliados(lider: any, esLocal: boolean) {
     if (!this.esHost && this.network.multiplayerActivo && esLocal) {
-        this.network.enviarMensaje({ tipo: 'request_guard_teleport' });
+        this.enviarMultiplayer({ tipo: 'request_guard_teleport' });
     }
 
     if (!this.esHost && !esLocal) {
@@ -2347,7 +2343,7 @@ class Game implements IGame {
     }
 
     // Si no hay suficientes adyacentes, buscar un poco más allá
-    if (posicionesLibres.length < this.network.jugadoresRemotos.size + 1) {
+    if (posicionesLibres.length < this.remotosActivos.size + 1) {
          for (let r = 2; r <= 3; r++) {
             for (let df = -r; df <= r; df++) {
                 for (let dc = -r; dc <= r; dc++) {
@@ -2364,14 +2360,14 @@ class Game implements IGame {
     }
 
     let idx = 0;
-    this.network.jugadoresRemotos.forEach((j, id) => {
+    this.remotosActivos.forEach((j, id) => {
         // No teletransportar al líder si es uno de los jugadores remotos
         if (j.entidad && j.entidad !== lider && idx < posicionesLibres.length) {
             const pos = posicionesLibres[idx++];
             j.entidad.fila = pos.f;
             j.entidad.columna = pos.c;
             if (this.esHost) {
-                this.network.enviarMensaje({ tipo: 'force_teleport', id: id, f: pos.f, c: pos.c });
+                this.enviarMultiplayer({ tipo: 'force_teleport', id: id, f: pos.f, c: pos.c });
             }
         }
     });
@@ -2394,9 +2390,9 @@ class Game implements IGame {
 
         if (this.network && this.network.multiplayerActivo) {
             if (this.esHost) {
-                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'freeze' } });
+                this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'freeze' } });
             } else {
-                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'freeze' } });
+                this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'freeze' } });
             }
             return;
         }
@@ -2422,7 +2418,7 @@ class Game implements IGame {
     }
 
     if (this.esHost && this.network && this.network.multiplayerActivo) {
-        this.network.enviarMensaje({
+        this.enviarMultiplayer({
             tipo: 'freeze_spawn',
             x: emisor.columna,
             y: emisor.fila,
@@ -2442,9 +2438,9 @@ class Game implements IGame {
 
         if (this.network && this.network.multiplayerActivo) {
             if (this.esHost) {
-                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'whirlwind' } });
+                this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'whirlwind' } });
             } else {
-                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'whirlwind' } });
+                this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'whirlwind' } });
             }
             return;
         }
@@ -2472,7 +2468,7 @@ class Game implements IGame {
     }
 
     if (this.esHost && this.network && this.network.multiplayerActivo) {
-        this.network.enviarMensaje({
+        this.enviarMultiplayer({
             tipo: 'whirlwind_spawn',
             x: emisor.columna,
             y: emisor.fila
@@ -2490,9 +2486,9 @@ class Game implements IGame {
 
         if (this.network && this.network.multiplayerActivo) {
             if (this.esHost) {
-                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'fireball' } });
+                this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'fireball' } });
             } else {
-                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'fireball' } });
+                this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'fireball' } });
             }
             return;
         }
@@ -2532,7 +2528,7 @@ class Game implements IGame {
         this.registrarEventoLog(`¡${emisor.nombre} lanza una bola de fuego!`);
 
         if (this.esHost && this.network.multiplayerActivo) {
-            this.network.enviarMensaje({
+            this.enviarMultiplayer({
                 tipo: 'fireball_spawn',
                 ex: emisor.columna,
                 ey: emisor.fila,
@@ -2556,12 +2552,28 @@ class Game implements IGame {
     if (document.getElementById('equipoModal')?.style.display === 'flex') this.lobbyManager.renderEquipo();
   }
 
-  /** Difunde un mensaje de loot por todos los transportes activos. */
-  private difundirLoot(msg: any): void {
-    if (this.network && this.network.multiplayerActivo) this.network.enviarMensaje(msg);
-    if (this.networkHttp && this.networkHttp.multiplayerActivo) this.networkHttp.enviarMensaje(msg);
+  /** Envía a los peers por el transporte multijugador activo (Firebase o HTTP). */
+  private enviarMultiplayer(msg: any, exceptId: string | null = null): void {
+    if (this.network && this.network.multiplayerActivo) this.network.enviarMensaje(msg, exceptId);
+    if (this.networkHttp && this.networkHttp.multiplayerActivo) this.networkHttp.enviarMensaje(msg, exceptId);
   }
 
+  /** Mapa de jugadores remotos del transporte multijugador ACTIVO (Firebase o HTTP). */
+  private get remotosActivos(): Map<string, any> {
+    if (this.networkHttp && this.networkHttp.multiplayerActivo) return this.networkHttp.jugadoresRemotos;
+    return this.network.jugadoresRemotos;
+  }
+
+  /** Id local del transporte multijugador ACTIVO (Firebase o HTTP). */
+  private get idLocalActivo(): string {
+    if (this.networkHttp && this.networkHttp.multiplayerActivo) return this.networkHttp.idLocal;
+    return this.network.idLocal;
+  }
+
+  /** Difunde un mensaje de loot por todos los transportes activos. */
+  private difundirLoot(msg: any): void {
+    this.enviarMultiplayer(msg);
+  }
   /** Suelta botín en el suelo (al morir un mob): queda como drop que se recoge al pisar. */
   soltarBotin(f: number, c: number, veces: number = 1 + Math.floor(Math.random() * 2)): void {
     const botin = elegirBotin(Math.random, veces);
@@ -2600,9 +2612,9 @@ class Game implements IGame {
 
           if (this.network && this.network.multiplayerActivo) {
               if (this.esHost) {
-                  this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'bow' } });
+                  this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'bow' } });
               } else {
-                  this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'bow' } });
+                  this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'bow' } });
               }
               return;
           }
@@ -2643,7 +2655,7 @@ class Game implements IGame {
           this.registrarEventoLog(`¡${emisor.nombre} dispara una flecha!`);
 
           if (this.esHost && this.network.multiplayerActivo) {
-              this.network.enviarMensaje({
+              this.enviarMultiplayer({
                   tipo: 'arrow_spawn',
                   ex: emisor.columna,
                   ey: emisor.fila,
@@ -2664,9 +2676,9 @@ class Game implements IGame {
 
           if (this.network && this.network.multiplayerActivo) {
               if (this.esHost) {
-                  this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'create_food' } });
+                  this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'create_food' } });
               } else {
-                  this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'create_food' } });
+                  this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'create_food' } });
               }
               return;
           }
@@ -2695,13 +2707,13 @@ class Game implements IGame {
               { tipo: "Pescado", pc: 70 }
           ];
           const alimento = alimentos[Math.floor(Math.random() * alimentos.length)];
-          const deltaComida = this.construirDelta(f, c, { tipo: 'objeto', campo: 'alimento', valor: alimento }, (emisor as any).id || this.network.idLocal);
+          const deltaComida = this.construirDelta(f, c, { tipo: 'objeto', campo: 'alimento', valor: alimento }, (emisor as any).id || this.idLocalActivo);
           this.aplicarDeltaAutorizado(deltaComida);
           this.registrarEventoLog(`${emisor.nombre} ha creado ${alimento.tipo}.`);
           this.ui.crearTextoFlotanteEnCelda(f, c, "¡COMIDA!", "#ffcc00", this);
 
           if (this.esHost && this.network.multiplayerActivo) {
-              this.network.enviarMensaje({
+              this.enviarMultiplayer({
                   tipo: 'object_spawned',
                   f, c, a: alimento,
                   tick: deltaComida.tick
@@ -2720,9 +2732,9 @@ class Game implements IGame {
 
         if (this.network && this.network.multiplayerActivo) {
             if (this.esHost) {
-                this.colaAcciones.push({ id: this.network.idLocal, accion: { tipo: 'radar' } });
+                this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'radar' } });
             } else {
-                this.network.enviarMensaje({ tipo: 'action', accion: { tipo: 'radar' } });
+                this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'radar' } });
             }
             return;
         }
@@ -2734,7 +2746,7 @@ class Game implements IGame {
         inicio: ahora,
         duracion: 5000,
         respuestas: [],
-        idEmisor: emisor.id || (this.network ? this.network.idLocal : 'unknown')
+        idEmisor: emisor.id || (this.network ? this.idLocalActivo : 'unknown')
     };
 
     // Identificar hasta 5 NPCs o personajes cercanos
@@ -2753,8 +2765,8 @@ class Game implements IGame {
         const dist = Math.sqrt(Math.pow(this.protagonista.fila - emisor.fila, 2) + Math.pow(this.protagonista.columna - emisor.columna, 2));
         entidades.push({ f: this.protagonista.fila, c: this.protagonista.columna, npc: false, dist } as any);
     }
-    if (this.network && this.network.jugadoresRemotos) {
-        this.network.jugadoresRemotos.forEach((j: any) => {
+    if (this.network && this.remotosActivos) {
+        this.remotosActivos.forEach((j: any) => {
             if (j.entidad && j.entidad !== emisor) {
                 const dist = Math.sqrt(Math.pow(j.entidad.fila - emisor.fila, 2) + Math.pow(j.entidad.columna - emisor.columna, 2));
                 entidades.push({ f: j.entidad.fila, c: j.entidad.columna, npc: false, dist } as any);
@@ -2768,7 +2780,7 @@ class Game implements IGame {
     this.radares.push(radarObj);
 
     if (this.esHost && this.network && this.network.multiplayerActivo) {
-        this.network.enviarMensaje({
+        this.enviarMultiplayer({
             tipo: 'radar_spawn',
             x: emisor.columna,
             y: emisor.fila,
@@ -2791,11 +2803,11 @@ class Game implements IGame {
           // (árbitro + persistencia + política de dueño); prohibido escribir la celda a mano.
           if (i < 3) {
               this.aplicarDeltaAutorizado(
-                  this.construirDelta(f, c, { tipo: 'escenario', tipoEscenario: 'puerta', estado: 'cerrada' }, this.network.idLocal),
+                  this.construirDelta(f, c, { tipo: 'escenario', tipoEscenario: 'puerta', estado: 'cerrada' }, this.idLocalActivo),
               );
           } else {
               this.aplicarDeltaAutorizado(
-                  this.construirDelta(f, c, { tipo: 'escenario', tipoEscenario: 'trampa', estado: 'inactiva' }, this.network.idLocal),
+                  this.construirDelta(f, c, { tipo: 'escenario', tipoEscenario: 'trampa', estado: 'inactiva' }, this.idLocalActivo),
               );
           }
       }
@@ -2855,10 +2867,10 @@ class Game implements IGame {
     if (entidad === this.protagonista) {
         this.ui.crearTextoFlotanteEnCelda(aparicion.fila, aparicion.columna, "¡PORTAL!", "#0000ff", this);
         if (this.network && this.network.activo) {
-            this.network.enviarMensaje({
+            this.enviarMultiplayer({
                 tipo: 'posicion',
                 f: aparicion.fila, c: aparicion.columna, cam: false,
-                id: this.network.idLocal, nick: this.protagonista.nombre,
+                id: this.idLocalActivo, nick: this.protagonista.nombre,
                 hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
             });
         }
@@ -2972,10 +2984,10 @@ class Game implements IGame {
             if (entidad === this.protagonista) {
                 this.ui.crearTextoFlotanteEnCelda(dest.f, dest.c, "¡PORTAL!", "#0000ff", this);
                 if (this.network && this.network.activo) {
-                    this.network.enviarMensaje({
+                    this.enviarMultiplayer({
                         tipo: 'posicion',
                         f: dest.f, c: dest.c, cam: false,
-                        id: this.network.idLocal, nick: this.protagonista.nombre,
+                        id: this.idLocalActivo, nick: this.protagonista.nombre,
                         hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
                     });
                 }
@@ -3147,7 +3159,7 @@ class Game implements IGame {
             }
             break;
         case 'object_spawned':
-            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
             if (!this.esHost) {
                 // Delta del mundo (§3a): pasa sin gate de burbuja; mandan árbitro y dueño.
                 if (msg.a) {
@@ -3171,7 +3183,7 @@ class Game implements IGame {
                             if (entData.fr !== undefined) npc.frameActual = entData.fr;
                         }
                     } else {
-                        if (entData.id === this.network.idLocal) {
+                        if (entData.id === this.idLocalActivo) {
                             // Snap-back corregido: solo corregir si la discrepancia es significativa
                             // o si el Host insiste en una posición diferente durante un tiempo.
                             // Por ahora usamos un umbral de 1.1 tiles para permitir predicción local.
@@ -3186,11 +3198,11 @@ class Game implements IGame {
                             this.protagonista.estaVivo = entData.viva;
                             this.protagonista.estaCaminando = entData.cam;
                         } else {
-                            let rem = this.network.jugadoresRemotos.get(entData.id);
+                            let rem = this.remotosActivos.get(entData.id);
                             if (!rem) {
                                 // Crear entrada si no existe (para otros invitados o host recién identificado)
                                 rem = { pc: null as any, dc: null as any, entidad: null, unsubscribes: [] };
-                                this.network.jugadoresRemotos.set(entData.id, rem);
+                                this.remotosActivos.set(entData.id, rem);
                             }
 
                             if (rem && rem.entidad) {
@@ -3229,22 +3241,23 @@ class Game implements IGame {
             }
             break;
         case 'handshake':
+            this.registrarEventoLog(`[net] handshake de ${idEmisor} (esHost=${this.esHost})`);
             let realId = idSujeto;
             if (idEmisor === 'host' && !this.esHost) {
-                const hostInfo = this.network.jugadoresRemotos.get('host');
+                const hostInfo = this.remotosActivos.get('host');
                 if (hostInfo) {
-                    this.network.jugadoresRemotos.delete('host');
-                    this.network.jugadoresRemotos.set(realId, hostInfo);
+                    this.remotosActivos.delete('host');
+                    this.remotosActivos.set(realId, hostInfo);
                     this.network.idRealDelHost = realId;
                 }
             }
 
-            if (!this.network.jugadoresRemotos.has(realId)) {
+            if (!this.remotosActivos.has(realId)) {
                 const pc: any = null;
                 const dc: any = null;
-                this.network.jugadoresRemotos.set(realId, { pc, dc, entidad: null, unsubscribes: [] });
+                this.remotosActivos.set(realId, { pc, dc, entidad: null, unsubscribes: [] });
             }
-            const jInfo = this.network.jugadoresRemotos.get(realId)!;
+            const jInfo = this.remotosActivos.get(realId)!;
             if (!jInfo.entidad) {
                 jInfo.entidad = new JugadorRemoto(0, 0, msg.nick, idSujeto);
                 if (msg.clase) jInfo.entidad.clase = msg.clase;
@@ -3261,16 +3274,16 @@ class Game implements IGame {
 
             if (this.esHost) {
                 // Notificar a otros y responder al nuevo con nuestro handshake
-                this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
+                this.enviarMultiplayer({ ...msg, id: idSujeto }, idEmisor);
 
                 // Forzar envío de nuestro handshake al que acaba de llegar (por si su canal abrió después que el nuestro)
                 const hostStats = { fue: this.protagonista.fuerza, agi: this.protagonista.agilidad, int: this.protagonista.inteligencia };
-                const target = this.network.jugadoresRemotos.get(idEmisor);
+                const target = this.remotosActivos.get(idEmisor);
                 if (target && target.dc && target.dc.readyState === "open") {
                     target.dc.send(JSON.stringify({
                         tipo: 'handshake',
                         nick: this.protagonista.nombre,
-                        id: this.network.idLocal,
+                        id: this.idLocalActivo,
                         clase: this.protagonista.clase,
                         stats: hostStats,
                         apariencia: aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia)
@@ -3278,7 +3291,8 @@ class Game implements IGame {
                 }
             } else {
                 const stats = { fue: this.protagonista.fuerza, agi: this.protagonista.agilidad, int: this.protagonista.inteligencia };
-                this.network.enviarMensaje({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.network.idLocal, stats });
+                this.enviarMultiplayer({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.idLocalActivo, stats });
+                this.registrarEventoLog('[net] respondido handshake_ack');
             }
             break;
         case 'loot_spawn': {
@@ -3299,7 +3313,7 @@ class Game implements IGame {
         }
 
         case 'avatar': {
-            const avInfo = this.network.jugadoresRemotos.get(idSujeto);
+            const avInfo = this.remotosActivos.get(idSujeto);
             if (avInfo && avInfo.entidad) {
                 avInfo.entidad.apariencia = aplicarAparienciaRemota(avInfo.entidad.apariencia, msg.apariencia, avInfo.entidad.clase || 'guerrero');
                 const inv = sanearEquipoGuardado(msg.inventario);
@@ -3311,7 +3325,7 @@ class Game implements IGame {
         }
         case 'handshake_ack':
             if (this.esHost) {
-                const jInfoAck = this.network.jugadoresRemotos.get(idSujeto);
+                const jInfoAck = this.remotosActivos.get(idSujeto);
                 if (jInfoAck && jInfoAck.entidad) {
                     jInfoAck.entidad.nombre = msg.nick;
                     if (msg.stats) {
@@ -3323,6 +3337,7 @@ class Game implements IGame {
                     }
                 }
                 this.enviarMapaAlInvitado(idSujeto);
+                this.registrarEventoLog('Invitado listo; enviando mundo.');
             }
             break;
         case 'mapa':
@@ -3331,6 +3346,7 @@ class Game implements IGame {
             this.config.NUMERO_COLUMNAS = dims.columnas;
             if (msg.dificultad) this.config.dificultad = msg.dificultad;
             this.ajustarDimensiones();
+            this.registrarEventoLog('Mapa del host recibido.');
             break;
         case 'enemigos':
             // Defensa (post-aceptación): coordenadas de otro nodo (join o re-sync
@@ -3378,25 +3394,25 @@ class Game implements IGame {
             }
             break;
         case 'food_consumed':
-            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
             // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'alimento', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'pick_collected':
-            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
             // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'tienePico', valor: false }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'shield_collected':
-            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
             // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'burbuja', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'dig_completed':
-            if (this.esHost) this.network.enviarMensaje(msg, idEmisor);
+            if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
             // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'cavar' }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
@@ -3405,7 +3421,7 @@ class Game implements IGame {
             }
             break;
         case 'force_teleport':
-            if (msg.id === this.network.idLocal) {
+            if (msg.id === this.idLocalActivo) {
                 this.protagonista.fila = msg.f;
                 this.protagonista.columna = msg.c;
                 this.protagonista.visualFila = msg.f;
@@ -3420,7 +3436,7 @@ class Game implements IGame {
             }
             break;
         case 'posicion':
-            const jPos = this.network.jugadoresRemotos.get(idSujeto);
+            const jPos = this.remotosActivos.get(idSujeto);
             if (jPos && jPos.entidad) {
                 jPos.entidad.fila = msg.f;
                 jPos.entidad.columna = msg.c;
@@ -3437,37 +3453,37 @@ class Game implements IGame {
                     jPos.entidad.frameActual = msg.fr;
                 }
             }
-            if (this.esHost) this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
+            if (this.esHost) this.enviarMultiplayer({ ...msg, id: idSujeto }, idEmisor);
             break;
         case 'chat':
             this.ui.manejarMensajeChat(msg.nick || "Desconocido", msg.texto, false, this, idSujeto);
-            if (this.esHost) this.network.enviarMensaje({ ...msg, id: idSujeto }, idEmisor);
+            if (this.esHost) this.enviarMultiplayer({ ...msg, id: idSujeto }, idEmisor);
             break;
         case 'hp_transfer':
-            if (msg.toId === this.network.idLocal) {
+            if (msg.toId === this.idLocalActivo) {
                 this.protagonista.vidaActual = Math.min(this.protagonista.vidaMaxima, this.protagonista.vidaActual + msg.amount);
                 this.ui.crearTextoFlotanteEnCelda(this.protagonista.fila, this.protagonista.columna, `+${msg.amount} HP`, "#00ff00", this);
                 this.registrarEventoLog(`Has recibido vida de un compañero.`);
             } else {
-                const target = this.network.jugadoresRemotos.get(msg.toId);
+                const target = this.remotosActivos.get(msg.toId);
                 if (target && target.entidad) {
                     target.entidad.vidaActual = Math.min(target.entidad.vidaMaxima, target.entidad.vidaActual + msg.amount);
                     this.ui.crearTextoFlotanteEnCelda(target.entidad.fila, target.entidad.columna, `+${msg.amount} HP`, "#00ff00", this);
                 }
             }
-            if (this.esHost) this.network.enviarMensaje({ ...msg }, idEmisor);
+            if (this.esHost) this.enviarMultiplayer({ ...msg }, idEmisor);
             break;
         case 'hp_loss':
-            if (msg.id === this.network.idLocal) {
+            if (msg.id === this.idLocalActivo) {
                 this.protagonista.vidaActual = Math.max(0, this.protagonista.vidaActual - msg.amount);
             } else {
-                const target = this.network.jugadoresRemotos.get(msg.id);
+                const target = this.remotosActivos.get(msg.id);
                 if (target && target.entidad) {
                     target.entidad.vidaActual = Math.max(0, target.entidad.vidaActual - msg.amount);
                     this.ui.crearTextoFlotanteEnCelda(target.entidad.fila, target.entidad.columna, `-${msg.amount} HP`, "#ff0000", this);
                 }
             }
-            if (this.esHost) this.network.enviarMensaje({ ...msg }, idEmisor);
+            if (this.esHost) this.enviarMultiplayer({ ...msg }, idEmisor);
             break;
         case 'npc_update': {
             const npc = this.listaDeEnemigos.find(e => e.id === msg.id);

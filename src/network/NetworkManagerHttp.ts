@@ -45,7 +45,10 @@ export class NetworkManagerHttp {
             const clase = game.protagonista.clase;
             const stats = { fue: game.protagonista.fuerza, agi: game.protagonista.agilidad, int: game.protagonista.inteligencia };
             const apariencia = aparienciaEfectiva(game.protagonista.clase || 'guerrero', game.protagonista.apariencia);
-            this.enviarMensaje({ tipo: 'handshake', nick, id: this.idLocal, clase, stats, apariencia });
+            // Solo el invitado inicia el handshake; el host responde al recibirlo.
+            if (!this.esHost) {
+                this.enviarMensaje({ tipo: 'handshake', nick, id: this.idLocal, clase, stats, apariencia });
+            }
 
             if (this.esHost) {
                 game.registrarEventoLog(`Jugador conectado (${idEmisor})`);

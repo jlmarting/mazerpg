@@ -178,6 +178,16 @@ export function consumir(inv: Inventario, id: string, n: number = 1): Inventario
   return out;
 }
 
+/** Daño de las armas empuñadas (suma de `dano`; el pico resta, la espada 0). */
+export function danoArma(equipo: Equipo, cat: Record<string, ItemDef> = ITEMS): number {
+  let d = 0;
+  for (const ranura of RANURAS_EQUIPO) {
+    const id = equipo[ranura];
+    if (id && cat[id]) d += cat[id].dano ?? 0;
+  }
+  return d;
+}
+
 /** ¿Este item puede ir en esta ranura? (para el drag&drop: soltar solo donde encaja). */
 export function destinoValido(id: string, ranura: RanuraEquipo, cat: Record<string, ItemDef> = ITEMS): boolean {
   const item = cat[id];

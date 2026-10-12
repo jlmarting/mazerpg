@@ -17,6 +17,7 @@ import {
   destinoValido,
   capacidadMaxima,
   penalizacionSobrecarga,
+  danoArma,
 } from './equipo';
 
 function assert(condicion: boolean, mensaje: string): void {
@@ -186,6 +187,17 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(tope.ataque === 3 && tope.defensa === 3 && tope.movimiento === 1, 'a tope → 3/3/1');
   const exceso = penalizacionSobrecarga(100, max);
   assert(exceso.ataque === 3 && exceso.movimiento === 1, 'por encima del máximo se acota a 3/1');
+}
+
+// --- Daño de arma (el pico resta) ---
+{
+  assert(ITEMS['pico'].dano === -1, 'el pico tiene daño −1');
+  const sinArma = danoArma(equipoVacio(), ITEMS);
+  assert(sinArma === 0, 'sin arma, daño de arma 0');
+  const conPico = danoArma(sanearEquipo({ mano_derecha: 'pico' }, ITEMS), ITEMS);
+  assert(conPico === -1, 'pico empuñado → −1');
+  const conEspada = danoArma(sanearEquipo({ mano_derecha: 'espada_corta' }, ITEMS), ITEMS);
+  assert(conEspada === 0, 'espada sin penalización de daño');
 }
 
 console.log('equipo.helpers: todas las comprobaciones pasan');

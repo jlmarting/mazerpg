@@ -3,7 +3,7 @@ import { IGame } from '../types';
 import type { AparienciaAvatar } from '../core/avatarTintes';
 import { APARIENCIA_DEFECTO } from '../config/apariencia';
 import {
-  equipoVacio, equipar, desequipar, bonosEquipo, aplicarBonos, piezasDeEquipo,
+  equipoVacio, equipar, desequipar, bonosEquipo, aplicarBonos, piezasDeEquipo, danoArma,
   anadirAlInventario, consumir, type Equipo, type Inventario, type RanuraEquipo,
 } from '../core/equipo';
 import { ITEMS } from '../config/items';
@@ -134,6 +134,16 @@ export class Jugador extends EntidadRPG {
     if ((this.inventario.flecha ?? 0) <= 0) return false;
     this.inventario = consumir(this.inventario, 'flecha', 1);
     return true;
+  }
+
+  /** ¿Lleva un pico empuñado? (requisito para cavar). */
+  puedeCavar(): boolean {
+    return this.equipo.mano_derecha === 'pico' || this.equipo.mano_izquierda === 'pico';
+  }
+
+  /** Daño de las armas empuñadas (el pico resta 1). */
+  danoArma(): number {
+    return danoArma(this.equipo);
   }
 
   /** Serializa equipo, bulto y mochila para sesión/red. */

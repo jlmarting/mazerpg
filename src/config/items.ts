@@ -38,6 +38,8 @@ export interface ItemDef {
   bonos?: Bonos;
   peso: number;
   apilable: boolean;
+  /** Modificador de daño del arma empuñada (p. ej. el pico resta 1). */
+  dano?: number;
   /** Consumibles: vida que restaura al usarlos. */
   curacion?: number;
   /** Variante de pieza del avatar que muestra este item equipado (puente visual). */
@@ -82,6 +84,10 @@ export const ITEMS: Record<string, ItemDef> = {
   anillo_fuerza: {
     id: 'anillo_fuerza', nombre: 'Anillo de fuerza', tipo: 'equipo', ranura: 'accesorio',
     bonos: { fuerza: 1 }, peso: 0.1, apilable: false, descripcion: 'Poder concentrado.',
+  },
+  pico: {
+    id: 'pico', nombre: 'Pico', tipo: 'equipo', ranura: 'mano_derecha', dano: -1,
+    peso: 3, apilable: false, descripcion: 'Permite cavar; −1 al daño contra mobs.',
   },
 
   // --- Consumibles / materiales (a la mochila, apilables) ---

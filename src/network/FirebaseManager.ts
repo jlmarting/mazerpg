@@ -16,6 +16,18 @@ const firebaseConfig = (window as any).FIREBASE_CONFIG || {
 export class FirebaseManager {
   private db: firebase.firestore.Firestore | null = null;
   private initialized: boolean = false;
+  /** Reporter de errores hacia el front (lo pone main). */
+  private reporter: ((contexto: string, e: unknown) => void) | null = null;
+
+  setErrorReporter(fn: (contexto: string, e: unknown) => void): void {
+    this.reporter = fn;
+  }
+
+  /** Centraliza el fallo: consola + front (nunca lanza al vacío). */
+  private reportar(contexto: string, e: unknown): void {
+    console.warn(`Firebase (${contexto}):`, e);
+    this.reporter?.(contexto, e);
+  }
 
   constructor() {
     if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "API_KEY_PLACEHOLDER" && !firebaseConfig.apiKey.startsWith("__")) {
@@ -37,39 +49,52 @@ export class FirebaseManager {
 
   async crearPartida(idPartida: string, hostId: string, hostNick: string) {
     if (!this.db) return;
-    return await this.db.collection('partidas').doc(idPartida).set({
-      hostId: hostId,
-      hostNick: hostNick,
-      creacion: Date.now(),
-      numJugadores: 1,
-      estado: 'activa',
-      lastSeen: Date.now()
-    });
+    try {
+      return await this.db.collection('partidas').doc(idPartida).set({
+        hostId: hostId,
+        hostNick: hostNick,
+        creacion: Date.now(),
+        numJugadores: 1,
+        estado: 'activa',
+        lastSeen: Date.now()
+      });
+    } catch (e) {
+      this.reportar('crear partida', e);
+    }
   }
 
   async updateHeartbeat(idPartida: string, numJugadores: number) {
     if (!this.db) return;
-    return await this.db.collection('partidas').doc(idPartida).update({
-      numJugadores: numJugadores,
-      lastSeen: Date.now()
-    });
+    try {
+      return await this.db.collection('partidas').doc(idPartida).update({
+        numJugadores: numJugadores,
+        lastSeen: Date.now()
+      });
+    } catch (e) {
+      this.reportar('latido de partida', e);
+    }
   }
 
   async getPartidasActivas() {
     if (!this.db) return [];
-    const snapshot = await this.db.collection('partidas')
-      .where('estado', '==', 'activa')
-      .get();
+    try {
+      const snapshot = await this.db.collection('partidas')
+        .where('estado', '==', 'activa')
+        .get();
 
-    const ahora = Date.now();
-    const partidas: any[] = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      if (ahora - (data.lastSeen || 0) < 60000) {
-        partidas.push({ id: doc.id, ...data });
-      }
-    });
-    return partidas;
+      const ahora = Date.now();
+      const partidas: any[] = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (ahora - (data.lastSeen || 0) < 60000) {
+          partidas.push({ id: doc.id, ...data });
+        }
+      });
+      return partidas;
+    } catch (e) {
+      this.reportar('listar partidas', e);
+      return [];
+    }
   }
 
   /** Ficha visible de jugador: nick + clase + apariencia (+ inventario) (doc por jugador, merge). */
@@ -85,7 +110,7 @@ export class FirebaseManager {
         actualizado: Date.now()
       }, { merge: true });
     } catch (e) {
-      console.warn('Error guardando apariencia de jugador:', e);
+      this.reportar("guardar ficha", e);
     }
   }
 
@@ -104,7 +129,7 @@ export class FirebaseManager {
         actualizado: typeof d.actualizado === 'number' ? d.actualizado : 0
       };
     } catch (e) {
-      console.warn('Error leyendo apariencia de jugador:', e);
+      this.reportar("leer ficha", e);
       return null;
     }
   }
@@ -118,7 +143,7 @@ export class FirebaseManager {
       guestCandidates.forEach(doc => doc.ref.delete());
       await connRef.delete();
     } catch (e) {
-      console.warn("Error limpiando signaling:", e);
+      this.reportar("limpiar signaling", e);
     }
   }
 }

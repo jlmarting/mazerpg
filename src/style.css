@@ -1230,6 +1230,13 @@ canvas {
 .character-modal-box .stat-display-value { font-size: 18px; }
 .character-modal-box .btn-reroll { display: inline-block; width: auto; margin-top: 0; white-space: nowrap; }
 
+/* Banner de error de Firebase (visible en el front) */
+.firebase-error {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 80;
+    background: #7a1f1f; color: #fff; border-bottom: 2px solid #f0d060;
+    font-family: monospace; font-size: 11px; padding: 6px 10px; text-align: center;
+}
+
 /* Panel de equipo y mochila (piloto inventario v1) */
 #equipoPreview { margin-bottom: 8px; }
 .equipo-stats { text-align: center; font-family: monospace; font-size: 11px; color: #e9d8a6; margin-bottom: 8px; }

@@ -129,6 +129,12 @@ class Game implements IGame {
     this.setupEventListeners();
     this.verificarUrlParams();
     this.lobbyManager = new LobbyManager(this);
+    // Los errores de Firebase se muestran en el front (log + banner), no solo en consola.
+    this.firebase.setErrorReporter((contexto, e) => {
+      const msg = (e as any)?.message ?? String(e);
+      this.registrarEventoLog(`⚠ Firebase (${contexto}): ${msg}`);
+      this.mostrarAvisoFirebase(`⚠ Firebase (${contexto}): ${msg}`);
+    });
 
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -1040,6 +1046,15 @@ class Game implements IGame {
     this.colaDeMensajes.unshift(texto);
     if (this.colaDeMensajes.length > 5) this.colaDeMensajes.pop();
     console.log(mensaje);
+  }
+
+  /** Muestra un aviso visible en el front (banner superior). */
+  mostrarAvisoFirebase(texto: string): void {
+    const el = document.getElementById('firebaseError');
+    if (!el) return;
+    el.textContent = texto;
+    el.style.display = 'block';
+    window.setTimeout(() => { el.style.display = 'none'; }, 8000);
   }
 
   guardarSesion(rol: string, roomId: string | null = null) {

@@ -5,6 +5,7 @@
  */
 
 import SpriteConfigJSON from '../config/sprites.json';
+import PiezasJSON from '../config/piezas.json';
 
 export interface ISpriteSheetConfig {
     recursos: { [key: string]: string };
@@ -94,6 +95,8 @@ export function inicializarSpritesheets(sm: any) {
 
     // Cargar todos los mapeos definidos en el JSON centralizado
     procesarMapping(c.mapeo.jugadores, 'player');
+    procesarMapping((c.mapeo as any).jugadoras, 'player_f');
+    registrarPiezas(sm);
     procesarMapping(c.mapeo.npcs, 'npc');
     procesarMapping(c.mapeo.escenario_estatico, 'static');
     procesarMapping(c.mapeo.escenario_dinamico, 'dynamic');
@@ -102,4 +105,17 @@ export function inicializarSpritesheets(sm: any) {
     procesarMapping((c.mapeo as any).food, 'food');
     procesarMapping((c.mapeo as any).items, ''); // Sin prefijo para que coincida con keys como 'pickaxe'
     procesarMapping((c.mapeo as any).compat, ''); // Sin prefijo para retrocompatibilidad
+}
+
+/**
+ * Registra los overlays de piezas (`pieza_{variante}_{frameKey}`) desde
+ * `piezas.json` (atlas `pieces`, rects por `variante|frameKey`).
+ */
+export function registrarPiezas(sm: any) {
+    const doc = PiezasJSON as any;
+    const rects = doc?.rects ?? {};
+    for (const [clave, r] of Object.entries(rects) as any) {
+        const [variante, frameKey] = (clave as string).split('|');
+        sm.definirSprite(`pieza_${variante}_${frameKey}`, 'pieces', r.x, r.y, r.w, r.h);
+    }
 }

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Modal de personaje compacto: caja de 1076px a 667px — GUARDAR visible sin scroll desde 667px de alto, piezas en fila y stats en línea; tema mazmorra aplicado a los modales (vars `--oro*` movidas a `:root`, antes no heredaban desde `#lobby`) (`75f45f1`)
+- Piezas de avatar por capas v1: casco, melena, peto y botas componibles sobre el sprite intacto (arte programático `scripts/gen_piezas.py` + registro `piezas.json`), ranuras on/off en el modal, kit unisex con migración de IDs guardados y casco v2 (`1a352cd`, `f8a959a`, `498ef26`, `7296804`)
+- Género de punta a punta: sheets femeninos (`players_f`, `hero_custom_f`, `jugadoras`), selector HOMBRE/MUJER en la creación de personaje y base F ligera (dimorfismo resuelto en piezas) (`7d017f7`, `f049919`, `9682ecd`)
+- Avatar con tintes por zonas (piel, pelo, torso, piernas): compositor canvas con remapeo de paletas por clase, editor en el modal de personaje con preview, persistencia en sesión/partida y apariencia viajando en el protocolo a remotos (`3d5469b`…`7bec1bd`)
 - Mundo persistente (fase 2): persistencia completa fuera de la burbuja — las ediciones válidas (cavar, objetos, decor y escenario) viajan como delta también fuera del radioSim (`4e1a7b2`, `b498d27`, `3aeb7ce`)
 - Snapshot por nodo (formato 1): foto de enemigos/escenario/celdas persistida y restauración fiel al travesar entre nodos, con guard anti-race de doble cruce (`e43cd8b`, `bdd98d5`, `6a30dfc`)
 - Casa duradera: espejo local del contrato de mundos (deltas + snapshot) como persistencia de la casa cuando no hay Firebase (`5e8584b`)

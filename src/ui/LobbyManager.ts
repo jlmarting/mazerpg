@@ -1,5 +1,10 @@
 export type LobbyMode = 'solo' | 'firebase' | 'http' | 'cooperativo';
 
+import type { AparienciaAvatar, ZonaAvatar, RanuraPieza } from '../core/avatarTintes';
+import { PALETAS, ORIGEN_ZONA, APARIENCIA_DEFECTO } from '../config/apariencia';
+import { TABLA_PIEZAS, RANURAS } from '../core/avatarTintes';
+import { aparienciaEfectiva, conservarCoincidencias, sanearPiezas } from '../core/avatarTintes';
+
 export interface CharacterData {
   nombre: string;
   color: string;
@@ -8,10 +13,12 @@ export interface CharacterData {
   agilidad: number;
   inteligencia: number;
   personajeCreado: boolean;
+  apariencia: AparienciaAvatar;
 }
 
 export interface LobbyDelegate {
-  onSaveCharacter(nombre: string, color: string, clase: string): void;
+  onSaveCharacter(nombre: string, color: string, clase: string, apariencia: AparienciaAvatar): void;
+  pintarPreviewAvatar(canvas: HTMLCanvasElement, clase: string, apariencia: AparienciaAvatar): void;
   onRerollStats(clase: string): void;
   onStartSolo(dificultad: string): void;
   onHostGame(modo: 'firebase' | 'http' | 'manual', dificultad: string): void;
@@ -44,6 +51,12 @@ export class LobbyManager {
   private pendingDificultadCallback: ((dif: string) => void) | null = null;
   private pendingHousingStart: ((dif: string) => void) | null = null;
   private pendingHousingDiff: string | null = null;
+  /** Tintes elegidos en el modal (se confirman en saveCharacter). */
+  private avatarZonas: Record<ZonaAvatar, string> = { ...APARIENCIA_DEFECTO.guerrero.zonas };
+  /** Género elegido en el modal (se confirma en saveCharacter). */
+  private avatarGenero: 'm' | 'f' = 'm';
+  /** Piezas elegidas en el modal (se confirman en saveCharacter). */
+  private avatarPiezas: Record<RanuraPieza, string | null> = { pelo: null, torso: null, piernas: null, casco: null };
 
   constructor(delegate: LobbyDelegate) {
     this.delegate = delegate;
@@ -188,6 +201,13 @@ export class LobbyManager {
       (document.getElementById('charColorInput') as HTMLInputElement).value = char.color;
       this.selectClassButton(char.clase);
     }
+    const ef = aparienciaEfectiva(char.clase, char.apariencia);
+    this.avatarZonas = { ...ef.zonas };
+    this.avatarGenero = ef.genero;
+    this.avatarPiezas = { ...ef.piezas };
+    this.selectGenderButton(ef.genero);
+    this.renderAvatarRows();
+    this.renderPiezaRows();
     this.recalculateStats();
     this.populateStatsDisplay();
   }
@@ -199,10 +219,117 @@ export class LobbyManager {
   saveCharacter(): void {
     const name = (document.getElementById('charNameInput') as HTMLInputElement).value.trim() || "Héroe";
     const color = (document.getElementById('charColorInput') as HTMLInputElement).value;
-    const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class') || 'guerrero';
-    this.delegate.onSaveCharacter(name, color, selectedClass);
+    const selectedClass = document.querySelector('.class-btn[data-class].selected')?.getAttribute('data-class') || 'guerrero';
+    const apariencia: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero, piezas: { ...this.avatarPiezas } };
+    this.delegate.onSaveCharacter(name, color, selectedClass, apariencia);
     this.closeCharacterModal();
     this.showAccion();
+  }
+
+  /** Clase seleccionada ahora mismo en el modal (para tintes y preview). */
+  private claseActualModal(): string {
+    return document.querySelector('.class-btn[data-class].selected')?.getAttribute('data-class')
+      || this.delegate.getCharacterData().clase;
+  }
+
+  /** Zonas con tonos mapeados para la clase (piel sin mapear no se muestra en v1). */
+  private zonasMapeadas(clase: string): ZonaAvatar[] {
+    const origen = ORIGEN_ZONA[clase] ?? ORIGEN_ZONA.guerrero;
+    return (['piel', 'pelo', 'torso', 'piernas'] as ZonaAvatar[]).filter((z) => (origen[z] ?? []).length > 0);
+  }
+
+  /** Dibuja las filas de swatches y repinta la preview. */
+  private renderAvatarRows(): void {
+    const cont = document.getElementById('avatarZonas');
+    if (!cont) return;
+    const clase = this.claseActualModal();
+    cont.innerHTML = '';
+    const nombres: Record<ZonaAvatar, string> = { piel: 'Piel', pelo: 'Pelo', torso: 'Torso', piernas: 'Piernas' };
+    for (const zona of this.zonasMapeadas(clase)) {
+      const fila = document.createElement('div');
+      fila.className = 'avatar-zona-row';
+      const etiqueta = document.createElement('span');
+      etiqueta.className = 'avatar-zona-nombre';
+      etiqueta.textContent = nombres[zona];
+      fila.appendChild(etiqueta);
+      for (const hex of PALETAS[zona]) {
+        const sw = document.createElement('button');
+        sw.className = 'avatar-swatch' + (this.avatarZonas[zona] === hex ? ' selected' : '');
+        sw.style.backgroundColor = hex;
+        sw.setAttribute('aria-label', `${nombres[zona]} ${hex}`);
+        sw.addEventListener('click', () => {
+          this.avatarZonas[zona] = hex;
+          this.renderAvatarRows();
+        });
+        fila.appendChild(sw);
+      }
+      cont.appendChild(fila);
+    }
+    this.repaintPreview();
+  }
+
+  /** La preview muestra el sprite tineado real: lo que ves es lo que viaja. */
+  private repaintPreview(): void {
+    const canvas = document.getElementById('avatarPreview') as HTMLCanvasElement | null;
+    if (!canvas) return;
+    this.delegate.pintarPreviewAvatar(canvas, this.claseActualModal(), { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero, piezas: { ...this.avatarPiezas } });
+  }
+
+  /** Cambio de clase: lo no personalizado sigue al defecto nuevo; el resto se conserva. */
+  private rebaseAvatarAClase(prevClase: string, nuevaClase: string): void {
+    const prevDef = APARIENCIA_DEFECTO[prevClase] ?? APARIENCIA_DEFECTO.guerrero;
+    const nextDef = APARIENCIA_DEFECTO[nuevaClase] ?? APARIENCIA_DEFECTO.guerrero;
+    const actual: AparienciaAvatar = { formato: 1, zonas: { ...this.avatarZonas }, genero: this.avatarGenero, piezas: { ...this.avatarPiezas } };
+    this.avatarZonas = { ...conservarCoincidencias(prevDef, nextDef, actual).zonas };
+    this.renderAvatarRows();
+    this.renderPiezaRows();
+  }
+
+  private selectGenderButton(genero: 'm' | 'f'): void {
+    document.querySelectorAll('.genero-btn').forEach(btn => {
+      btn.classList.toggle('selected', btn.getAttribute('data-genero') === genero);
+    });
+  }
+
+  private onSelectGenero(genero: 'm' | 'f'): void {
+    this.avatarGenero = genero;
+    this.selectGenderButton(genero);
+    // Las piezas incompatibles con el género caen (saneado).
+    this.avatarPiezas = sanearPiezas({ ...this.avatarPiezas }, TABLA_PIEZAS, genero);
+    this.renderAvatarRows();
+    this.renderPiezaRows();
+  }
+
+  /** Nombres de variante por ranura para el género actual (v1: una por ranura). */
+  private variantesDisponibles(): { ranura: RanuraPieza; variante: string; nombre: string }[] {
+    const nombres: Record<string, string> = {
+      'pelo-largo': 'Melena', 'peto': 'Peto', 'botas': 'Botas', 'casco': 'Casco',
+    };
+    const out: { ranura: RanuraPieza; variante: string; nombre: string }[] = [];
+    for (const ranura of RANURAS) {
+      const id = Object.keys(TABLA_PIEZAS.variantes).find(
+        (k) => TABLA_PIEZAS.variantes[k].ranura === ranura && TABLA_PIEZAS.variantes[k].generos.includes(this.avatarGenero));
+      if (id) out.push({ ranura, variante: id, nombre: nombres[id] || id });
+    }
+    return out;
+  }
+
+  private renderPiezaRows(): void {
+    const cont = document.getElementById('avatarPiezas');
+    if (!cont) return;
+    cont.innerHTML = '';
+    for (const { ranura, variante, nombre } of this.variantesDisponibles()) {
+      const btn = document.createElement('button');
+      const activa = this.avatarPiezas[ranura] === variante;
+      btn.className = 'pieza-toggle' + (activa ? ' selected' : '');
+      btn.textContent = `${activa ? '[x]' : '[ ]'} ${nombre}`;
+      btn.addEventListener('click', () => {
+        this.avatarPiezas[ranura] = this.avatarPiezas[ranura] === variante ? null : variante;
+        this.renderPiezaRows();
+        this.repaintPreview();
+      });
+      cont.appendChild(btn);
+    }
   }
 
   showDifficultyModal(callback: (diff: string) => void): void {
@@ -293,7 +420,7 @@ export class LobbyManager {
   }
 
   recalculateStats(): void {
-    const selectedClass = document.querySelector('.class-btn.selected')?.getAttribute('data-class')
+    const selectedClass = document.querySelector('.class-btn[data-class].selected')?.getAttribute('data-class')
       || this.delegate.getCharacterData().clase;
     this.delegate.onRerollStats(selectedClass);
     this.populateStatsDisplay();
@@ -357,7 +484,7 @@ export class LobbyManager {
   }
 
   private selectClassButton(clase: string): void {
-    document.querySelectorAll('.class-btn').forEach(btn => {
+    document.querySelectorAll('.class-btn[data-class]').forEach(btn => {
       btn.classList.toggle('selected', btn.getAttribute('data-class') === clase);
     });
     const modalPortrait = document.getElementById('modalPortrait');
@@ -475,10 +602,20 @@ export class LobbyManager {
       });
     });
 
-    document.querySelectorAll('.class-btn').forEach(btn => {
+    document.querySelectorAll('.genero-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.class-btn').forEach(b => b.classList.remove('selected'));
+        this.onSelectGenero(((e.currentTarget as HTMLElement).getAttribute('data-genero') || 'm') as 'm' | 'f');
+      });
+    });
+
+    document.querySelectorAll('.class-btn[data-class]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const prev = document.querySelector('.class-btn[data-class].selected')?.getAttribute('data-class') || 'guerrero';
+        document.querySelectorAll('.class-btn[data-class]').forEach(b => b.classList.remove('selected'));
         (e.currentTarget as HTMLElement).classList.add('selected');
+        const next = (e.currentTarget as HTMLElement).getAttribute('data-class') || 'guerrero';
+        if (next !== prev) this.rebaseAvatarAClase(prev, next);
+        else this.repaintPreview();
         this.recalculateStats();
       });
     });

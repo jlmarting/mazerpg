@@ -236,10 +236,23 @@
                 <svg class="crest-svg small"><use href="#art-crest"/></svg>
             </div>
             <h2>CREAR TU HÉROE</h2>
-            <div id="modalPortrait" class="portrait-medallion" data-clase="guerrero" aria-hidden="true">
-                <svg class="portrait-icon" data-icon="guerrero"><use href="#art-sword"/></svg>
-                <svg class="portrait-icon" data-icon="explorador"><use href="#art-bow"/></svg>
-                <svg class="portrait-icon" data-icon="mago"><use href="#art-staff"/></svg>
+            <div class="modal-hero-row">
+                <div id="modalPortrait" class="portrait-medallion" data-clase="guerrero" aria-hidden="true">
+                    <svg class="portrait-icon" data-icon="guerrero"><use href="#art-sword"/></svg>
+                    <svg class="portrait-icon" data-icon="explorador"><use href="#art-bow"/></svg>
+                    <svg class="portrait-icon" data-icon="mago"><use href="#art-staff"/></svg>
+                </div>
+                <canvas id="avatarPreview" class="avatar-preview" width="64" height="64" aria-label="Vista previa del avatar"></canvas>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">AVATAR (TINTES):</label>
+                <div id="avatarZonas"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">PIEZAS:</label>
+                <div id="avatarPiezas"></div>
             </div>
 
             <div class="form-group">
@@ -253,6 +266,14 @@
             <div class="form-group">
                 <label class="form-label">COLOR:</label>
                 <input type="color" id="charColorInput" class="char-color-input" value="#007bff">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">GÉNERO:</label>
+                <div class="class-selector">
+                    <button class="class-btn genero-btn selected" data-genero="m">HOMBRE</button>
+                    <button class="class-btn genero-btn" data-genero="f">MUJER</button>
+                </div>
             </div>
 
             <div class="form-group">

@@ -1,13 +1,21 @@
 export interface SpriteInfo {
-    image: HTMLImageElement;
+    image: CanvasImageSource;
     sx: number;
     sy: number;
     sw: number;
     sh: number;
 }
 
-export class SpriteManager {
-    private images: Map<string, HTMLImageElement> = new Map();
+/** Dimensiones de cualquier fuente dibujable (Image con naturalWidth o canvas con width). */
+function anchoFuente(fuente: CanvasImageSource): number {
+    return (fuente as HTMLImageElement).naturalWidth || (fuente as HTMLCanvasElement).width || 0;
+}
+
+function altoFuente(fuente: CanvasImageSource): number {
+    return (fuente as HTMLImageElement).naturalHeight || (fuente as HTMLCanvasElement).height || 0;
+}
+
+export class SpriteManager {    private images: Map<string, HTMLImageElement> = new Map();
     private sprites: Map<string, SpriteInfo> = new Map();
     private loadingPromises: Promise<void>[] = [];
 
@@ -40,6 +48,19 @@ export class SpriteManager {
     }
 
     /**
+     * Registra un canvas ya compuesto (p. ej. variante tineada del AvatarCompositor)
+     * como sprite dibujable con la ruta normal.
+     */
+    definirSpriteCanvas(nombre: string, canvas: HTMLCanvasElement) {
+        this.sprites.set(nombre, { image: canvas, sx: 0, sy: 0, sw: canvas.width, sh: canvas.height });
+    }
+
+    /** Retira un sprite del mapa (p. ej. desalojo de la caché de variantes). */
+    eliminarSprite(nombre: string) {
+        this.sprites.delete(nombre);
+    }
+
+    /**
      * Define múltiples sprites a partir de una cuadrícula (spritesheet).
      */
     definirCuadricula(imagenNombre: string, prefijo: string, columnas: number, filas: number, sw: number, sh: number, padding: number = 0) {
@@ -66,8 +87,8 @@ export class SpriteManager {
 
         // Validar que el sprite esté dentro de los límites de la imagen
         if (sprite.image) {
-            const imgW = sprite.image.naturalWidth || sprite.image.width;
-            const imgH = sprite.image.naturalHeight || sprite.image.height;
+            const imgW = anchoFuente(sprite.image);
+            const imgH = altoFuente(sprite.image);
             if (imgW === 0 || imgH === 0) {
                 console.warn(`Sprite ${nombre} referencia imagen sin dimensiones (${imgW}x${imgH}).`);
                 return undefined;
@@ -111,8 +132,8 @@ export class SpriteManager {
         }
 
         if (sprite && sprite.image) {
-            const imgW = sprite.image.naturalWidth || sprite.image.width;
-            const imgH = sprite.image.naturalHeight || sprite.image.height;
+            const imgW = anchoFuente(sprite.image);
+            const imgH = altoFuente(sprite.image);
             const validSX = sprite.sx >= 0 && sprite.sx < imgW;
             const validSY = sprite.sy >= 0 && sprite.sy < imgH;
             const validSW = sprite.sx + sprite.sw <= imgW;

@@ -1,5 +1,6 @@
 import { Jugador } from './Jugador';
 import { equipoVacio } from '../core/equipo';
+import { ITEMS } from '../config/items';
 
 function assert(condicion: boolean, mensaje: string): void {
   if (!condicion) throw new Error(mensaje);
@@ -55,5 +56,18 @@ j.consumirItem('pocion_vida', 1);
 assert(j.inventario.pocion_vida === 2, 'consumir descuenta una poción');
 j.anadirItem('flecha', 5);
 assert(j.inventario.flecha === 25, 'añadir acumula flechas');
+
+// --- Usar consumible: cura y se gasta (in-game) ---
+j.vidaActual = 1;
+const pocionesAntes = j.inventario.pocion_vida;
+const usado = j.usarItem('pocion_vida');
+assert(usado, 'usar devuelve true con efecto');
+assert(j.vidaActual === Math.min(j.vidaMaxima, 1 + ITEMS.pocion_vida.curacion!), 'la poción cura 25 (con tope en vida máxima)');
+assert(j.inventario.pocion_vida === pocionesAntes - 1, 'la poción usada se gasta');
+j.vidaActual = j.vidaMaxima;
+j.usarItem('pocion_vida');
+assert(j.vidaActual === j.vidaMaxima, 'usar a vida llena no la supera');
+assert(j.usarItem('flecha') === false, 'un material no se usa');
+assert(j.usarItem('no_existe') === false, 'un desconocido no se usa');
 
 console.log('jugadorEquipo.helpers: todas las comprobaciones pasan');

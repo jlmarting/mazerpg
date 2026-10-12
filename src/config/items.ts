@@ -38,6 +38,8 @@ export interface ItemDef {
   bonos?: Bonos;
   peso: number;
   apilable: boolean;
+  /** Consumibles: vida que restaura al usarlos. */
+  curacion?: number;
   /** Variante de pieza del avatar que muestra este item equipado (puente visual). */
   pieza?: string;
   descripcion?: string;
@@ -85,7 +87,7 @@ export const ITEMS: Record<string, ItemDef> = {
   // --- Consumibles / materiales (a la mochila, apilables) ---
   pocion_vida: {
     id: 'pocion_vida', nombre: 'Poción de vida', tipo: 'consumible', peso: 0.5, apilable: true,
-    descripcion: 'Restaura vida al usarla.',
+    curacion: 25, descripcion: 'Restaura 25 de vida al usarla.',
   },
   flecha: {
     id: 'flecha', nombre: 'Flecha', tipo: 'material', peso: 0.1, apilable: true,

@@ -41,7 +41,7 @@ export interface LobbyDelegate {
   getEstadoEquipo(): EstadoEquipo;
   equiparItem(id: string): void;
   desequiparRanura(ranura: RanuraEquipo): void;
-  consumirItem(id: string): void;
+  usarItem(id: string): void;
 }
 
 /** Vista del dominio de equipo que consume el panel. */
@@ -315,7 +315,7 @@ export class LobbyManager {
         const btn = document.createElement('button');
         btn.className = 'equipo-mochila-btn';
         btn.textContent = 'USAR';
-        btn.addEventListener('click', () => { this.delegate.consumirItem(id); this.renderEquipo(); });
+        btn.addEventListener('click', () => { this.delegate.usarItem(id); this.renderEquipo(); });
         fila.appendChild(btn);
       }
       mochila.appendChild(fila);

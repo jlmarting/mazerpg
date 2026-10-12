@@ -6,6 +6,7 @@ import {
   equipoVacio, equipar, desequipar, bonosEquipo, aplicarBonos, piezasDeEquipo,
   anadirAlInventario, consumir, type Equipo, type Inventario, type RanuraEquipo,
 } from '../core/equipo';
+import { ITEMS } from '../config/items';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
@@ -114,6 +115,18 @@ export class Jugador extends EntidadRPG {
 
   consumirItem(id: string, cantidad: number = 1): void {
     this.inventario = consumir(this.inventario, id, cantidad);
+  }
+
+  /** Usa un consumible: aplica su efecto (p. ej. curar) y lo gasta. Devuelve true si hubo efecto. */
+  usarItem(id: string): boolean {
+    if ((this.inventario[id] ?? 0) <= 0) return false;
+    const item = ITEMS[id];
+    if (!item || item.tipo !== 'consumible') return false;
+    if (item.curacion) {
+      this.vidaActual = Math.min(this.vidaMaxima, this.vidaActual + item.curacion);
+    }
+    this.inventario = consumir(this.inventario, id, 1);
+    return true;
   }
 
   /** Sincroniza apariencia (equipo viste al avatar; el pelo es cosmético) y vida máxima. */

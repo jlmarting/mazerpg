@@ -294,6 +294,7 @@ class Game implements IGame {
     document.getElementById('btnRadarAction')?.addEventListener('click', () => this.lanzarRadar(this.protagonista, true));
     document.getElementById('btnRestartAction')?.addEventListener('click', () => window.location.reload());
     document.getElementById('btnTeleportHousing')?.addEventListener('click', () => this.teleportHousing());
+    document.getElementById('btnEquipoAction')?.addEventListener('click', () => this.abrirEquipo());
 
     document.getElementById('zoomSlider')?.addEventListener('input', (e) => {
         this.config.targetZoom = parseFloat((e.target as HTMLInputElement).value);
@@ -317,6 +318,15 @@ class Game implements IGame {
         return;
       }
       if (document.getElementById('chatModal')?.style.display === 'flex') return;
+
+      const panelEquipo = document.getElementById('equipoModal');
+      if (e.key.toLowerCase() === 'e') {
+        if (panelEquipo?.style.display === 'flex') this.lobbyManager.closeEquipoModal();
+        else this.abrirEquipo();
+        return;
+      }
+      // Con el panel de equipo abierto, no se mueve ni se lanzan habilidades.
+      if (panelEquipo?.style.display === 'flex') return;
 
       if (this.juegoTerminado) return;
 
@@ -494,6 +504,20 @@ class Game implements IGame {
 
   consumirItem(id: string): void {
     this.protagonista.consumirItem(id);
+    this.lobbyManager.renderEquipo();
+  }
+
+  /** Abre/cierra el panel de equipo desde la partida (botón 🎒 o tecla E). */
+  abrirEquipo(): void {
+    this.lobbyManager.openEquipoModal();
+  }
+
+  /** Usa un consumible (cura) y refresca el panel. */
+  usarItem(id: string): void {
+    const antes = this.protagonista.vidaActual;
+    this.protagonista.usarItem(id);
+    const curado = this.protagonista.vidaActual - antes;
+    this.registrarEventoLog(curado > 0 ? `Usado ${id}: +${curado} vida` : `Usado ${id}`);
     this.lobbyManager.renderEquipo();
   }
 

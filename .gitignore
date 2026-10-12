@@ -73,3 +73,7 @@ dist/
 .superpowers/
 
 .worktrees/
+
+# Python
+__pycache__/
+*.pyc

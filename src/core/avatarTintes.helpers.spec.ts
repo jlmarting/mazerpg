@@ -117,25 +117,33 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(r.zonas.torso === PALETAS.torso[4], 'zona personalizada se conserva');
 }
 
-// piezas: variante desconocida/otro género -> null; ausente -> todo null
+// piezas: unisex neutro, variante desconocida/otro género -> null; ausente -> todo null; IDs legado -f migran
 {
   const TABLA_MIN = {
     variantes: {
-      'pelo-largo-f': { ranura: 'pelo', generos: ['f'], tipo: 'remap', anclas: {} },
+      'pelo-largo': { ranura: 'pelo', generos: ['m', 'f'], tipo: 'remap', anclas: {} },
+      'peto': { ranura: 'torso', generos: ['m', 'f'], tipo: 'remap', anclas: {} },
+      'tunica-f': { ranura: 'torso', generos: ['f'], tipo: 'remap', anclas: {} },
       'casco': { ranura: 'casco', generos: ['m', 'f'], tipo: 'overlay', anclas: { 'explorador_m_idle_0': { dx: 0, dy: 0, w: 32, h: 32 } } },
     },
   };
-  const r = sanearPiezas({ pelo: 'pelo-largo-f', torso: 'no-existe', piernas: null, casco: 'casco' }, TABLA_MIN, 'f');
-  assert(r.pelo === 'pelo-largo-f', 'variante válida del género se conserva');
-  assert(r.torso === null, 'variante desconocida cae a null');
+  const r = sanearPiezas({ pelo: 'pelo-largo', torso: 'peto', piernas: null, casco: 'casco' }, TABLA_MIN, 'm');
+  assert(r.pelo === 'pelo-largo' && r.torso === 'peto', 'variantes unisex se conservan en hombre');
   assert(r.piernas === null && r.casco === 'casco', 'null se respeta y casco unisex vale');
-  const r2 = sanearPiezas({ pelo: 'pelo-largo-f', torso: null, piernas: null, casco: null }, TABLA_MIN, 'm');
-  assert(r2.pelo === null, 'variante de otro género cae a null');
+  const r2 = sanearPiezas({ pelo: 'pelo-largo', torso: 'tunica-f', piernas: null, casco: null }, TABLA_MIN, 'm');
+  assert(r2.torso === null, 'variante de otro género cae a null');
+  const r2f = sanearPiezas({ pelo: 'pelo-largo', torso: 'tunica-f', piernas: null, casco: null }, TABLA_MIN, 'f');
+  assert(r2f.torso === 'tunica-f', 'variante f-only vale en mujer');
   const r3 = sanearPiezas(undefined, TABLA_MIN, 'm');
   assert(r3.pelo === null && r3.torso === null && r3.piernas === null && r3.casco === null, 'sin piezas todo null');
+  const legado = sanearPiezas({ pelo: 'pelo-largo-f', torso: 'peto-f', piernas: null, casco: null }, TABLA_MIN, 'm');
+  assert(legado.pelo === 'pelo-largo', 'ID legado pelo-largo-f migra');
+  assert(legado.torso === 'peto', 'ID legado peto-f migra');
+  const legadoInutil = sanearPiezas({ pelo: 'pelo-largo-f', torso: null, piernas: null, casco: null }, TABLA_MIN, 'f');
+  assert(legadoInutil.pelo === 'pelo-largo', 'legado migra también en mujer');
   assert(anclaPara(TABLA_MIN, 'casco', 'explorador_m_idle_0') !== null, 'ancla existente se resuelve');
   assert(anclaPara(TABLA_MIN, 'casco', 'otro_frame') === null, 'ancla ausente es null');
-  assert(anclaPara(TABLA_MIN, 'pelo-largo-f', 'explorador_m_idle_0') === null, 'remap no tiene ancla');
+  assert(anclaPara(TABLA_MIN, 'pelo-largo', 'explorador_m_idle_0') === null, 'remap no tiene ancla');
 }
 {
   const base = { formato: 1 as const, zonas: { ...APARIENCIA_DEFECTO.mago.zonas } };

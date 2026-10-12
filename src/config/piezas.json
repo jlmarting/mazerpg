@@ -1,8 +1,9 @@
 {
  "variantes": {
-  "pelo-largo-f": {
+  "pelo-largo": {
    "ranura": "pelo",
    "generos": [
+    "m",
     "f"
    ],
    "tipo": "overlay",
@@ -297,9 +298,10 @@
     }
    }
   },
-  "peto-f": {
+  "peto": {
    "ranura": "torso",
    "generos": [
+    "m",
     "f"
    ],
    "tipo": "remap",
@@ -308,9 +310,10 @@
    },
    "anclas": {}
   },
-  "botas-f": {
+  "botas": {
    "ranura": "piernas",
    "generos": [
+    "m",
     "f"
    ],
    "tipo": "remap",
@@ -907,147 +910,291 @@
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|explorador_f_attacking_0": {
+  "pelo-largo|explorador_f_attacking_0": {
    "x": 0,
    "y": 192,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|explorador_f_attacking_1": {
+  "pelo-largo|explorador_f_attacking_1": {
    "x": 45,
    "y": 192,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|explorador_f_attacking_2": {
+  "pelo-largo|explorador_f_attacking_2": {
    "x": 90,
    "y": 192,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|explorador_f_idle_0": {
+  "pelo-largo|explorador_f_idle_0": {
    "x": 135,
    "y": 192,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|explorador_f_walking_0": {
+  "pelo-largo|explorador_f_walking_0": {
    "x": 180,
    "y": 192,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|explorador_f_walking_1": {
+  "pelo-largo|explorador_f_walking_1": {
    "x": 225,
    "y": 192,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|explorador_f_walking_2": {
+  "pelo-largo|explorador_f_walking_2": {
    "x": 270,
    "y": 192,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|guerrero_f_attacking_0": {
+  "pelo-largo|explorador_m_attacking_0": {
    "x": 315,
    "y": 192,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|explorador_m_attacking_1": {
+   "x": 0,
+   "y": 224,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|explorador_m_attacking_2": {
+   "x": 45,
+   "y": 224,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|explorador_m_idle_0": {
+   "x": 90,
+   "y": 224,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|explorador_m_walking_0": {
+   "x": 135,
+   "y": 224,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|explorador_m_walking_1": {
+   "x": 180,
+   "y": 224,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|explorador_m_walking_2": {
+   "x": 225,
+   "y": 224,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|guerrero_f_attacking_0": {
+   "x": 270,
+   "y": 224,
    "w": 40,
    "h": 32
   },
-  "pelo-largo-f|guerrero_f_attacking_1": {
-   "x": 0,
+  "pelo-largo|guerrero_f_attacking_1": {
+   "x": 315,
    "y": 224,
    "w": 35,
    "h": 32
   },
-  "pelo-largo-f|guerrero_f_attacking_2": {
-   "x": 45,
-   "y": 224,
+  "pelo-largo|guerrero_f_attacking_2": {
+   "x": 0,
+   "y": 256,
    "w": 34,
    "h": 32
   },
-  "pelo-largo-f|guerrero_f_attacking_3": {
-   "x": 90,
-   "y": 224,
-   "w": 32,
-   "h": 32
-  },
-  "pelo-largo-f|guerrero_f_attacking_4": {
-   "x": 135,
-   "y": 224,
-   "w": 30,
-   "h": 32
-  },
-  "pelo-largo-f|guerrero_f_attacking_5": {
-   "x": 180,
-   "y": 224,
-   "w": 45,
-   "h": 32
-  },
-  "pelo-largo-f|guerrero_f_idle_0": {
-   "x": 225,
-   "y": 224,
-   "w": 24,
-   "h": 32
-  },
-  "pelo-largo-f|guerrero_f_walking_0": {
-   "x": 270,
-   "y": 224,
-   "w": 32,
-   "h": 32
-  },
-  "pelo-largo-f|guerrero_f_walking_1": {
-   "x": 315,
-   "y": 224,
-   "w": 32,
-   "h": 32
-  },
-  "pelo-largo-f|guerrero_f_walking_2": {
-   "x": 0,
-   "y": 256,
-   "w": 32,
-   "h": 32
-  },
-  "pelo-largo-f|mago_f_attacking_0": {
+  "pelo-largo|guerrero_f_attacking_3": {
    "x": 45,
    "y": 256,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|mago_f_attacking_1": {
+  "pelo-largo|guerrero_f_attacking_4": {
    "x": 90,
    "y": 256,
-   "w": 32,
+   "w": 30,
    "h": 32
   },
-  "pelo-largo-f|mago_f_attacking_2": {
+  "pelo-largo|guerrero_f_attacking_5": {
    "x": 135,
    "y": 256,
-   "w": 32,
+   "w": 45,
    "h": 32
   },
-  "pelo-largo-f|mago_f_idle_0": {
+  "pelo-largo|guerrero_f_idle_0": {
    "x": 180,
    "y": 256,
-   "w": 32,
+   "w": 24,
    "h": 32
   },
-  "pelo-largo-f|mago_f_walking_0": {
+  "pelo-largo|guerrero_f_walking_0": {
    "x": 225,
    "y": 256,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|mago_f_walking_1": {
+  "pelo-largo|guerrero_f_walking_1": {
    "x": 270,
    "y": 256,
    "w": 32,
    "h": 32
   },
-  "pelo-largo-f|mago_f_walking_2": {
+  "pelo-largo|guerrero_f_walking_2": {
    "x": 315,
    "y": 256,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_attacking_0": {
+   "x": 0,
+   "y": 288,
+   "w": 40,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_attacking_1": {
+   "x": 45,
+   "y": 288,
+   "w": 35,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_attacking_2": {
+   "x": 90,
+   "y": 288,
+   "w": 34,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_attacking_3": {
+   "x": 135,
+   "y": 288,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_attacking_4": {
+   "x": 180,
+   "y": 288,
+   "w": 30,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_attacking_5": {
+   "x": 225,
+   "y": 288,
+   "w": 45,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_idle_0": {
+   "x": 270,
+   "y": 288,
+   "w": 24,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_walking_0": {
+   "x": 315,
+   "y": 288,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_walking_1": {
+   "x": 0,
+   "y": 320,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|guerrero_m_walking_2": {
+   "x": 45,
+   "y": 320,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_f_attacking_0": {
+   "x": 90,
+   "y": 320,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_f_attacking_1": {
+   "x": 135,
+   "y": 320,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_f_attacking_2": {
+   "x": 180,
+   "y": 320,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_f_idle_0": {
+   "x": 225,
+   "y": 320,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_f_walking_0": {
+   "x": 270,
+   "y": 320,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_f_walking_1": {
+   "x": 315,
+   "y": 320,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_f_walking_2": {
+   "x": 0,
+   "y": 352,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_m_attacking_0": {
+   "x": 45,
+   "y": 352,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_m_attacking_1": {
+   "x": 90,
+   "y": 352,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_m_attacking_2": {
+   "x": 135,
+   "y": 352,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_m_idle_0": {
+   "x": 180,
+   "y": 352,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_m_walking_0": {
+   "x": 225,
+   "y": 352,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_m_walking_1": {
+   "x": 270,
+   "y": 352,
+   "w": 32,
+   "h": 32
+  },
+  "pelo-largo|mago_m_walking_2": {
+   "x": 315,
+   "y": 352,
    "w": 32,
    "h": 32
   }

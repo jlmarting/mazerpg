@@ -7,9 +7,9 @@ Sin --apply: verifica base intactos e imprime resumen (variantes × frames).
 Con --apply: escribe `public/sprites/pieces.png`, `src/config/piezas.json`
 y matrices a `verification/`.
 
-Variantes v1:
-  pelo-largo-f (overlay, generos [f]) · peto-f (remap fijo, [f]) ·
-  botas-f (remap fijo, [f]) · casco (overlay, [m,f]).
+Variantes v1 (unisex neutras: mismas piezas para hombre y mujer):
+  pelo-largo (overlay, generos [m,f]) · peto (remap fijo, [m,f]) ·
+  botas (remap fijo, [m,f]) · casco (overlay, [m,f]).
 Frames: idle/walking/attacking × 3 clases × M/F. Caídos/defensa excluidos.
 Overlays = capas del tamaño del frame (ancla 0,0: robusto ante poses).
 """
@@ -192,9 +192,9 @@ def main():
     antes = {k: sha(v) for k, v in hojas.items()}
 
     variantes = {
-        'pelo-largo-f': {'ranura': 'pelo', 'generos': ['f'], 'tipo': 'overlay'},
-        'peto-f': {'ranura': 'torso', 'generos': ['f'], 'tipo': 'remap', 'paleta': {'torso': '#b76e79'}},
-        'botas-f': {'ranura': 'piernas', 'generos': ['f'], 'tipo': 'remap', 'paleta': {'piernas': '#6b4a2f'}},
+        'pelo-largo': {'ranura': 'pelo', 'generos': ['m', 'f'], 'tipo': 'overlay'},
+        'peto': {'ranura': 'torso', 'generos': ['m', 'f'], 'tipo': 'remap', 'paleta': {'torso': '#b76e79'}},
+        'botas': {'ranura': 'piernas', 'generos': ['m', 'f'], 'tipo': 'remap', 'paleta': {'piernas': '#6b4a2f'}},
         'casco': {'ranura': 'casco', 'generos': ['m', 'f'], 'tipo': 'overlay'},
     }
     capas = {}  # (variante, frameKey) -> Image
@@ -208,10 +208,9 @@ def main():
                     hoja = info['imagen'] if g == 'm' else info['imagen'].replace('sheet_players', 'sheet_players_f').replace('hero_custom', 'hero_custom_f')
                     base = imgs[(g, hoja)].crop(box)
                     fk = f'{clase}_{g}_{est}_{idx}'
-                    if g == 'f':
-                        capas[('pelo-largo-f', fk)] = capa_pelo_largo(base, clase)
+                    capas[('pelo-largo', fk)] = capa_pelo_largo(base, clase)
                     capas[('casco', fk)] = capa_casco(base)
-                    anclas.setdefault('pelo-largo-f', {})[fk] = {'dx': 0, 'dy': 0, 'w': base.width, 'h': base.height}
+                    anclas.setdefault('pelo-largo', {})[fk] = {'dx': 0, 'dy': 0, 'w': base.width, 'h': base.height}
                     anclas.setdefault('casco', {})[fk] = {'dx': 0, 'dy': 0, 'w': base.width, 'h': base.height}
 
     for v in variantes:
@@ -252,12 +251,11 @@ def main():
                 base = imgs[(g, hoja)].crop(box)
                 comp = base.copy()
                 fk = f'{clase}_{g}_{est}_0'
-                for v in (['casco'] if g == 'm' else ['pelo-largo-f', 'casco']):
+                for v in ('pelo-largo', 'casco'):
                     key = (v, fk)
                     if key in capas:
                         comp.alpha_composite(capas[key], (0, 0))
-                if g == 'f':
-                    comp = aplicar_remap_fijo(comp, clase, {'torso': (183, 110, 121), 'piernas': (107, 74, 47)})
+                comp = aplicar_remap_fijo(comp, clase, {'torso': (183, 110, 121), 'piernas': (107, 74, 47)})
                 filas.append((f'{clase}/{g}/{est}', base, comp))
     sheet = Image.new('RGB', (CELL * 3, CELL * len(filas)), (20, 20, 20))
     for fi, (_, b, c) in enumerate(filas):

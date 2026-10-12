@@ -303,7 +303,7 @@ export class LobbyManager {
   /** Nombres de variante por ranura para el género actual (v1: una por ranura). */
   private variantesDisponibles(): { ranura: RanuraPieza; variante: string; nombre: string }[] {
     const nombres: Record<string, string> = {
-      'pelo-largo-f': 'Melena', 'peto-f': 'Peto', 'botas-f': 'Botas', 'casco': 'Casco',
+      'pelo-largo': 'Melena', 'peto': 'Peto', 'botas': 'Botas', 'casco': 'Casco',
     };
     const out: { ranura: RanuraPieza; variante: string; nombre: string }[] = [];
     for (const ranura of RANURAS) {

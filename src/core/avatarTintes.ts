@@ -32,6 +32,9 @@ function piezasNulas(): Record<RanuraPieza, string | null> {
   return { pelo: null, torso: null, piernas: null, casco: null };
 }
 
+/** IDs legados v1 (sufijo -f) → variantes unisex neutras. Partidas guardadas antes del merge. */
+const PIEZAS_LEGADO: Record<string, string> = { 'pelo-largo-f': 'pelo-largo', 'peto-f': 'peto', 'botas-f': 'botas' };
+
 /** Sanea el bloque de piezas: variante desconocida, de otro género o de otra ranura → null. */
 export function sanearPiezas(p: unknown, tabla: TablaPiezas, genero: 'm' | 'f'): Record<RanuraPieza, string | null> {
   const out = piezasNulas();
@@ -40,8 +43,9 @@ export function sanearPiezas(p: unknown, tabla: TablaPiezas, genero: 'm' | 'f'):
   for (const ranura of RANURAS) {
     const v = obj[ranura];
     if (typeof v !== 'string') continue;
-    const meta = tabla.variantes[v];
-    if (meta && meta.ranura === ranura && meta.generos.includes(genero)) out[ranura] = v;
+    const id = PIEZAS_LEGADO[v] ?? v;
+    const meta = tabla.variantes[id];
+    if (meta && meta.ranura === ranura && meta.generos.includes(genero)) out[ranura] = id;
   }
   return out;
 }

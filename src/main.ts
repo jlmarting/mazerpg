@@ -16,6 +16,7 @@ import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
 import { ITEMS } from './config/items';
+import { elegirBotin } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import {
@@ -296,6 +297,7 @@ class Game implements IGame {
     document.getElementById('btnRestartAction')?.addEventListener('click', () => window.location.reload());
     document.getElementById('btnTeleportHousing')?.addEventListener('click', () => this.teleportHousing());
     document.getElementById('btnEquipoAction')?.addEventListener('click', () => this.abrirEquipo());
+    document.getElementById('btnBotinAction')?.addEventListener('click', () => this.otorgarBotin());
 
     document.getElementById('zoomSlider')?.addEventListener('input', (e) => {
         this.config.targetZoom = parseFloat((e.target as HTMLInputElement).value);
@@ -478,7 +480,7 @@ class Game implements IGame {
     const p = this.protagonista;
     const bonos = bonosEquipo(p.equipo);
     const puestoIds = new Set(Object.values(p.equipo).filter((v): v is string => !!v));
-    const disponibles = Object.values(ITEMS).filter((it) => it.tipo === 'equipo' && !puestoIds.has(it.id)).map((it) => it.id);
+    const disponibles = p.bulto.filter((id) => !puestoIds.has(id));
     return {
       equipo: { ...p.equipo },
       inventario: { ...p.inventario },
@@ -987,6 +989,7 @@ class Game implements IGame {
       const btnGuard = document.getElementById('btnGuardAction');
       const btnRestart = document.getElementById('btnRestartAction');
       const btnTeleportHousing = document.getElementById('btnTeleportHousing');
+      const btnBotin = document.getElementById('btnBotinAction');
 
       if (btnWhirlwind) btnWhirlwind.style.display = this.protagonista.clase === 'guerrero' ? 'block' : 'none';
       if (btnFireball) btnFireball.style.display = (this.protagonista.clase === 'mago' || this.protagonista.clase === 'guerrero') ? 'block' : 'none';
@@ -995,6 +998,7 @@ class Game implements IGame {
       if (btnFood) btnFood.style.display = this.protagonista.clase === 'mago' ? 'block' : 'none';
       if (btnRadar) btnRadar.style.display = this.protagonista.clase === 'explorador' ? 'block' : 'none';
       if (btnGuard) btnGuard.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
+      if (btnBotin) btnBotin.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
       if (btnRestart) btnRestart.style.display = this.config.vistaDebugActivada ? 'block' : 'none';
       if (btnTeleportHousing) {
         const enCasa = this.nodoActivo?.tipo === 'personal';
@@ -2480,12 +2484,28 @@ class Game implements IGame {
     }
   }
 
+  /** Reparte botín al protagonista (al derrotar enemigos o desde el botón de pruebas). */
+  otorgarBotin(veces: number = 1 + Math.floor(Math.random() * 2)): void {
+    const botin = elegirBotin(Math.random, veces);
+    this.protagonista.recibirBotin(botin);
+    const txt = botin
+      .map((b) => `${ITEMS[b.id]?.nombre ?? b.id}${b.cantidad > 1 ? ' ×' + b.cantidad : ''}`)
+      .join(', ');
+    this.registrarEventoLog(`¡Botín: ${txt}!`);
+    if (document.getElementById('equipoModal')?.style.display === 'flex') this.lobbyManager.renderEquipo();
+  }
+
   lanzarArco(emisor: any, esLocal: boolean) {
       const ahora = Date.now();
       const cooldown = (10 / emisor.agilidad) * 1000;
 
       if (esLocal && emisor === this.protagonista) {
           if (ahora - emisor.ultimaVezHabilidad.bow < cooldown) return;
+          // Munición: el arco consume flechas de la mochila.
+          if (!this.protagonista.consumirFlecha()) {
+              this.registrarEventoLog('Sin flechas: no puedes disparar.');
+              return;
+          }
           emisor.ultimaVezHabilidad.bow = ahora;
 
           if (this.network && this.network.multiplayerActivo) {
@@ -2955,6 +2975,7 @@ class Game implements IGame {
                 this.registrarEventoLog(`¡Has ganado ${o.puntosExperiencia} XP!`);
                 const xpVal = document.getElementById('xpVal');
                 if (xpVal) xpVal.textContent = this.protagonista.puntosExperiencia.toString();
+                this.otorgarBotin();
             }
         }
     });

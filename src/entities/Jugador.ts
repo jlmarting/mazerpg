@@ -22,6 +22,8 @@ export class Jugador extends EntidadRPG {
   /** Equipo puesto (7 ranuras) e inventario (pilas de consumibles/materiales). */
   equipo: Equipo = equipoVacio();
   inventario: Inventario = { pocion_vida: 3, flecha: 20 };
+  /** Equipo poseído pero no puesto (bulto del loot). Se llena al recoger botín. */
+  bulto: string[] = ['casco_hierro', 'daga'];
   /** Vida máxima sin equipo; `vidaMaxima` = base + bonus de vida del equipo. */
   vidaMaximaBase: number = 0;
 
@@ -111,6 +113,27 @@ export class Jugador extends EntidadRPG {
 
   anadirItem(id: string, cantidad: number = 1): void {
     this.inventario = anadirAlInventario(this.inventario, id, cantidad);
+  }
+
+  /** Recoge botín: equipo → bulto (sin duplicar); consumibles/materiales → mochila. */
+  recibirBotin(botin: Array<{ id: string; cantidad: number }>): void {
+    for (const b of botin) {
+      const it = ITEMS[b.id];
+      if (!it) continue;
+      if (it.tipo === 'equipo') {
+        const puesto = Object.values(this.equipo).includes(b.id);
+        if (!puesto && !this.bulto.includes(b.id)) this.bulto.push(b.id);
+      } else {
+        this.inventario = anadirAlInventario(this.inventario, b.id, b.cantidad);
+      }
+    }
+  }
+
+  /** Munición del arco: gasta una flecha. Devuelve false si no hay. */
+  consumirFlecha(): boolean {
+    if ((this.inventario.flecha ?? 0) <= 0) return false;
+    this.inventario = consumir(this.inventario, 'flecha', 1);
+    return true;
   }
 
   consumirItem(id: string, cantidad: number = 1): void {

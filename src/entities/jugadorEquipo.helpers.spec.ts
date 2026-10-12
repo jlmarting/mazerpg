@@ -70,4 +70,25 @@ assert(j.vidaActual === j.vidaMaxima, 'usar a vida llena no la supera');
 assert(j.usarItem('flecha') === false, 'un material no se usa');
 assert(j.usarItem('no_existe') === false, 'un desconocido no se usa');
 
+// --- Loot: el botín llena bulto y mochila; el arco gasta flechas ---
+const j2 = new Jugador('Loot');
+const bultoIni = j2.bulto.length;
+assert(bultoIni > 0, 'kit inicial en el bulto');
+j2.recibirBotin([
+  { id: 'espada_corta', cantidad: 1 },
+  { id: 'flecha', cantidad: 4 },
+  { id: 'espada_corta', cantidad: 1 },
+  { id: 'no_existe', cantidad: 1 },
+]);
+assert(j2.bulto.includes('espada_corta'), 'el equipo del botín va al bulto');
+assert(j2.bulto.filter((x) => x === 'espada_corta').length === 1, 'el equipo no se duplica en el bulto');
+assert(j2.inventario.flecha === 24, 'el material del botín se apila (20+4)');
+j2.equiparItem('daga');
+j2.recibirBotin([{ id: 'daga', cantidad: 1 }]);
+assert(j2.bulto.filter((x) => x === 'daga').length === 1, 'no duplica equipo ya poseído/equipado');
+
+assert(j2.consumirFlecha() && j2.inventario.flecha === 23, 'el arco consume una flecha');
+j2.inventario = { ...j2.inventario, flecha: 0 };
+assert(j2.consumirFlecha() === false, 'sin flechas no se dispara');
+
 console.log('jugadorEquipo.helpers: todas las comprobaciones pasan');

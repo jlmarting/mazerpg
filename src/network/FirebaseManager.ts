@@ -72,8 +72,8 @@ export class FirebaseManager {
     return partidas;
   }
 
-  /** Ficha visible de jugador: nick + clase + apariencia (doc por jugador, merge). */
-  async guardarAparienciaJugador(idPartida: string, jugadorId: string, ficha: { nick: string; clase: string; apariencia: AparienciaAvatar }) {
+  /** Ficha visible de jugador: nick + clase + apariencia (+ inventario) (doc por jugador, merge). */
+  async guardarAparienciaJugador(idPartida: string, jugadorId: string, ficha: { nick: string; clase: string; apariencia: AparienciaAvatar; inventario?: import('../core/inventario').InventarioGuardado }) {
     if (!this.db) return;
     try {
       await this.db.collection('partidas').doc(idPartida).collection('jugadores').doc(jugadorId).set({
@@ -81,6 +81,7 @@ export class FirebaseManager {
         clase: ficha.clase,
         apariencia: ficha.apariencia,
         genero: ficha.apariencia.genero,
+        inventario: ficha.inventario ?? null,
         actualizado: Date.now()
       }, { merge: true });
     } catch (e) {

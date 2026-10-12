@@ -15,6 +15,7 @@ import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
+import { sanearEquipoGuardado } from './core/inventario';
 import { ITEMS } from './config/items';
 import { elegirBotin } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
@@ -538,11 +539,12 @@ class Game implements IGame {
   /** Difunde la apariencia actual por todos los transportes activos (cambio en caliente). */
   difundirApariencia(): void {
     const ef = aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia);
+    const inventario = this.protagonista.exportarInventario();
     if (this.network && this.network.multiplayerActivo) {
-      this.network.enviarMensaje({ tipo: 'avatar', id: this.network.idLocal, apariencia: ef });
+      this.network.enviarMensaje({ tipo: 'avatar', id: this.network.idLocal, apariencia: ef, inventario });
     }
     if (this.networkHttp && this.networkHttp.multiplayerActivo) {
-      this.networkHttp.enviarMensaje({ tipo: 'avatar', id: this.networkHttp.idLocal, apariencia: ef });
+      this.networkHttp.enviarMensaje({ tipo: 'avatar', id: this.networkHttp.idLocal, apariencia: ef, inventario });
     }
   }
 
@@ -557,7 +559,7 @@ class Game implements IGame {
     const ef = aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia);
     this.firebase.guardarAparienciaJugador(
       pid, net.idLocal,
-      fichaJugador(this.protagonista.nombre, this.protagonista.clase, ef));
+      { ...fichaJugador(this.protagonista.nombre, this.protagonista.clase, ef), inventario: this.protagonista.exportarInventario() });
   }
 
   /** Pinta el sprite tineado (frame idle) en el canvas del modal: lo que ves es lo que viaja. */
@@ -3244,6 +3246,8 @@ class Game implements IGame {
             const avInfo = this.network.jugadoresRemotos.get(idSujeto);
             if (avInfo && avInfo.entidad) {
                 avInfo.entidad.apariencia = aplicarAparienciaRemota(avInfo.entidad.apariencia, msg.apariencia, avInfo.entidad.clase || 'guerrero');
+                const inv = sanearEquipoGuardado(msg.inventario);
+                if (inv) avInfo.entidad.inventario = inv;
             } else {
                 this.registrarEventoLog(`Avatar recibido sin entidad (${idSujeto}); ignorado.`);
             }

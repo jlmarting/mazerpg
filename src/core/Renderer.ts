@@ -88,7 +88,7 @@ export class Renderer {
   /**
    * Dibuja el suelo, muros y objetos estáticos del laberinto.
    */
-  dibujarLaberinto(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
+  dibujarLaberinto(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig, drops?: { f: number; c: number; id: string }[]) {
     this.cacheMazeDibujar(mapaLaberinto, offset, config);
 
     const { TAMANO_CELDA, ALTO_UI_TOP, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
@@ -109,6 +109,20 @@ export class Renderer {
     }
 
     this.dibujarPulsoHousing(mapaLaberinto, offset, config);
+    this.dibujarDrops(offset, config, drops);
+  }
+
+  /** Dibuja el botín caído en el suelo (capa dinámica, fuera de la caché del laberinto). */
+  private dibujarDrops(offset: CameraOffset, config: GameConfig, drops?: { f: number; c: number; id: string }[]) {
+    if (!drops || drops.length === 0) return;
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
+    const { colOffset, filaOffset } = offset;
+    const emoji: Record<string, string> = { pico: '⛏️', comida: '🍎', pocion_vida: '🧪', flecha: '➶' };
+    for (const d of drops) {
+      const x = (d.c - colOffset) * TAMANO_CELDA;
+      const y = (d.f - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+      this.dibujarItemCache(this.ctx, d.id, d.id, x, y, TAMANO_CELDA, emoji[d.id] ?? '🎁');
+    }
   }
 
   /** Halo pulsante sobre los portalez de housing visibles, para llamar la atención. */

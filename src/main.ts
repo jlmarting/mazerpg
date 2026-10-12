@@ -41,6 +41,8 @@ declare global {
 
 class Game implements IGame {
   private _mapaLaberinto: Celda[][] = [];
+  /** Botín en el suelo (drops de mobs): se recoge al pisar la celda. */
+  dropsSuelo: { f: number; c: number; id: string; cantidad: number }[] = [];
   public gestorMundo: GestorMundo = new GestorMundo();
   public protagonista: Jugador = new Jugador();
   public listaDeEnemigos: EnemigoNPC[] = [];
@@ -297,7 +299,7 @@ class Game implements IGame {
     document.getElementById('btnRestartAction')?.addEventListener('click', () => window.location.reload());
     document.getElementById('btnTeleportHousing')?.addEventListener('click', () => this.teleportHousing());
     document.getElementById('btnEquipoAction')?.addEventListener('click', () => this.abrirEquipo());
-    document.getElementById('btnBotinAction')?.addEventListener('click', () => this.otorgarBotin());
+    document.getElementById('btnBotinAction')?.addEventListener('click', () => this.soltarBotin(this.protagonista.fila, this.protagonista.columna));
 
     document.getElementById('zoomSlider')?.addEventListener('input', (e) => {
         this.config.targetZoom = parseFloat((e.target as HTMLInputElement).value);
@@ -1440,7 +1442,7 @@ class Game implements IGame {
     this.renderer.setPortalesHousingInactivos(this.portalesHousingInactivos());
     this.renderer.setPortalesHousing(this.idsPortalesHousing());
     this.renderer.setAmbiente(this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon');
-    this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config);
+    this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config, this.dropsSuelo);
 
     let persistence = this.config.TIEMPO_DESVANECIMIENTO_NIEBLA;
     if (this.protagonista.clase === 'explorador') {
@@ -2167,6 +2169,7 @@ class Game implements IGame {
 
         // 5. Muros y transitable
         const celdaActual = this.mapaLaberinto[entidad.fila][entidad.columna];
+        this.recogerDropsEn(entidad.fila, entidad.columna, entidad);
         let esMovimientoValido = false;
         if (df === -1 && !celdaActual.muros.superior && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
         if (df === 1 && !celdaActual.muros.inferior && this.mapaLaberinto[sigFila][sigColumna].esTransitable) esMovimientoValido = true;
@@ -2211,6 +2214,7 @@ class Game implements IGame {
                 console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
                 entidad.estaCaminando = true;
                 (entidad as any).ultimaCasillaAtacada = null;
+                this.recogerDropsEn(sigFila, sigColumna, entidad);
             }
             // Recogidas (§3a): ediciones del mundo que producen delta — pasan
             // también fuera de burbuja, sobre la celda objetivo del intento.
@@ -2518,6 +2522,25 @@ class Game implements IGame {
       .join(', ');
     this.registrarEventoLog(`¡Botín: ${txt}!`);
     this.guardarSesionActual();
+    if (document.getElementById('equipoModal')?.style.display === 'flex') this.lobbyManager.renderEquipo();
+  }
+
+  /** Suelta botín en el suelo (al morir un mob): queda como drop que se recoge al pisar. */
+  soltarBotin(f: number, c: number, veces: number = 1 + Math.floor(Math.random() * 2)): void {
+    const botin = elegirBotin(Math.random, veces);
+    for (const b of botin) this.dropsSuelo.push({ f, c, id: b.id, cantidad: b.cantidad });
+    this.registrarEventoLog(`¡Botín en el suelo (${f},${c}): ${botin.map((b) => ITEMS[b.id]?.nombre ?? b.id).join(', ')}!`);
+  }
+
+  /** Recoge los drops de una celda (solo el protagonista). */
+  recogerDropsEn(f: number, c: number, entidad: any): void {
+    if (entidad !== this.protagonista) return;
+    const aqui = this.dropsSuelo.filter((d) => d.f === f && d.c === c);
+    if (aqui.length === 0) return;
+    this.dropsSuelo = this.dropsSuelo.filter((d) => !(d.f === f && d.c === c));
+    this.protagonista.recibirBotin(aqui.map((d) => ({ id: d.id, cantidad: d.cantidad })));
+    this.guardarSesionActual();
+    this.registrarEventoLog(`Recogido: ${aqui.map((d) => `${ITEMS[d.id]?.nombre ?? d.id}${d.cantidad > 1 ? ' ×' + d.cantidad : ''}`).join(', ')}`);
     if (document.getElementById('equipoModal')?.style.display === 'flex') this.lobbyManager.renderEquipo();
   }
 
@@ -3004,7 +3027,7 @@ class Game implements IGame {
                 this.registrarEventoLog(`¡Has ganado ${o.puntosExperiencia} XP!`);
                 const xpVal = document.getElementById('xpVal');
                 if (xpVal) xpVal.textContent = this.protagonista.puntosExperiencia.toString();
-                this.otorgarBotin();
+                this.soltarBotin(o.fila, o.columna);
             }
         }
     });

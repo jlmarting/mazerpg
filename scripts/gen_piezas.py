@@ -26,8 +26,8 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PELO_EXTRA = 9
 PELO_VOLUMEN = 3
 PELO_FILAS = (0.26, 0.54)
-CASCO_ALTO = 8
 CASCO_COLOR = (70, 90, 160, 255)
+CASCO_LUZ = (120, 145, 210, 255)
 CASCO_BORDE = (20, 26, 48, 255)
 CASCO_CRESTA = (200, 60, 60, 255)
 PET0_PALETA = {'torso': '#b76e79'}   # acero rosado (nota: nombre histórico)
@@ -95,18 +95,82 @@ def capa_pelo_largo(crop, clase):
     return out
 
 
-def capa_casco(crop):
-    """Yelmo: domo + visera + cresta, dimensionado a la cabeza medida."""
+def perfil_cabeza(crop):
+    """(y -> (x0, x1)) de la masa opaca por fila — silueta que abraza el casco."""
     w, h = crop.size
-    cx, ymin, semi = cabeza_metricas(crop)
-    cw, chh = semi * 2 + 6, CASCO_ALTO
+    px = crop.load()
+    filas = {}
+    for y in range(h):
+        op = [x for x in range(w) if px[x, y][3] > 128]
+        if op:
+            filas[y] = (min(op), max(op))
+    return filas
+
+
+def capa_casco(crop):
+    """Yelmo v2 (aprobado 2026-10-12): cupla corta con arco escalonado sobre la
+    silueta medida, baberas hasta mandíbula con línea interior, visera oscura,
+    realce metálico y cresta de 2px. Sin flare: los flancos son la cabeza."""
+    w, h = crop.size
+    filas = perfil_cabeza(crop)
+    y_top = min(filas)
+    y_copa = y_top + 4
+    y_fin = y_top + 9
     img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    x0, x1 = cx - cw // 2, cx + cw // 2
-    y0, y1 = max(0, ymin - chh + 2), ymin + 2
-    d.rounded_rectangle([x0, y0, x1, y1], radius=3, fill=CASCO_COLOR, outline=CASCO_BORDE, width=1)
-    d.line([cx, max(0, y0 - 2), cx, y0], fill=CASCO_CRESTA, width=2)
-    d.line([x0 + 3, y1 - 2, x1 - 3, y1 - 2], fill=CASCO_BORDE, width=1)
+    arco = {0: 3, 1: 2, 2: 1}
+
+    def rango(y):
+        if y not in filas:
+            return None
+        x0, x1 = filas[y]
+        inset = min(arco.get(y - y_top, 0), max(0, (x1 - x0 + 1) // 4))
+        a0, a1 = x0 + inset, x1 - inset
+        return (a0, a1) if a1 >= a0 else None
+
+    # cupla: color + realce en las filas altas + borde lateral en flancos rectos
+    for y in range(y_top, y_copa + 1):
+        r = rango(y)
+        if not r:
+            continue
+        a0, a1 = r
+        d.line([(a0, y), (a1, y)], fill=CASCO_COLOR, width=1)
+        if y - y_top <= 2 and a1 - a0 >= 3:
+            d.line([(a0 + 1, y), (a0 + max(1, (a1 - a0) // 2), y)], fill=CASCO_LUZ, width=1)
+        if y > y_top + 2:
+            if a0 > 0:
+                d.point((a0 - 1, y), fill=CASCO_BORDE)
+            if a1 < w - 1:
+                d.point((a1 + 1, y), fill=CASCO_BORDE)
+    r0 = rango(y_top)
+    if r0 and y_top > 0:
+        d.line([(r0[0], y_top - 1), (r0[1], y_top - 1)], fill=CASCO_BORDE, width=1)
+    # visera: banda oscura al cierre de la cupla
+    rv = rango(y_copa)
+    if rv:
+        d.line([(rv[0], y_copa), (rv[1], y_copa)], fill=CASCO_BORDE, width=1)
+    # baberas: 2px por flank siguiendo el contorno, con borde interior y cierre
+    for y in range(y_copa + 1, y_fin + 1):
+        if y not in filas:
+            continue
+        x0, x1 = filas[y]
+        d.line([(x0, y), (x0 + 1, y)], fill=CASCO_COLOR, width=1)
+        if x0 + 2 <= x1 - 2:
+            d.point((x0 + 2, y), fill=CASCO_BORDE)
+        if x0 > 0:
+            d.point((x0 - 1, y), fill=CASCO_BORDE)
+        d.line([(x1 - 1, y), (x1, y)], fill=CASCO_COLOR, width=1)
+        if x1 - 2 >= x0 + 2:
+            d.point((x1 - 2, y), fill=CASCO_BORDE)
+        if x1 < w - 1:
+            d.point((x1 + 1, y), fill=CASCO_BORDE)
+        if y == y_fin:
+            d.line([(x0, y + 1), (x0 + 1, y + 1)], fill=CASCO_BORDE, width=1)
+            d.line([(x1 - 1, y + 1), (x1, y + 1)], fill=CASCO_BORDE, width=1)
+    # cresta de 2px centrada
+    if r0:
+        cx = (r0[0] + r0[1]) // 2
+        d.line([(cx, max(0, y_top - 2)), (cx, y_top - 1)], fill=CASCO_CRESTA, width=1)
     return img
 
 

@@ -91,4 +91,26 @@ assert(j2.consumirFlecha() && j2.inventario.flecha === 23, 'el arco consume una 
 j2.inventario = { ...j2.inventario, flecha: 0 };
 assert(j2.consumirFlecha() === false, 'sin flechas no se dispara');
 
+// --- Persistencia: exportar/importar inventario (roundtrip) ---
+const j3 = new Jugador('Persist');
+j3.fuerza = 8; j3.agilidad = 4; j3.inteligencia = 2;
+j3.equiparItem('casco_hierro');
+j3.recibirBotin([{ id: 'espada_corta', cantidad: 1 }, { id: 'flecha', cantidad: 6 }]);
+const guardado = j3.exportarInventario();
+assert(guardado.formato === 1 && guardado.puesto.cabeza === 'casco_hierro', 'exporta el puesto');
+assert(guardado.bulto.includes('espada_corta'), 'exporta el bulto');
+assert(guardado.mochila.flecha === 26, 'exporta la mochila');
+
+const j4 = new Jugador('Persist');
+j4.fuerza = 8; j4.agilidad = 4; j4.inteligencia = 2;
+j4.importarInventario(guardado);
+assert(j4.equipo.cabeza === 'casco_hierro', 'importa el puesto');
+assert(j4.apariencia.piezas.casco === 'casco', 'importar re-aplica las piezas del avatar');
+assert(j4.bulto.includes('espada_corta') && j4.inventario.flecha === 26, 'importa bulto y mochila');
+
+j4.importarInventario(null);
+assert(j4.equipo.cabeza === 'casco_hierro', 'payload inválido no altera el estado');
+j4.importarInventario({ formato: 1, puesto: { cabeza: 'no_existe' }, bulto: ['basura'], mochila: { basura: 2 } });
+assert(j4.equipo.cabeza === null && j4.bulto.length === 0, 'payload saneado se aplica');
+
 console.log('jugadorEquipo.helpers: todas las comprobaciones pasan');

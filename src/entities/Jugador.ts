@@ -7,6 +7,7 @@ import {
   anadirAlInventario, consumir, type Equipo, type Inventario, type RanuraEquipo,
 } from '../core/equipo';
 import { ITEMS } from '../config/items';
+import { sanearEquipoGuardado, type InventarioGuardado } from '../core/inventario';
 
 export class Jugador extends EntidadRPG {
   pasosDesdeUltimoDano: number = 0;
@@ -134,6 +135,21 @@ export class Jugador extends EntidadRPG {
     if ((this.inventario.flecha ?? 0) <= 0) return false;
     this.inventario = consumir(this.inventario, 'flecha', 1);
     return true;
+  }
+
+  /** Serializa equipo, bulto y mochila para sesión/red. */
+  exportarInventario(): InventarioGuardado {
+    return { formato: 1, puesto: { ...this.equipo }, bulto: [...this.bulto], mochila: { ...this.inventario } };
+  }
+
+  /** Aplica un payload guardado (saneado). Payload inválido → no altera el estado. */
+  importarInventario(raw: unknown): void {
+    const g = sanearEquipoGuardado(raw);
+    if (!g) return;
+    this.equipo = g.puesto;
+    this.bulto = g.bulto;
+    this.inventario = g.mochila;
+    this.aplicarEquipo();
   }
 
   consumirItem(id: string, cantidad: number = 1): void {

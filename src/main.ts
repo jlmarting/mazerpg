@@ -456,7 +456,7 @@ class Game implements IGame {
     } else if (modo === 'cooperativo') {
       this.modoMultijugador = 'manual';
     } else if (modo === 'solo') {
-      this.modoMultijugador = 'firebase';
+      this.modoMultijugador = 'manual';
       this.signaling?.desconectar();
       this.networkHttp?.desconectar();
       this.networkHttp = null;

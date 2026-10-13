@@ -77,6 +77,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Firebase unificado al proyecto `mazerpg-b2aa4` (`.firebaserc`, `projectId` y service account) (`0a354b4`)
 
 ### Fixed
+- Modo un jugador: el personaje no se movía (teclado ni tap) — regresión de `b6eb3e0`: `intentarMover` encolaba la acción `mover` con id literal `'local'` sin transporte multijugador activo, pero `resolverAccion` resuelve la entidad por `idLocalActivo` (`network.idLocal`) y la descartaba con «No se encontró entidad»; el id encolado ahora refleja `idLocalActivo` (nuevo smoke de regresión `scripts/smoke_movimiento.mjs`, verificado red→green y validado en Pages) (`dfebd69`)
+- Reanudar partida: una sesión legada rol `host` con `roomId` vacío lanzaba `FirebaseError: CollectionReference.doc() cannot be called with an empty path` al crear la persistencia del mundo — ahora valida el `roomId` y cae limpiamente a modo solo (`9240d9b`)
+- Modo solo: `onSelectMode('solo')` fija `modoMultijugador='manual'` para que el lado local sea autoritativo incondicionalmente (defensivo) (`a104a94`)
 - Multijugador SERVIDOR LOCAL: el invitado no conectaba, se quedaba en el spinner, no recibía el mapa y no sincronizaba movimiento ni efectos — el código estaba cableado al transporte Firebase en vez del activo HTTP (`9711054`, `c3f862b`, `1f5b406`, `b6eb3e0`, `23a6fc9`)
 - Errores de Firestore se muestran en el front (banner + log) y el flujo hace fail-fast (no se crea sala si Firebase falla) (`773f159`, `1728f5c`)
 - Modal de personaje compacto: caja de 1076px a 667px — GUARDAR visible sin scroll desde 667px de alto; tema mazmorra aplicado a los modales (vars `--oro*` movidas a `:root`) (`75f45f1`)

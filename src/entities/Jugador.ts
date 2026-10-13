@@ -231,7 +231,7 @@ export class Jugador extends EntidadRPG {
     const net: any = game.network;
     const netHttp: any = (game as any).networkHttp;
     const mpActivo = !!(net && net.multiplayerActivo) || !!(netHttp && netHttp.multiplayerActivo);
-    const idLocal = (net && net.multiplayerActivo ? net.idLocal : (netHttp?.idLocal ?? 'local'));
+    const idLocal = netHttp?.multiplayerActivo ? netHttp.idLocal : (net?.idLocal ?? 'local');
     const enviar = (msg: any) => {
       if (net && net.multiplayerActivo) net.enviarMensaje(msg);
       else if (netHttp && netHttp.multiplayerActivo) netHttp.enviarMensaje(msg);

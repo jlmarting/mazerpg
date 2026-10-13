@@ -1101,7 +1101,7 @@ class Game implements IGame {
 
     if (data.rol === 'solo') {
         this.empezarSolo();
-    } else if (data.rol === 'host') {
+    } else if (data.rol === 'host' && data.roomId) {
         this.esHost = true;
         this.network.esHost = true;
         this.network.idPartidaActual = data.roomId;
@@ -1121,6 +1121,10 @@ class Game implements IGame {
         this.ui.ocultarLobby();
         await this.prepararMundo();
         this.iniciarMotorJuego();
+    } else if (data.rol === 'host') {
+        // roomId inválido o vacío: caer a modo solo
+        this.registrarEventoLog('Sesión host guardada sin roomId válido; iniciando en modo solo.');
+        this.empezarSolo();
     } else if (data.rol === 'guest') {
         this.unirseAPartidaFirestore(data.roomId);
     }

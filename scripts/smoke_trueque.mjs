@@ -300,6 +300,35 @@ async function main() {
     const invGuestUI = await evaluar(cdp, invitado, `(window.game.protagonista.inventario.pocion_vida|0) + '/' + (window.game.protagonista.inventario.flecha|0)`);
     if (invGuestUI === '5/14') pase(`F2: invitado mochila tras trueque UI = ${invGuestUI} (pocion 4+1 / flecha 17-3)`);
     else pana('F2: invitado mochila tras trueque UI', `esperado 5/14, obtuve ${invGuestUI}`);
+
+    // 10. RONDA EQUIPO (solo items de bulto): host da daga, invitado da casco
+    await evaluar(cdp, host, `{ document.getElementById('btnComerciar')?.click(); }`);
+    await evaluar(cdp, host, `{ document.querySelector('#truequeSocios .trueque-socio button')?.click(); }`);
+    await esperar(cdp, invitado, `document.getElementById('truequeModal')?.style.display === 'flex'`, 8000, 'equipo: invitación visible');
+    await evaluar(cdp, invitado, `{ document.getElementById('btnTruequeAceptar')?.click(); }`);
+    await esperar(cdp, host, `document.getElementById('truequeModal')?.style.display === 'flex'`, 8000, 'equipo: ventana host abierta');
+    await evaluar(cdp, host, `{ document.querySelector('#truequeMio .trueque-ofrecer[data-id="daga"]')?.click(); }`);
+    await evaluar(cdp, invitado, `{ document.querySelector('#truequeMio .trueque-ofrecer[data-id="casco_hierro"]')?.click(); }`);
+    await esperar(cdp, invitado, `(document.querySelector('#truequeOtro .trueque-fila .nombre')?.textContent ?? '').includes('×1')`, 6000, 'equipo: oferta del host visible');
+    await evaluar(cdp, invitado, `{ document.getElementById('btnTruequeConfirmar')?.click(); }`);
+    await esperar(cdp, host, `document.getElementById('truequeEstado')?.textContent === 'El otro confirmó — completa tu confirmación.'`, 6000, 'equipo: otro-confirmado');
+    await evaluar(cdp, host, `{ document.getElementById('btnTruequeConfirmar')?.click(); }`);
+    await esperar(cdp, host, `document.getElementById('truequeModal')?.style.display !== 'flex'`, 8000, 'equipo: ventanas cerradas');
+    await esperar(cdp, invitado, `document.getElementById('truequeModal')?.style.display !== 'flex'`, 8000, 'equipo: ventanas cerradas');
+    const bultoHostEq = await evaluar(cdp, host, `JSON.stringify(window.game.protagonista.bulto.filter((x) => x === 'daga' || x === 'casco_hierro').sort())`);
+    if (bultoHostEq === '["casco_hierro","casco_hierro"]') pase(`equipo: host bulto daga↔casco = ${bultoHostEq} pierde daga, recibe casco`);
+    else pana('equipo: host bulto tras trueque', `esperado ["casco_hierro","casco_hierro"], obtuve ${bultoHostEq}`);
+    const bultoGuestEq = await evaluar(cdp, invitado, `JSON.stringify(window.game.protagonista.bulto.filter((x) => x === 'daga' || x === 'casco_hierro').sort())`);
+    if (bultoGuestEq === '["daga","daga"]') pase(`equipo: invitado bulto daga↔casco = ${bultoGuestEq} pierde casco, recibe daga`);
+    else pana('equipo: invitado bulto tras trueque', `esperado ["daga","daga"], obtuve ${bultoGuestEq}`);
+
+    // 11. DUPLICADOS en el panel: dos dagas → equipar una conserva la otra visible
+    await evaluar(cdp, invitado, `(() => { window.game.equiparItem('daga'); return window.game.getEstadoEquipo().disponibles.filter((x) => x === 'daga').length; })()`);
+    await esperar(cdp, invitado, `window.game.getEstadoEquipo().disponibles.filter((x) => x === 'daga').length === 1`, 5000, 'equipo: equipar una de dos dagas deja la otra visible');
+    pase('equipo: duplicados en el panel correctos (1 visible con otra equipada)');
+    const deseqDoble = await evaluar(cdp, invitado, `(() => { window.game.desequiparRanura('mano_derecha'); return window.game.getEstadoEquipo().disponibles.filter((x) => x === 'daga').length; })()`);
+    if (deseqDoble === 2) pase('equipo: al desequipar vuelven las dos dagas');
+    else pana('equipo: desequipar duplicado', `esperado 2 dagas, obtuve ${deseqDoble}`);
   } catch (e) {
     pana('secuencia de smoke_trueque', `— ${e.message}`);
   }

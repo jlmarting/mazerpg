@@ -572,8 +572,10 @@ class Game implements IGame {
   getEstadoEquipo(): import('./ui/LobbyManager').EstadoEquipo {
     const p = this.protagonista;
     const bonos = bonosEquipo(p.equipo);
-    const puestoIds = new Set(Object.values(p.equipo).filter((v): v is string => !!v));
-    const disponibles = p.bulto.filter((id) => !puestoIds.has(id));
+    // Copias libres: el bulto contiene TODAS las copias (incluida la equipada);
+    // hay que ocultar solo la copia en uso, no todas las del mismo id.
+    const libres = this.bultoLibre();
+    const disponibles = libres;
     return {
       equipo: { ...p.equipo },
       inventario: { ...p.inventario },
@@ -3797,12 +3799,23 @@ class Game implements IGame {
   /** ¿Ya pulsé CONFIRMAR en la ventana actual? (se anula si el otro cambia su cesta). */
   private truequeConfirmeYo: boolean = false;
 
-  /** Stock disponible de un id (copias de bulto + pila de mochila). */
+  /** Bulto con UNA copia retirada por cada id equipado (superset: el bulto incluye lo puesto). */
+  private bultoLibre(): string[] {
+    const libres = [...this.protagonista.bulto];
+    for (const id of Object.values(this.protagonista.equipo)) {
+      if (!id) continue;
+      const idx = libres.indexOf(id);
+      if (idx >= 0) libres.splice(idx, 1);
+    }
+    return libres;
+  }
+
+  /** Stock disponible de un id para ofertar (excluye lo equipado). */
   private stockTradeDe(id: string): number {
     const item = (ITEMS as Record<string, any>)[id];
     if (!item) return 0;
     return item.tipo === 'equipo'
-      ? this.protagonista.bulto.filter((x) => x === id).length
+      ? this.bultoLibre().filter((x) => x === id).length
       : (this.protagonista.inventario[id] ?? 0);
   }
 
@@ -3870,7 +3883,8 @@ class Game implements IGame {
       const item = (ITEMS as Record<string, any>)[id];
       if (!item) return;
       if (item.tipo !== 'equipo' && !(this.protagonista.inventario[id] ?? 0)) return;
-      if (item.tipo === 'equipo' && !this.protagonista.bulto.includes(id)) return;
+      const libresDelId = this.bultoLibre().filter((x) => x === id).length;
+      if (item.tipo === 'equipo' && libresDelId === 0) return;
       this.truequeCesta = anadirLinea(this.truequeCesta, id, 1, this.stockTradeDe(id));
       this.truequeUI.setCestaMia(this.truequeCesta);
       this.truequeOfertar();
@@ -3915,7 +3929,7 @@ class Game implements IGame {
       if (con) {
         this.truequeCesta = [];
         this.truequeUI.abrir(con);
-        this.truequeUI.renderMio([...this.protagonista.bulto], this.inventarioSinCesta());
+        this.truequeUI.renderMio(this.bultoLibre(), this.inventarioSinCesta());
       }
     };
     this.truequeUI.onRechazarInvitacion = () => {
@@ -3999,7 +4013,7 @@ class Game implements IGame {
           this.truequeInvitador = null;
           this.truequeCesta = [];
           this.truequeUI.abrir(de);
-          this.truequeUI.renderMio([...this.protagonista.bulto], { ...this.protagonista.inventario });
+          this.truequeUI.renderMio(this.bultoLibre(), { ...this.protagonista.inventario });
           this.truequeUI.setCestaMia(this.truequeCesta);
         }
         break;
@@ -4022,7 +4036,7 @@ class Game implements IGame {
           this.truequeInvitador = null;
           this.truequeCesta = [];
           this.truequeUI.abrir(de);
-          this.truequeUI.renderMio([...this.protagonista.bulto], { ...this.protagonista.inventario });
+          this.truequeUI.renderMio(this.bultoLibre(), { ...this.protagonista.inventario });
           this.truequeUI.setCestaMia(this.truequeCesta);
           this.truequeCestaSocio = cesta;
           this.truequeUI.setCestaOtro(cesta);

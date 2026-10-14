@@ -78,6 +78,7 @@ export interface IGame {
     iniciarCombate(atacante: IEntidadRPG, objetivo: IEntidadRPG): void;
     intentarRehuirCombate(l: IEntidadRPG): boolean;
     procesarMensajeMultiplayer(msg: any, idEmisor: string): void;
+    cancelarTruequesDe(id: string): void;
     iniciarEleccionHost(): void;
     unirseAPartidaFirestore(id: string): Promise<void>;
     obtenerEntidadPorNombre(nombre: string): IEntidadRPG | null;

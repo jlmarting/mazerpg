@@ -16,6 +16,9 @@ import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
 import { sanearEquipoGuardado } from './core/inventario';
+import { GestorTrueques, clavePar } from './core/gestorTrueques';
+import { aplicarIntercambio, type EstadoParte } from './core/intercambio';
+import type { InventarioGuardado } from './core/inventario';
 import { ITEMS } from './config/items';
 import { elegirBotin } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
@@ -3323,6 +3326,10 @@ class Game implements IGame {
   }
 
   procesarMensajeMultiplayer(msg: any, idEmisor: string) {
+    if (typeof msg?.tipo === 'string' && msg.tipo.startsWith('trade_')) {
+      this.procesarMensajeTrade(msg, idEmisor);
+      return;
+    }
     const idSujeto = msg.id || (idEmisor === 'host' ? this.network.idRealDelHost : idEmisor) || idEmisor;
     switch (msg.tipo) {
         case 'action':
@@ -3765,6 +3772,142 @@ class Game implements IGame {
                 }
             });
             break;
+    }
+  }
+
+  // ─── Comercio F1 (trueque host-autoritativo) — ver spec-1-trade-v1 ────────
+
+  public gestorTrueques: GestorTrueques = new GestorTrueques();
+
+  /** Ruta de los mensajes trade_*: el host arbitra; trade_apply lo aplica cualquiera. */
+  procesarMensajeTrade(msg: any, idEmisor: string): void {
+    const tipo: string = msg.tipo;
+    if (tipo === 'trade_apply') {
+      // Resultado autoritativo difundido por el host: aplico mi parte y pongo al día la del otro.
+      const idLocal = this.idLocalActivo;
+      if (msg.a === idLocal && msg.invA) {
+        this.protagonista.importarInventario(msg.invA);
+        this.registrarEventoLog('[trueque] aplicado a tu personaje');
+      }
+      if (msg.b === idLocal && msg.invB) {
+        this.protagonista.importarInventario(msg.invB);
+        this.registrarEventoLog('[trueque] aplicado a tu personaje');
+      }
+      const idOtro = msg.a === idLocal ? msg.b : (msg.b === idLocal ? msg.a : null);
+      const invOtro = msg.a === idLocal ? msg.invB : (msg.b === idLocal ? msg.invA : null);
+      if (idOtro && invOtro) {
+        const remoto = this.remotosActivos.get(idOtro);
+        const inv = sanearEquipoGuardado(invOtro);
+        if (remoto?.entidad && inv) remoto.entidad.inventario = inv;
+      }
+      return;
+    }
+    if (tipo === 'trade_state') return; // visibilidad de estado: F2 la aprovechará
+
+    // invite/accept/offer/confirm/cancel: SOLO el host arbitra.
+    if (!this.mpActivo || !this.esHost) return;
+    const efectos = this.gestorTrueques.procesar(msg, idEmisor, (id) => this.exportTradeDe(id));
+    for (const efecto of efectos) {
+      if (efecto.tipo === 'relay') this.enviarTradeA(efecto.para, efecto.msj);
+      else this.aplicarTruequeEnHost(efecto.idA, efecto.idB);
+    }
+    this.gestorTrueques.limpiarTerminados();
+  }
+
+  /** Exportación saneada del estado que el host conoce de un jugador. */
+  private exportTradeDe(id: string): InventarioGuardado | null {
+    if (id === this.idLocalActivo) return sanearEquipoGuardado(this.protagonista.exportarInventario());
+    const remoto = this.remotosActivos.get(id);
+    return remoto?.entidad?.inventario ?? null;
+  }
+
+  /** Envío unicast a un remoto concreto (el efecto relay dice a quién). */
+  private enviarTradeA(para: string, msj: Record<string, unknown>): void {
+    const remoto = this.remotosActivos.get(para);
+    if (remoto && remoto.dc && remoto.dc.readyState === 'open') {
+      remoto.dc.send(JSON.stringify(msj));
+    }
+  }
+
+  /**
+   * Efecto 'aplicar': valida con los estados reales y ejecuta. OK → actualiza
+   * al host (si es parte) y difunde `trade_apply`; fallo → `trade_state cancelada`.
+   */
+  private aplicarTruequeEnHost(idA: string, idB: string): void {
+    const trade = this.gestorTrueques.par(clavePar(idA, idB));
+    if (!trade || !trade.ofertaA || !trade.ofertaB) return;
+    const exportA = this.exportTradeDe(idA);
+    const exportB = this.exportTradeDe(idB);
+    if (!exportA || !exportB) {
+      this.enviarTradeA(idA, { tipo: 'trade_state', estado: 'cancelada' });
+      this.enviarTradeA(idB, { tipo: 'trade_state', estado: 'cancelada' });
+      return;
+    }
+    const estadoA = this.estadoParteDe(idA, exportA);
+    const estadoB = this.estadoParteDe(idB, exportB);
+    if (!estadoA || !estadoB) {
+      this.enviarTradeA(idA, { tipo: 'trade_state', estado: 'cancelada' });
+      this.enviarTradeA(idB, { tipo: 'trade_state', estado: 'cancelada' });
+      return;
+    }
+    const resultado = aplicarIntercambio(trade.ofertaA, trade.ofertaB, estadoA, estadoB);
+    if (!resultado) {
+      this.enviarTradeA(idA, { tipo: 'trade_state', estado: 'cancelada', motivo: 'trueque inválido al aplicar' });
+      this.enviarTradeA(idB, { tipo: 'trade_state', estado: 'cancelada', motivo: 'trueque inválido al aplicar' });
+      this.registrarEventoLog('[trueque] cancelado: validación al aplicar falló');
+      return;
+    }
+    // Estado final de cada parte (el puesto/equipo no cambia en el trueque).
+    const invA: InventarioGuardado = {
+      formato: 1,
+      puesto: exportA.puesto,
+      bulto: resultado.a.bulto,
+      mochila: resultado.a.inventario,
+    };
+    const invB: InventarioGuardado = {
+      formato: 1,
+      puesto: exportB.puesto,
+      bulto: resultado.b.bulto,
+      mochila: resultado.b.inventario,
+    };
+    // Host como parte: aplica su estado directamente (antes de difundir).
+    if (idA === this.idLocalActivo) this.protagonista.importarInventario(invA);
+    if (idB === this.idLocalActivo) this.protagonista.importarInventario(invB);
+    this.enviarTradeA(idA, { tipo: 'trade_apply', a: idA, invA, b: idB, invB });
+    this.enviarTradeA(idB, { tipo: 'trade_apply', a: idA, invA, b: idB, invB });
+    this.registrarEventoLog('[trueque] aplicado y difundido');
+  }
+
+  /** Estado (equipo/bulto/mochila/fuerza) de un jugador según id. */
+  private estadoParteDe(id: string, exportado: InventarioGuardado): EstadoParte | null {
+    if (id === this.idLocalActivo) {
+      const bonos = bonosEquipo(this.protagonista.equipo);
+      return {
+        equipo: this.protagonista.equipo,
+        bulto: [...this.protagonista.bulto],
+        inventario: { ...this.protagonista.inventario },
+        fuerza: this.protagonista.fuerza + bonos.fuerza,
+      };
+    }
+    const remoto = this.remotosActivos.get(id);
+    if (!remoto?.entidad) return null;
+    const base = remoto.entidad;
+    const fuerzaBase = typeof (base as any).fuerza === 'number' ? (base as any).fuerza : 10;
+    const bonosR = bonosEquipo(exportado.puesto);
+    return {
+      equipo: exportado.puesto,
+      bulto: [...exportado.bulto],
+      inventario: { ...exportado.mochila },
+      fuerza: fuerzaBase + bonosR.fuerza,
+    };
+  }
+
+  /** Desconexión: cierra todo trueque del que el id forme parte (efectos limpios). */
+  cancelarTruequesDe(id: string): void {
+    const efectos = this.gestorTrueques.cancelarPorId(id);
+    this.gestorTrueques.limpiarTerminados();
+    for (const efecto of efectos) {
+      if (efecto.tipo === 'relay') this.enviarTradeA(efecto.para, efecto.msj);
     }
   }
 }

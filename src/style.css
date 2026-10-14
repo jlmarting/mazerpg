@@ -414,6 +414,31 @@ body.esquema-dock .action-btn {
 body.dock-collapsed #actionDock .actions-content { display: none; }
 body.dock-collapsed #actionDock { padding-bottom: 8px; padding-top: 26px; }
 
+/* ===== Acordeón en móvil: desplegado full-width, solo iconos ===== */
+body.esquema-acordeon-movil #actionsMenu,
+body.esquema-acordeon-movil #actionsMenu.visible {
+    left: 0;
+    transform: none;
+    width: 100%;
+    border-radius: 0;
+}
+
+body.esquema-acordeon-movil #actionsToggle { display: none; }
+
+body.esquema-acordeon-movil .actions-content {
+    padding: 8px;
+    gap: 6px;
+}
+
+body.esquema-acordeon-movil .action-btn {
+    min-height: 48px;
+    padding: 8px 6px;
+    flex: 1 1 0;
+}
+
+/* Compacto solo-icono: el título descriptivo queda en title/aria */
+body.esquema-acordeon-movil .action-btn .btn-text { display: none; }
+
 /* Barra de enfriamiento (cooldown) */
 .action-btn .cooldown-overlay {
     position: absolute;

@@ -67,8 +67,8 @@ class Game implements IGame {
     CELDAS_VISIBLES_Y: 10,
     vistaDebugActivada: false,
     dificultad: 'dificil',
-    zoom: 1,
-    targetZoom: 1,
+    zoom: 2,
+    targetZoom: 2,
     autoZoom: false,
     tickRate: 16
   };
@@ -224,6 +224,30 @@ class Game implements IGame {
 
     this.config.CELDAS_VISIBLES_X = Math.ceil(canvas.width / this.config.TAMANO_CELDA) + 4;
     this.config.CELDAS_VISIBLES_Y = Math.ceil((canvas.height - this.config.ALTO_UI_TOP - this.config.ALTO_UI_BOTTOM) / this.config.TAMANO_CELDA) + 4;
+    this.medirBandaInferior();
+  }
+
+  /**
+   * Banda inferior dinámica (spec-2 §6): mide el alto real del UI de acciones
+   * activo (dock o acordeón móvil) y lo aplica a ALTO_UI_BOTTOM. En PC el
+   * acordeón es un overlay flotante y conserva el alto por defecto.
+   */
+  private medirBandaInferior(): void {
+    const body = document.body;
+    const enDock = body.classList.contains('esquema-dock');
+    const enMovil = body.classList.contains('esquema-acordeon-movil');
+    if (!enDock && !enMovil) return;
+    const contenido = document.querySelector('.actions-content') as HTMLElement | null;
+    if (!contenido) return;
+    const contenedor = contenido.closest('#actionDock, #actionsMenu') as HTMLElement | null;
+    if (!contenedor) return;
+    const visible = contenedor.id === 'actionDock'
+      ? getComputedStyle(contenedor).display !== 'none'
+      : contenedor.classList.contains('visible');
+    if (!visible) return;
+    // Con el dock colapsado el contenido está display:none → alto 0 → queda el mínimo (100).
+    const alto = Math.round(contenido.getBoundingClientRect().height);
+    this.config.ALTO_UI_BOTTOM = Math.max(100, alto);
   }
 
   private verificarUrlParams() {
@@ -1284,6 +1308,9 @@ class Game implements IGame {
       const destino = esquema === 'dock' ? dock : actionsMenu;
       if (contenido.parentElement !== destino) destino.appendChild(contenido);
     }
+    // En móvil el acordeón nace desplegado full-width (spec-2 §6).
+    if (movil && actionsMenu) actionsMenu.classList.add('visible');
+    this.ajustarDimensiones();
   }
 
   /** Pinta/actualiza el badge de tecla en cada botón de acción (spec-2 §5). */

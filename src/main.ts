@@ -20,6 +20,8 @@ import { ITEMS } from './config/items';
 import { elegirBotin } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
+import { cargarKeybinds, guardarKeybinds, asignarTecla, accionParaTecla, KEYBINDS_DEFECTO, ACCIONES_VALIDAS, type IdAccion } from './ui/keybinds';
+import { sanearPreferencia, resolverEsquema, esAcordeonMovil } from './ui/esquemaAcciones';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
@@ -65,12 +67,16 @@ class Game implements IGame {
     CELDAS_VISIBLES_Y: 10,
     vistaDebugActivada: false,
     dificultad: 'dificil',
-    zoom: 1,
-    targetZoom: 1,
+    zoom: 2,
+    targetZoom: 2,
     autoZoom: false,
     tickRate: 16
   };
   public juegoTerminado: boolean = false;
+  /** Mapa de teclas por acción (predeterminado 1-6 / 'e', remapeable persistente). */
+  public keybinds: Record<IdAccion, string> = { ...KEYBINDS_DEFECTO };
+  /** true mientras el panel ASIGNAR TECLAS espera la siguiente pulsación. */
+  public capturandoTecla: boolean = false;
   public mundoSincronizado: boolean = false;
   public esHost: boolean = false;
   public motorIniciado: boolean = false;
@@ -120,6 +126,9 @@ class Game implements IGame {
 
   constructor() {
     (window as any).game = this;
+    // Keybinds de usuario (mazerpg.ui.keybinds); JSON corrupto o ausente → defaults.
+    this.keybinds = cargarKeybinds(() => localStorage.getItem('mazerpg.ui.keybinds'));
+    this.capturandoTecla = false;
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas);
     this.housing = new HousingLocal(this.idLocalActivo);
@@ -127,7 +136,10 @@ class Game implements IGame {
     this.setupEntity(this.protagonista);
     this.initMap();
     this.ajustarDimensiones();
-    window.addEventListener('resize', () => this.ajustarDimensiones());
+    window.addEventListener('resize', () => {
+      this.ajustarDimensiones();
+      this.aplicarEsquemaUI();
+    });
     this.setupEventListeners();
     this.verificarUrlParams();
     this.lobbyManager = new LobbyManager(this);
@@ -212,6 +224,30 @@ class Game implements IGame {
 
     this.config.CELDAS_VISIBLES_X = Math.ceil(canvas.width / this.config.TAMANO_CELDA) + 4;
     this.config.CELDAS_VISIBLES_Y = Math.ceil((canvas.height - this.config.ALTO_UI_TOP - this.config.ALTO_UI_BOTTOM) / this.config.TAMANO_CELDA) + 4;
+    this.medirBandaInferior();
+  }
+
+  /**
+   * Banda inferior dinámica (spec-2 §6): mide el alto real del UI de acciones
+   * activo (dock o acordeón móvil) y lo aplica a ALTO_UI_BOTTOM. En PC el
+   * acordeón es un overlay flotante y conserva el alto por defecto.
+   */
+  private medirBandaInferior(): void {
+    const body = document.body;
+    const enDock = body.classList.contains('esquema-dock');
+    const enMovil = body.classList.contains('esquema-acordeon-movil');
+    if (!enDock && !enMovil) return;
+    const contenido = document.querySelector('.actions-content') as HTMLElement | null;
+    if (!contenido) return;
+    const contenedor = contenido.closest('#actionDock, #actionsMenu') as HTMLElement | null;
+    if (!contenedor) return;
+    const visible = contenedor.id === 'actionDock'
+      ? getComputedStyle(contenedor).display !== 'none'
+      : contenedor.classList.contains('visible');
+    if (!visible) return;
+    // Con el dock colapsado el contenido está display:none → alto 0 → queda el mínimo (100).
+    const alto = Math.round(contenido.getBoundingClientRect().height);
+    this.config.ALTO_UI_BOTTOM = Math.max(100, alto);
   }
 
   private verificarUrlParams() {
@@ -259,6 +295,34 @@ class Game implements IGame {
 
     document.getElementById('btnChat')?.addEventListener('click', () => this.ui.toggleChat(this));
     document.getElementById('chkAdmitir')?.addEventListener('change', () => this.iniciarAutoAdmision());
+
+    document.getElementById('uiSchemeSelect')?.addEventListener('change', (e) => {
+      const valor = sanearPreferencia((e.target as HTMLSelectElement).value);
+      localStorage.setItem('mazerpg.ui.scheme', valor);
+      this.aplicarEsquemaUI();
+      const esquema = resolverEsquema(valor, window.matchMedia('(pointer: coarse)').matches, window.innerWidth);
+      this.registrarEventoLog(`Interfaz de acciones: ${esquema === 'dock' ? 'DOCK TÁCTIL' : 'ACORDEÓN'}`);
+    });
+    const selScheme = document.getElementById('uiSchemeSelect') as HTMLSelectElement | null;
+    if (selScheme) selScheme.value = sanearPreferencia(localStorage.getItem('mazerpg.ui.scheme'));
+
+    document.getElementById('btnKeybindsPanel')?.addEventListener('click', () => this.abrirPanelKeybinds());
+    document.getElementById('btnCerrarKeybinds')?.addEventListener('click', () => {
+      document.getElementById('keybindsModal')!.style.display = 'none';
+    });
+
+    document.getElementById('dockToggle')?.addEventListener('click', () => {
+      const colapsado = document.body.classList.toggle('dock-collapsed');
+      localStorage.setItem('mazerpg.ui.dockCollapsed', String(colapsado));
+      const tirador = document.getElementById('dockToggle');
+      if (tirador) tirador.textContent = colapsado ? '▲' : '▼';
+    });
+    // Colapso persistido (saneado: no-'true' → desplegado)
+    if (localStorage.getItem('mazerpg.ui.dockCollapsed') === 'true') {
+      document.body.classList.add('dock-collapsed');
+      const tirador = document.getElementById('dockToggle');
+      if (tirador) tirador.textContent = '▲';
+    }
 
     document.getElementById('btnLogPanel')?.addEventListener('click', () => {
       document.getElementById('logPanel')?.classList.toggle('visible');
@@ -322,14 +386,19 @@ class Game implements IGame {
     });
 
     window.addEventListener('keydown', (e) => {
+      if (this.capturandoTecla) return; // el panel ASIGNAR TECLAS consume la pulsación
+
       if (e.key === 'Enter') {
         this.ui.toggleChat(this);
         return;
       }
       if (document.getElementById('chatModal')?.style.display === 'flex') return;
 
+      const tecla = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const accion = accionParaTecla(this.keybinds, tecla);
+
       const panelEquipo = document.getElementById('equipoModal');
-      if (e.key.toLowerCase() === 'e') {
+      if (accion === 'equipo') {
         if (panelEquipo?.style.display === 'flex') this.lobbyManager.closeEquipoModal();
         else this.abrirEquipo();
         return;
@@ -340,20 +409,23 @@ class Game implements IGame {
       if (this.juegoTerminado) return;
 
       let haMovido = false;
-      if (e.key === 'ArrowUp') haMovido = this.protagonista.intentarMover(-1, 0, this);
-      if (e.key === 'ArrowDown') haMovido = this.protagonista.intentarMover(1, 0, this);
-      if (e.key === 'ArrowLeft') haMovido = this.protagonista.intentarMover(0, -1, this);
-      if (e.key === 'ArrowRight') haMovido = this.protagonista.intentarMover(0, 1, this);
+      if (e.key === 'ArrowUp' || tecla === 'w') haMovido = this.protagonista.intentarMover(-1, 0, this);
+      if (e.key === 'ArrowDown' || tecla === 's') haMovido = this.protagonista.intentarMover(1, 0, this);
+      if (e.key === 'ArrowLeft' || tecla === 'a') haMovido = this.protagonista.intentarMover(0, -1, this);
+      if (e.key === 'ArrowRight' || tecla === 'd') haMovido = this.protagonista.intentarMover(0, 1, this);
 
-      if (e.key.toLowerCase() === 'f') {
-          this.lanzarBolaDeFuego(this.protagonista, true);
+      if (tecla === 'F9') {
+        this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
+        this.registrarEventoLog(`Modo Desarrollo ${this.config.vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
+        this.actualizarPanelAcciones();
       }
 
-      if (e.key.toLowerCase() === 'd') {
-          this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
-          this.registrarEventoLog(`Modo Desarrollo ${this.config.vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
-          this.actualizarPanelAcciones();
-      }
+      if (accion === 'whirlwind') this.lanzarWhirlwind(this.protagonista, true);
+      if (accion === 'fireball') this.lanzarBolaDeFuego(this.protagonista, true);
+      if (accion === 'freeze') this.lanzarCongelar(this.protagonista, true);
+      if (accion === 'bow') this.lanzarArco(this.protagonista, true);
+      if (accion === 'create_food') this.crearComidaHabilidad(this.protagonista, true);
+      if (accion === 'radar') this.lanzarRadar(this.protagonista, true);
 
       if (haMovido) {
         this.comprobarVictoria();
@@ -361,7 +433,7 @@ class Game implements IGame {
     });
 
     window.addEventListener('keyup', (e) => {
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
             this.protagonista.estaCaminando = false;
             if (this.mpActivo) {
                 if (this.esHost) {
@@ -372,6 +444,7 @@ class Game implements IGame {
             }
         }
     });
+    this.refrescarBadgesTeclado();
   }
 
   onStartSolo(dificultad: string): void {
@@ -1191,6 +1264,7 @@ class Game implements IGame {
     // Mostrar menús
     document.getElementById('topMenu')!.style.display = 'block';
     document.getElementById('actionsMenu')!.style.display = 'block';
+    this.aplicarEsquemaUI();
 
     if (this.esLadoAutoritativo()) {
         if (!this.gestorMundo.nodoActivoId) {
@@ -1209,6 +1283,130 @@ class Game implements IGame {
     this.ultimoFrameTime = performance.now();
     this.fpsBajoContador = 0;
     this.cicloDeJuego();
+  }
+
+  /**
+   * Aplica el esquema de acciones (dock táctil / acordeón) según la
+   * preferencia guardada y el dispositivo autodetectado (spec-2 §2).
+   */
+  aplicarEsquemaUI(): void {
+    const preferencia = sanearPreferencia(localStorage.getItem('mazerpg.ui.scheme'));
+    const punteroTosco = window.matchMedia('(pointer: coarse)').matches;
+    const ancho = window.innerWidth;
+    const esquema = resolverEsquema(preferencia, punteroTosco, ancho);
+    const movil = esAcordeonMovil(esquema, punteroTosco, ancho);
+    const body = document.body;
+    body.classList.remove('esquema-dock', 'esquema-acordeon', 'esquema-acordeon-movil');
+    body.classList.add(movil ? 'esquema-acordeon-movil' : `esquema-${esquema}`);
+
+    // Montaje: el MISMO nodo .actions-content vive en el dock (táctil) o en el
+    // acordeón — nunca se clona, para que cooldowns y visibilidad sigan vivos.
+    const contenido = document.querySelector('.actions-content');
+    const actionsMenu = document.getElementById('actionsMenu');
+    const dock = document.getElementById('actionDock');
+    if (contenido && actionsMenu && dock) {
+      const destino = esquema === 'dock' ? dock : actionsMenu;
+      if (contenido.parentElement !== destino) destino.appendChild(contenido);
+    }
+    // En móvil el acordeón nace desplegado full-width (spec-2 §6).
+    if (movil && actionsMenu) actionsMenu.classList.add('visible');
+    this.ajustarDimensiones();
+  }
+
+  /** Pinta/actualiza el badge de tecla en cada botón de acción (spec-2 §5). */
+  refrescarBadgesTeclado(): void {
+    const botones: Record<IdAccion, string> = {
+      whirlwind: 'btnWhirlwindAction',
+      fireball: 'btnFireballAction',
+      freeze: 'btnFreezeAction',
+      bow: 'btnBowAction',
+      create_food: 'btnCreateFoodAction',
+      radar: 'btnRadarAction',
+      equipo: 'btnEquipoAction',
+    };
+    for (const [accion, id] of Object.entries(botones) as [IdAccion, string][]) {
+      const btn = document.getElementById(id);
+      if (!btn) continue;
+      let badge = btn.querySelector<HTMLElement>('.key-badge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'key-badge';
+        btn.appendChild(badge);
+      }
+      badge.textContent = this.keybinds[accion];
+    }
+  }
+
+  private etiquetaAccion(accion: IdAccion): string {
+    const etiquetas: Record<IdAccion, string> = {
+      whirlwind: 'GOLPE GIRO',
+      fireball: 'BOLA FUEGO',
+      freeze: 'CONGELAR',
+      bow: 'DISPARO ARCO',
+      create_food: 'CREAR COMIDA',
+      radar: 'RADAR',
+      equipo: 'EQUIPO',
+    };
+    return etiquetas[accion];
+  }
+
+  /** Abre el panel ASIGNAR TECLAS (una fila por acción, spec-2 §4). */
+  abrirPanelKeybinds(): void {
+    const contenido = document.getElementById('keybindsContent');
+    if (!contenido) return;
+    contenido.innerHTML = '';
+    for (const accion of ACCIONES_VALIDAS) {
+      const fila = document.createElement('div');
+      fila.className = 'keybind-row';
+      const nombre = document.createElement('span');
+      nombre.className = 'keybind-nombre';
+      nombre.textContent = this.etiquetaAccion(accion);
+      const tecla = document.createElement('span');
+      tecla.className = 'keybind-tecla';
+      tecla.id = `keybind-tecla-${accion}`;
+      tecla.textContent = this.keybinds[accion];
+      const btn = document.createElement('button');
+      btn.className = 'keybind-cambiar';
+      btn.textContent = 'CAMBIAR';
+      btn.addEventListener('click', () => this.iniciarCapturaTecla(accion, tecla));
+      fila.appendChild(nombre);
+      fila.appendChild(tecla);
+      fila.appendChild(btn);
+      contenido.appendChild(fila);
+    }
+    document.getElementById('keybindsModal')!.style.display = 'flex';
+  }
+
+  /** Espera la siguiente pulsación y la asigna a la acción (Escape cancela). */
+  private iniciarCapturaTecla(accion: IdAccion, teclaEl: HTMLElement): void {
+    if (this.capturandoTecla) return;
+    this.capturandoTecla = true;
+    teclaEl.textContent = '...';
+    const escucharCaptura = (ev: KeyboardEvent) => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      window.removeEventListener('keydown', escucharCaptura, true);
+      this.capturandoTecla = false;
+      if (ev.key === 'Escape') {
+        teclaEl.textContent = this.keybinds[accion];
+        return;
+      }
+      const tecla = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+      const r = asignarTecla(this.keybinds, accion, tecla);
+      if (!r.ok) {
+        teclaEl.textContent = this.keybinds[accion];
+        const causa = r.motivo === 'en-uso' ? `ya la usa ${r.conflicto}` : 'está reservada';
+        this.registrarEventoLog(`Tecla '${tecla}' ${causa}`);
+        this.mostrarAvisoFirebase(`Tecla '${tecla}' ${causa}`);
+        return;
+      }
+      this.keybinds = r.mapa;
+      guardarKeybinds(this.keybinds, (valor) => localStorage.setItem('mazerpg.ui.keybinds', valor));
+      teclaEl.textContent = tecla;
+      this.refrescarBadgesTeclado();
+      this.registrarEventoLog(`Tecla de ${this.etiquetaAccion(accion)} ahora es '${tecla}'`);
+    };
+    window.addEventListener('keydown', escucharCaptura, true);
   }
 
   private sembrarMundoBase(): void {

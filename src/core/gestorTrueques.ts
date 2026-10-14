@@ -140,6 +140,12 @@ export class GestorTrueques {
       trade.exportB = exportPropia;
       if (tipo === 'trade_offer') trade.confirmoB = false;
     }
+    // Toda oferta NUEVA invalida ambas confirmaciones: el consentimiento anterior
+    // se dio sobre otra cesta (evita recibir algo distinto de lo acordado).
+    if (tipo === 'trade_offer') {
+      trade.confirmoA = false;
+      trade.confirmoB = false;
+    }
 
     const socio = trade.a === idEmisor ? trade.b : trade.a;
     if (tipo === 'trade_offer') {

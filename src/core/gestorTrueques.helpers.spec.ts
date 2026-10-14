@@ -104,6 +104,22 @@ const exportDe = (id: string) => exports[id] ?? null;
   assert(!g.activo(), 'después de cancelar no queda trade activo');
 }
 
+// oferta nueva del otro tras mi confirm → ambas confirmaciones se anulan
+{
+  const g = new GestorTrueques();
+  const clave = ['A', 'B'].sort().join('|');
+  g.procesar({ tipo: 'trade_invite', destino: 'B' }, 'A', exportDe);
+  g.procesar({ tipo: 'trade_accept', de: 'A' }, 'B', exportDe);
+  g.procesar({ tipo: 'trade_offer', da: [{ id: 'pocion_vida', cantidad: 1 }], pide: [] }, 'A', exportDe);
+  g.procesar({ tipo: 'trade_confirm', da: [{ id: 'pocion_vida', cantidad: 1 }], pide: [], export: exports.A }, 'A', exportDe);
+  assert(g.par(clave)?.estado === 'confirmada_uno', 'solo A confirmó → confirmada_uno');
+  g.procesar({ tipo: 'trade_offer', da: [{ id: 'flecha', cantidad: 3 }], pide: [] }, 'B', exportDe);
+  const par = g.par(clave);
+  assert(par?.confirmoA === false && par?.confirmoB === false, 'oferta nueva de B anula ambas confirmaciones');
+  g.procesar({ tipo: 'trade_confirm', da: [{ id: 'flecha', cantidad: 3 }], pide: [], export: exports.B }, 'B', exportDe);
+  assert(g.par(clave)?.estado === 'confirmada_uno', 'tras reconfirmar solo B, sigue esperando a A');
+}
+
 // mensajes de no-parte y tipos host-only llegados de fuera → ignorados sin crash
 {
   const g = new GestorTrueques();

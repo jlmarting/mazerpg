@@ -3794,6 +3794,8 @@ class Game implements IGame {
   private truequeCesta: CestaTrade = [];
   /** id del que me invitó (para ACEPTAR/RECHAZAR la invitación). */
   private truequeInvitador: string | null = null;
+  /** ¿Ya pulsé CONFIRMAR en la ventana actual? (se anula si el otro cambia su cesta). */
+  private truequeConfirmeYo: boolean = false;
 
   /** Stock disponible de un id (copias de bulto + pila de mochila). */
   private stockTradeDe(id: string): number {
@@ -3897,6 +3899,7 @@ class Game implements IGame {
         pide: this.truequeUI.con ? (this.cestaOtraVista() ?? []) : [],
         export: this.protagonista.exportarInventario(),
       });
+      this.truequeConfirmeYo = true;
       this.truequeUI.setEstado('propio-confirmado');
     };
     this.truequeUI.onCancelar = () => {
@@ -3957,6 +3960,7 @@ class Game implements IGame {
       this.truequeUI.cerrar();
       this.truequeCesta = [];
       this.truequeInvitador = null;
+      this.truequeConfirmeYo = false;
       return;
     }
     if (tipo === 'trade_state') { this.procesarTradeStateUI(msg); return; } // estado: UI en ambos roles
@@ -4004,6 +4008,13 @@ class Game implements IGame {
         if (de === this.idLocalActivo) break;
         const cesta = sanearCesta(msg.da);
         if (this.truequeUI.con === de) {
+          // Si el otro cambió su cesta tras mi confirm, la mía queda sin valor:
+          // vuelvo a propuesta para reconsentir.
+          if (this.truequeConfirmeYo) {
+            this.truequeConfirmeYo = false;
+            this.truequeUI.setEstado('propuesta');
+            this.registrarEventoLog('[trueque] la oferta del otro cambió: confirma de nuevo');
+          }
           this.truequeCestaSocio = cesta;
           this.truequeUI.setCestaOtro(cesta);
         } else if (!this.truequeUI.visible() && !this.truequeInvitador && this.mpActivo) {
@@ -4022,6 +4033,7 @@ class Game implements IGame {
         if (de !== this.idLocalActivo && this.truequeUI.visible() && this.truequeUI.con === de) {
           this.truequeUI.cerrar();
           this.truequeCesta = [];
+          this.truequeConfirmeYo = false;
           this.registrarEventoLog('[trueque] cancelado por el otro jugador');
         }
         break;
@@ -4046,6 +4058,7 @@ class Game implements IGame {
       if (this.truequeUI.visible()) {
         this.truequeUI.cerrar();
         this.truequeCesta = [];
+        this.truequeConfirmeYo = false;
       }
       this.registrarEventoLog('[trueque] trueque cancelado');
     }
@@ -4100,7 +4113,11 @@ class Game implements IGame {
       this.enviarTradeA(idB, { tipo: 'trade_state', estado: 'cancelada' });
       return;
     }
-    const resultado = aplicarIntercambio(trade.ofertaA, trade.ofertaB, estadoA, estadoB);
+    // Consentimiento real = el `da` de cada parte: la `pide` se deriva del `da`
+    // actual del otro (evita pides congelados desfasados entre confirmaciones).
+    const ofertaA = { ...trade.ofertaA, pide: trade.ofertaB.da };
+    const ofertaB = { ...trade.ofertaB, pide: trade.ofertaA.da };
+    const resultado = aplicarIntercambio(ofertaA, ofertaB, estadoA, estadoB);
     if (!resultado) {
       this.enviarTradeA(idA, { tipo: 'trade_state', estado: 'cancelada', motivo: 'trueque inválido al aplicar' });
       this.enviarTradeA(idB, { tipo: 'trade_state', estado: 'cancelada', motivo: 'trueque inválido al aplicar' });
@@ -4127,6 +4144,7 @@ class Game implements IGame {
       this.truequeUI.cerrar();
       this.truequeCesta = [];
       this.truequeInvitador = null;
+      this.truequeConfirmeYo = false;
     }
     // Vista remota del host: el nuevo estado de cada parte para efectos visuales/F2.
     const remA = this.remotosActivos.get(idA);
@@ -4173,6 +4191,7 @@ class Game implements IGame {
       this.truequeUI.cerrar();
       this.truequeCesta = [];
       this.truequeInvitador = null;
+      this.truequeConfirmeYo = false;
       this.registrarEventoLog('[trueque] cerrado por desconexión');
     }
   }

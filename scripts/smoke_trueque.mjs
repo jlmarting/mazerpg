@@ -16,7 +16,9 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const RAIZ = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const PUERTO_PREVIEW = 4320;
+// Con SMOKE_URL se prueba contra un servidor ya arriba (p.ej. vite dev :5173)
+const URL_OBJETIVO = process.env.SMOKE_URL || `http://localhost:4320/`;
+const SIN_PREVIEW = Boolean(process.env.SMOKE_URL);
 const CHROMIUM_CANDIDATOS = [
   join(process.env.HOME || '', '.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell'),
   join(process.env.HOME || '', '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome'),
@@ -125,12 +127,14 @@ async function main() {
     signaling = spawn('node', ['server/signaling.mjs'], { cwd: RAIZ, stdio: 'ignore', detached: true });
     signalingPropio = true;
   }
-  const preview = spawn('pnpm', ['exec', 'vite', 'preview', '--port', String(PUERTO_PREVIEW), '--strictPort'], {
-    cwd: RAIZ, stdio: ['ignore', 'ignore', 'pipe'], detached: true,
-  });
+  if (!SIN_PREVIEW) {
+    var preview = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '4320', '--strictPort'], {
+      cwd: RAIZ, stdio: ['ignore', 'ignore', 'pipe'], detached: true,
+    });
+    await esperarPuerto(4320, 'preview');
+  }
   await esperarPuerto(8080, 'signaling');
-  await esperarPuerto(PUERTO_PREVIEW, 'preview');
-  console.log(`[smoke] signaling :8080 (${signalingPropio ? 'propio' : 'ya estaba'}) + dist en :${PUERTO_PREVIEW}`);
+  console.log(`[smoke] signaling :8080 (${signalingPropio ? 'propio' : 'ya estaba'}) + ${URL_OBJETIVO}`);
 
   // 2. Chromium headless con CDP
   const chrome = spawn(chromium, [
@@ -152,7 +156,7 @@ async function main() {
   const cdp = new Cdp(cdpWs);
 
   async function abrirPagina(nombre) {
-    const { targetId } = await cdp.comando('Target.createTarget', { url: `http://localhost:${PUERTO_PREVIEW}/` });
+    const { targetId } = await cdp.comando('Target.createTarget', { url: URL_OBJETIVO });
     console.log(`[smoke_trueque] target ${nombre} creado`);
     const { sessionId } = await cdp.comando('Target.attachToTarget', { targetId, flatten: true });
     console.log(`[smoke_trueque] target ${nombre} adjuntado`);
@@ -272,14 +276,19 @@ async function main() {
     await evaluar(cdp, invitado, `{ document.getElementById('btnTruequeAceptar')?.click(); }`);
     await esperar(cdp, host, `document.getElementById('truequeModal')?.style.display === 'flex'`, 8000, 'host: ventana de trueque abierta');
     pase('F2: invitación y apertura de ventanas por clics reales');
+    // El HOST oferta y confirma PRIMERO (caso manual del mando: confirmación secuencial)
+    await evaluar(cdp, host, `{ document.querySelector('#truequeMio .trueque-ofrecer[data-id="pocion_vida"]')?.click(); }`);
+    await esperar(cdp, invitado, `(document.querySelector('#truequeOtro .trueque-fila .nombre')?.textContent ?? '').includes('×1')`, 6000, 'invitado: oferta del host visible');
+    await evaluar(cdp, host, `{ document.getElementById('btnTruequeConfirmar')?.click(); }`);
+    await esperar(cdp, host, `document.getElementById('truequeEstado')?.textContent === 'Confirmado por ti — esperando al otro…'`, 6000, 'host: confirmó primero el host');
+    // El invitado oferta DESPUÉS: cambia su cesta → anula el confirm del host → propuesta otra vez
     await evaluar(cdp, invitado, `{
       const btn = document.querySelector('#truequeMio .trueque-ofrecer[data-id="flecha"]');
       for (let i = 0; i < 3; i++) btn?.click();
     }`);
     await esperar(cdp, invitado, `(document.querySelector('#truequeCesta .trueque-fila .nombre')?.textContent ?? '').includes('Flecha ×3')`, 4000, 'invitado: cesta con flecha ×3');
     await esperar(cdp, host, `(document.querySelector('#truequeOtro .trueque-fila .nombre')?.textContent ?? '').includes('Flecha ×3')`, 6000, 'host: cesta del otro visible por trade_offer');
-    await evaluar(cdp, host, `{ document.querySelector('#truequeMio .trueque-ofrecer[data-id="pocion_vida"]')?.click(); }`);
-    await esperar(cdp, invitado, `(document.querySelector('#truequeOtro .trueque-fila .nombre')?.textContent ?? '').includes('×1')`, 6000, 'invitado: oferta del host visible');
+    await esperar(cdp, host, `document.getElementById('truequeEstado')?.textContent === 'Ofertas en la mesa: confirmad ambos cuando estéis de acuerdo.'`, 6000, 'host: confirm anulado tras oferta nueva del invitado');
     await evaluar(cdp, invitado, `{ document.getElementById('btnTruequeConfirmar')?.click(); }`);
     await esperar(cdp, host, `document.getElementById('truequeEstado')?.textContent === 'El otro confirmó — completa tu confirmación.'`, 6000, 'host: estado otro-confirmado');
     await evaluar(cdp, host, `{ document.getElementById('btnTruequeConfirmar')?.click(); }`);
@@ -305,7 +314,7 @@ async function main() {
     setTimeout(ok, 3000);
   });
   try { if (signalingPropio && signaling) process.kill(-signaling.pid); } catch {}
-  try { process.kill(-preview.pid); } catch {}
+  try { if (preview) process.kill(-preview.pid); } catch {}
   await chromeCerrado;
   try { rmSync(userDataTmp, { recursive: true, force: true }); } catch (e) {
     console.warn('[smoke] perfil temporal sin limpiar:', e.message?.slice(0, 120));

@@ -132,6 +132,10 @@ class Game implements IGame {
 
   constructor() {
     (window as any).game = this;
+    // Versión de juego: badge discreto en el lobby + log de arranque (¿qué está desplegado?).
+    const badgeVersion = document.getElementById('lobbyVersion');
+    if (badgeVersion) badgeVersion.textContent = `v${__VERSION__}`;
+    console.log(`mazerpg v${__VERSION__}`);
     // Keybinds de usuario (mazerpg.ui.keybinds); JSON corrupto o ausente → defaults.
     this.keybinds = cargarKeybinds(() => localStorage.getItem('mazerpg.ui.keybinds'));
     this.capturandoTecla = false;

@@ -5,6 +5,7 @@ export type EstadoVentana =
   | 'invitacion'
   | 'propuesta'
   | 'propio-confirmado'
+  | 'otro-confirmado'
   | 'ambos-confirmado'
   | 'ocupado'
   | 'cancelado'
@@ -14,6 +15,7 @@ const TEXTOS: Record<EstadoVentana, string> = {
   invitacion: '',
   propuesta: 'Ofertas en la mesa: confirmad ambos cuando estéis de acuerdo.',
   'propio-confirmado': 'Confirmado por ti — esperando al otro…',
+  'otro-confirmado': 'El otro confirmó — completa tu confirmación.',
   'ambos-confirmado': '¡Ambos confirmaron!',
   ocupado: 'El otro jugador está ocupado en otro trueque.',
   cancelado: 'Trueque cancelado.',

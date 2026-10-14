@@ -349,6 +349,36 @@
         </div>
     </div>
 
+    <div id="truequeModal" class="lobby-modal-overlay z-50">
+        <div class="character-modal-box">
+            <h2>COMERCIO</h2>
+            <div id="truequeInvitacion" class="trueque-invitacion" style="display: none;">
+                <p class="trueque-invitor"><strong id="truequeInvitor"></strong> te propone un trueque.</p>
+                <div class="trueque-acciones">
+                    <button id="btnTruequeAceptar" class="trueque-btn principal">ACEPTAR</button>
+                    <button id="btnTruequeRechazar" class="trueque-btn">RECHAZAR</button>
+                </div>
+            </div>
+            <div id="truequePanel" class="trueque-layout" style="display: none;">
+                <div class="trueque-col">
+                    <div class="trueque-titulo">TU INVENTARIO</div>
+                    <div id="truequeMio" class="trueque-lista"></div>
+                </div>
+                <div class="trueque-col">
+                    <div class="trueque-titulo">TU OFERTA</div>
+                    <div id="truequeCesta" class="trueque-lista"></div>
+                    <div class="trueque-titulo">OFERTA DEL OTRO</div>
+                    <div id="truequeOtro" class="trueque-lista"></div>
+                    <div id="truequeEstado" class="trueque-estado"></div>
+                    <div class="trueque-acciones">
+                        <button id="btnTruequeConfirmar" class="trueque-btn principal">CONFIRMAR</button>
+                        <button id="btnTruequeCancelar" class="trueque-btn">CANCELAR</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="difficultyModal" class="lobby-modal-overlay z-50">
         <div class="difficulty-modal-box">
             <h2>ELIGE DIFICULTAD</h2>

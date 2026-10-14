@@ -20,6 +20,7 @@ import { ITEMS } from './config/items';
 import { elegirBotin } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
+import { cargarKeybinds, accionParaTecla, KEYBINDS_DEFECTO, type IdAccion } from './ui/keybinds';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
@@ -71,6 +72,10 @@ class Game implements IGame {
     tickRate: 16
   };
   public juegoTerminado: boolean = false;
+  /** Mapa de teclas por acción (predeterminado 1-6 / 'e', remapeable persistente). */
+  public keybinds: Record<IdAccion, string> = { ...KEYBINDS_DEFECTO };
+  /** true mientras el panel ASIGNAR TECLAS espera la siguiente pulsación. */
+  public capturandoTecla: boolean = false;
   public mundoSincronizado: boolean = false;
   public esHost: boolean = false;
   public motorIniciado: boolean = false;
@@ -120,6 +125,9 @@ class Game implements IGame {
 
   constructor() {
     (window as any).game = this;
+    // Keybinds de usuario (mazerpg.ui.keybinds); JSON corrupto o ausente → defaults.
+    this.keybinds = cargarKeybinds(() => localStorage.getItem('mazerpg.ui.keybinds'));
+    this.capturandoTecla = false;
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas);
     this.housing = new HousingLocal(this.idLocalActivo);
@@ -322,14 +330,19 @@ class Game implements IGame {
     });
 
     window.addEventListener('keydown', (e) => {
+      if (this.capturandoTecla) return; // el panel ASIGNAR TECLAS consume la pulsación
+
       if (e.key === 'Enter') {
         this.ui.toggleChat(this);
         return;
       }
       if (document.getElementById('chatModal')?.style.display === 'flex') return;
 
+      const tecla = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const accion = accionParaTecla(this.keybinds, tecla);
+
       const panelEquipo = document.getElementById('equipoModal');
-      if (e.key.toLowerCase() === 'e') {
+      if (accion === 'equipo') {
         if (panelEquipo?.style.display === 'flex') this.lobbyManager.closeEquipoModal();
         else this.abrirEquipo();
         return;
@@ -340,20 +353,23 @@ class Game implements IGame {
       if (this.juegoTerminado) return;
 
       let haMovido = false;
-      if (e.key === 'ArrowUp') haMovido = this.protagonista.intentarMover(-1, 0, this);
-      if (e.key === 'ArrowDown') haMovido = this.protagonista.intentarMover(1, 0, this);
-      if (e.key === 'ArrowLeft') haMovido = this.protagonista.intentarMover(0, -1, this);
-      if (e.key === 'ArrowRight') haMovido = this.protagonista.intentarMover(0, 1, this);
+      if (e.key === 'ArrowUp' || tecla === 'w') haMovido = this.protagonista.intentarMover(-1, 0, this);
+      if (e.key === 'ArrowDown' || tecla === 's') haMovido = this.protagonista.intentarMover(1, 0, this);
+      if (e.key === 'ArrowLeft' || tecla === 'a') haMovido = this.protagonista.intentarMover(0, -1, this);
+      if (e.key === 'ArrowRight' || tecla === 'd') haMovido = this.protagonista.intentarMover(0, 1, this);
 
-      if (e.key.toLowerCase() === 'f') {
-          this.lanzarBolaDeFuego(this.protagonista, true);
+      if (tecla === 'F9') {
+        this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
+        this.registrarEventoLog(`Modo Desarrollo ${this.config.vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
+        this.actualizarPanelAcciones();
       }
 
-      if (e.key.toLowerCase() === 'd') {
-          this.config.vistaDebugActivada = !this.config.vistaDebugActivada;
-          this.registrarEventoLog(`Modo Desarrollo ${this.config.vistaDebugActivada ? 'ACTIVADO' : 'DESACTIVADO'}`);
-          this.actualizarPanelAcciones();
-      }
+      if (accion === 'whirlwind') this.lanzarWhirlwind(this.protagonista, true);
+      if (accion === 'fireball') this.lanzarBolaDeFuego(this.protagonista, true);
+      if (accion === 'freeze') this.lanzarCongelar(this.protagonista, true);
+      if (accion === 'bow') this.lanzarArco(this.protagonista, true);
+      if (accion === 'create_food') this.crearComidaHabilidad(this.protagonista, true);
+      if (accion === 'radar') this.lanzarRadar(this.protagonista, true);
 
       if (haMovido) {
         this.comprobarVictoria();
@@ -361,7 +377,7 @@ class Game implements IGame {
     });
 
     window.addEventListener('keyup', (e) => {
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
             this.protagonista.estaCaminando = false;
             if (this.mpActivo) {
                 if (this.esHost) {

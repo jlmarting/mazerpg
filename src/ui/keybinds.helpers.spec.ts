@@ -20,15 +20,13 @@ function assert(condicion: boolean, mensaje: string): void {
   ok++;
 }
 
-const ACCIONES: IdAccion[] = ['whirlwind', 'fireball', 'freeze', 'bow', 'create_food', 'radar', 'equipo'];
+const ESPERADAS: Record<IdAccion, string> = { whirlwind: '1', fireball: '2', freeze: '3', bow: '4', create_food: '5', radar: '6', equipo: 'e' };
 
 // defaults completos: 7 acciones con teclas exactas
 {
-  const d: IdAccion[] = ['whirlwind', 'fireball', 'freeze', 'bow', 'create_food', 'radar', 'equipo'];
-  for (const accion of d) {
-    const tecla = KEYBINDS_DEFECTO[accion];
-    const esperadas: Record<IdAccion, string> = { whirlwind: '1', fireball: '2', freeze: '3', bow: '4', create_food: '5', radar: '6', equipo: 'e' };
-    assert(tecla === esperadas[accion], `default de ${accion} es ${esperadas[accion]}`);
+  const acciones: IdAccion[] = ['whirlwind', 'fireball', 'freeze', 'bow', 'create_food', 'radar', 'equipo'];
+  for (const accion of acciones) {
+    assert(KEYBINDS_DEFECTO[accion] === ESPERADAS[accion], `default de ${accion} es ${ESPERADAS[accion]}`);
   }
 }
 
@@ -105,12 +103,12 @@ const ACCIONES: IdAccion[] = ['whirlwind', 'fireball', 'freeze', 'bow', 'create_
 
 // roundtrip: guardarKeybinds + cargarKeybinds con fakes
 {
-  let almacen: string | null = null;
+  const almacen: { valor: string | null } = { valor: null };
   const mapa = asignarTecla(KEYBINDS_DEFECTO, 'radar', '0');
   if (!mapa.ok) throw new Error('preparación de roundtrip falló');
-  guardarKeybinds(mapa.mapa, (valor) => { almacen = valor; });
-  assert(almacen !== null && almacen.includes('"formato":1'), 'guardarKeybinds escribe el contrato formato:1');
-  const leido = cargarKeybinds(() => almacen);
+  guardarKeybinds(mapa.mapa, (valor) => { almacen.valor = valor; });
+  assert(almacen.valor !== null && almacen.valor.includes('"formato":1'), 'guardarKeybinds escribe el contrato formato:1');
+  const leido = cargarKeybinds(() => almacen.valor);
   assert(leido.radar === '0' && leido.whirlwind === '1', 'roundtrip conserva el remapeo y el resto');
 }
 

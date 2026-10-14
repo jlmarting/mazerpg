@@ -28,10 +28,6 @@ export const TECLAS_RESERVADAS: readonly string[] = [
 
 type MapaTecla = Record<IdAccion, string>;
 
-function esIdAccion(valor: unknown): valor is IdAccion {
-  return typeof valor === 'string' && (ACCIONES_VALIDAS as readonly string[]).includes(valor);
-}
-
 function teclaValida(valor: unknown): valor is string {
   return typeof valor === 'string' && valor.length > 0 && !(TECLAS_RESERVADAS as readonly string[]).includes(valor);
 }

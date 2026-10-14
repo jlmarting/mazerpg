@@ -41,6 +41,8 @@
                         </select>
                     </div>
                     <button id="btnKeybindsPanel" class="menu-btn">ASIGNAR TECLAS</button>
+                    <button id="btnComerciar" class="menu-btn">COMERCIAR</button>
+                    <div id="truequeSocios" class="trueque-socios" style="display: none;"></div>
                     <label style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: #fff; font-family: monospace; font-size: 11px; cursor: pointer;">
                         <input type="checkbox" id="panicBtnToggle" style="cursor: pointer;">
                         BOTÓN DEL PÁNICO
@@ -346,6 +348,36 @@
             <div id="keybindsContent" class="keybinds-content"></div>
             <div class="keybinds-ayuda">Pulsa una tecla al pulsar CAMBIAR. ESC cancela. Flechas, W/A/S/D, ENTER, F9 y ESC están reservadas.</div>
             <button id="btnCerrarKeybinds" class="btn-save-character">CERRAR</button>
+        </div>
+    </div>
+
+    <div id="truequeModal" class="lobby-modal-overlay z-50">
+        <div class="character-modal-box">
+            <h2>COMERCIO</h2>
+            <div id="truequeInvitacion" class="trueque-invitacion" style="display: none;">
+                <p class="trueque-invitor"><strong id="truequeInvitor"></strong> te propone un trueque.</p>
+                <div class="trueque-acciones">
+                    <button id="btnTruequeAceptar" class="trueque-btn principal">ACEPTAR</button>
+                    <button id="btnTruequeRechazar" class="trueque-btn">RECHAZAR</button>
+                </div>
+            </div>
+            <div id="truequePanel" class="trueque-layout" style="display: none;">
+                <div class="trueque-col">
+                    <div class="trueque-titulo">TU INVENTARIO</div>
+                    <div id="truequeMio" class="trueque-lista"></div>
+                </div>
+                <div class="trueque-col">
+                    <div class="trueque-titulo">TU OFERTA</div>
+                    <div id="truequeCesta" class="trueque-lista"></div>
+                    <div class="trueque-titulo">OFERTA DEL OTRO</div>
+                    <div id="truequeOtro" class="trueque-lista"></div>
+                    <div id="truequeEstado" class="trueque-estado"></div>
+                    <div class="trueque-acciones">
+                        <button id="btnTruequeConfirmar" class="trueque-btn principal">CONFIRMAR</button>
+                        <button id="btnTruequeCancelar" class="trueque-btn">CANCELAR</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

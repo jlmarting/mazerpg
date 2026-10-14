@@ -370,6 +370,110 @@ body.esquema-dock .key-badge { display: none; }
     font-family: monospace;
 }
 
+/* ===== Ventana de trueque (comercio F2) ===== */
+.trueque-invitacion { font-family: monospace; color: #fff; text-align: center; }
+.trueque-invitor { color: #ffc107; }
+
+.trueque-layout {
+    display: flex;
+    gap: 18px;
+    font-family: monospace;
+}
+
+.trueque-col { flex: 1; min-width: 180px; }
+
+.trueque-titulo {
+    color: #ff4444;
+    font-weight: bold;
+    font-size: 11px;
+    margin: 6px 0 4px;
+}
+
+.trueque-lista { display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }
+
+.trueque-fila {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0,0,0,0.4);
+    padding: 4px 6px;
+    border: 1px solid #444;
+    font-size: 11px;
+    color: #fff;
+}
+
+.trueque-fila .nombre { flex: 1; text-align: left; }
+.trueque-fila .cant { color: #ffc107; }
+
+.trueque-ctrl { display: flex; align-items: center; gap: 4px; }
+
+.trueque-mini {
+    background: #444;
+    color: #fff;
+    border: 1px solid #666;
+    width: 24px;
+    min-height: 24px;
+    font-family: monospace;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.trueque-mini:hover { background: #555; }
+.trueque-mini:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.trueque-estado { color: #ffc107; font-size: 11px; margin: 8px 0; min-height: 14px; }
+
+.trueque-acciones { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+
+.trueque-btn {
+    background: #444;
+    color: #fff;
+    border: 1px solid #666;
+    padding: 10px 16px;
+    font-family: monospace;
+    font-size: 12px;
+    cursor: pointer;
+    min-height: 44px;
+}
+
+.trueque-btn.principal { background: #28a745; border-color: #28a745; font-weight: bold; }
+.trueque-btn.principal:disabled { opacity: 0.5; cursor: not-allowed; }
+.trueque-btn:hover:not(:disabled) { filter: brightness(1.15); }
+
+/* Selector de jugadores para comerciar (OPCIONES) */
+.trueque-socios {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 10px;
+    border-top: 1px solid #444;
+}
+
+.trueque-socio {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: monospace;
+    font-size: 11px;
+    color: #fff;
+}
+
+.trueque-socio button {
+    margin-left: auto;
+    background: #444;
+    color: #fff;
+    border: 1px solid #666;
+    padding: 4px 10px;
+    min-height: 44px;
+    font-family: monospace;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.trueque-socio button:hover { background: #555; }
+
 /* ===== Dock táctil (tablet) — translúcido, no tapa el mapa ===== */
 #actionDock {
     position: fixed;

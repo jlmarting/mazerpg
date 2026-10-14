@@ -96,6 +96,7 @@ export class NetworkManager {
         canal.addEventListener('close', () => {
             game.registrarEventoLog(`Jugador desconectado (${idEmisor})`);
             this.jugadoresRemotos.delete(idEmisor);
+            try { game.cancelarTruequesDe(idEmisor); } catch {}
 
             if (idEmisor === 'host' && !this.esHost) {
                 game.registrarEventoLog("El Host se ha desconectado. Iniciando elección de nuevo Host...");

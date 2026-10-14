@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **UI de acciones por dispositivo** (espec `spec-2-ui-dispositivo-v1`): acordeón/dock según pantalla — **dock táctil** translúcido en tablet con colapso a pastilla persistido, **teclas remapeables** en PC (panel ASIGNAR TECLAS con captura; defaults `1-6`/`e`, reservadas WASD/flechas/Enter/F9/Esc, badges de tecla, selector AUTO/TÁCTIL/ACORDEÓN persistente), **acordeón full-width desplegado** en móvil con banda inferior dinámica (`ALTO_UI_BOTTOM` medido) y dominio puro con tests (`keybinds`, `esquemaAcciones`) (`da6f2d5`, `b850a67`, `821012a`, `0f98bcf`, `1f4ee00`, `939aea2`)
+- **Movimiento con WASD** además de las flechas (mismos deltas), con parada de caminata al soltar (`821012a`)
+- **Smoke headless**: aserciones del esquema UI de acciones (clase `esquema-*` en body, `#actionDock` en el DOM)
 - **Inventario y equipamiento**: catálogo de items (`ItemDef`: tipo equipo/consumible/material, ranura, manos, bonos, peso, dano, pieza visual) + dominio puro (7 ranuras, reglas de empuñadura, bonos, stats efectivos = base + equipo, mochila con peso) (`3bd12c8`, `f8a959a`, `7296804`)
 - **Panel de equipo y mochila** estilo RPG clásico (muñeco + bulto) con **arrastrar y soltar** (equipar/desequipar, validación por ranura, clic como fallback), stats `base→total` y preview; **usable in-game** (botón 🎒 / tecla E) (`1c2692d`, `73a172e`, `ba173b7`)
 - **Loot**: los mobs sueltan botín al suelo que se recoge al pisar (tabla ponderada `config/botin.ts`), **propiedad real** (bulto con kit inicial que se llena al lootear, equipo acumulable) (`f462393`, `4b7bcd7`)
@@ -63,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo desplegada en GitHub Pages (base relativa + workflow) (`2fb27b4`, `2eca656`)
 
 ### Changed
+- **Zoom por defecto 1 → 2** (celda 64px, mitad del slider) y toggle de debug de la tecla `D` a **`F9`** (`939aea2`, `821012a`)
 - Housing: persistencia bajo clave fija `mazerpg.casa.local` (una sola casa por dispositivo) y limpieza de casas legacy por `idLocal`
 - Renderer: dibuja por las dimensiones reales del nodo activo (soporta nodos menores que el mundo, p.ej. la casa contenida)
 - Estandarización de configuración de sprites a formato basado en puntos (`e0c31e7`)

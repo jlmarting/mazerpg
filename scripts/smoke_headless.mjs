@@ -198,6 +198,13 @@ async function main() {
     await esperar(cdp, sessionId, `window.game.motorIniciado === true`, 10000, 'motor iniciado');
     await esperar(cdp, sessionId, `window.game.gestorMundo.nodoActivoId !== '' && !!window.game.gestorMundo.nodoActivoId`, 10000, 'nodo activo sembrado');
 
+    // 4b. Esquema UI por dispositivo (spec-2): body class + dock presente en el DOM
+    const esquemaClase = await evaluar(cdp, sessionId, `Array.from(document.body.classList).filter((c) => c.startsWith('esquema-')).join(',')`);
+    if (esquemaClase && esquemaClase.length > 0) pase(`esquema UI de acciones aplicado (${esquemaClase})`);
+    else pana('esquema UI de acciones aplicado', '— body sin clase esquema-*');
+    if (await evaluar(cdp, sessionId, `!!document.getElementById('actionDock')`)) pase('dock táctil presente en el DOM');
+    else pana('dock táctil presente en el DOM', '— #actionDock ausente');
+
     // El spawn es aleatorio: si cae sobre un conector (1/3600 aprox) el cruce ocurre
     // solo. Normalizamos antes de las aserciones para que el smoke sea determinista.
     await evaluar(cdp, sessionId, `window.game.nodoActivo.tipo === 'personal' ? window.game.teleportHousing() : null`);

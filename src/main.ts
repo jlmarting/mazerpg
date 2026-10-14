@@ -287,6 +287,19 @@ class Game implements IGame {
       document.getElementById('keybindsModal')!.style.display = 'none';
     });
 
+    document.getElementById('dockToggle')?.addEventListener('click', () => {
+      const colapsado = document.body.classList.toggle('dock-collapsed');
+      localStorage.setItem('mazerpg.ui.dockCollapsed', String(colapsado));
+      const tirador = document.getElementById('dockToggle');
+      if (tirador) tirador.textContent = colapsado ? '▲' : '▼';
+    });
+    // Colapso persistido (saneado: no-'true' → desplegado)
+    if (localStorage.getItem('mazerpg.ui.dockCollapsed') === 'true') {
+      document.body.classList.add('dock-collapsed');
+      const tirador = document.getElementById('dockToggle');
+      if (tirador) tirador.textContent = '▲';
+    }
+
     document.getElementById('btnLogPanel')?.addEventListener('click', () => {
       document.getElementById('logPanel')?.classList.toggle('visible');
     });

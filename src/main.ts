@@ -3852,6 +3852,15 @@ class Game implements IGame {
     }
   }
 
+  /** Difunde mi cesta actual (trade_offer) para que la vea el socio. */
+  private truequeOfertar(): void {
+    this.enviarTradeUI({
+      tipo: 'trade_offer',
+      da: this.truequeCesta,
+      export: this.protagonista.exportarInventario(),
+    });
+  }
+
   /** Conecta los callbacks de la ventana de trueque (llamar en setup). */
   conectarTruequeUI(): void {
     this.truequeUI.conectar();
@@ -3862,6 +3871,7 @@ class Game implements IGame {
       if (item.tipo === 'equipo' && !this.protagonista.bulto.includes(id)) return;
       this.truequeCesta = anadirLinea(this.truequeCesta, id, 1, this.stockTradeDe(id));
       this.truequeUI.setCestaMia(this.truequeCesta);
+      this.truequeOfertar();
     };
     this.truequeUI.onMenos = (id) => {
       const idx = this.truequeCesta.findIndex((l) => l.id === id);
@@ -3873,10 +3883,12 @@ class Game implements IGame {
         this.truequeCesta = this.truequeCesta.map((l) => (l.id === id ? { id: l.id, cantidad: restante } : l));
       }
       this.truequeUI.setCestaMia(this.truequeCesta);
+      this.truequeOfertar();
     };
     this.truequeUI.onQuitar = (id) => {
       this.truequeCesta = this.truequeCesta.filter((l) => l.id !== id);
       this.truequeUI.setCestaMia(this.truequeCesta);
+      this.truequeOfertar();
     };
     this.truequeUI.onConfirmar = () => {
       this.enviarTradeUI({
@@ -3942,6 +3954,9 @@ class Game implements IGame {
         const inv = sanearEquipoGuardado(invOtro);
         if (remoto?.entidad && inv) remoto.entidad.inventario = inv;
       }
+      this.truequeUI.cerrar();
+      this.truequeCesta = [];
+      this.truequeInvitador = null;
       return;
     }
     if (tipo === 'trade_state') { this.procesarTradeStateUI(msg); return; } // estado: UI en ambos roles
@@ -3950,7 +3965,13 @@ class Game implements IGame {
     if (this.mpActivo && this.esHost) {
       const efectos = this.gestorTrueques.procesar(msg, idEmisor, (id) => this.exportTradeDe(id));
       for (const efecto of efectos) {
-        if (efecto.tipo === 'relay') this.enviarTradeA(efecto.para, efecto.msj);
+        if (efecto.tipo === 'relay') {
+          this.enviarTradeA(efecto.para, efecto.msj);
+          // El host como socio: los relays a sí mismo (p.ej. confirmada_uno) van a su UI.
+          if (efecto.para === this.idLocalActivo && efecto.msj.tipo === 'trade_state') {
+            this.procesarTradeStateUI(efecto.msj);
+          }
+        }
         else this.aplicarTruequeEnHost(efecto.idA, efecto.idB);
       }
       this.gestorTrueques.limpiarTerminados();
@@ -3960,8 +3981,10 @@ class Game implements IGame {
     const de = typeof msg.de === 'string' && msg.de ? msg.de : idEmisor;
     switch (tipo) {
       case 'trade_invite': {
+        // Directo (host como destino): trae destino. Reelayado (guest destino): solo trae `de`.
         const destino = typeof msg.destino === 'string' ? msg.destino : '';
-        if (destino === this.idLocalActivo && de !== this.idLocalActivo && !this.truequeUI.visible()) {
+        const dirigidoAMi = destino === this.idLocalActivo || (!destino && de !== this.idLocalActivo);
+        if (dirigidoAMi && !this.truequeUI.visible()) {
           this.ventanaInvitacionDesde(de);
         }
         break;
@@ -4100,6 +4123,11 @@ class Game implements IGame {
     // Host como parte: aplica su estado directamente (antes de difundir).
     if (idA === this.idLocalActivo) this.protagonista.importarInventario(invA);
     if (idB === this.idLocalActivo) this.protagonista.importarInventario(invB);
+    if (idA === this.idLocalActivo || idB === this.idLocalActivo) {
+      this.truequeUI.cerrar();
+      this.truequeCesta = [];
+      this.truequeInvitador = null;
+    }
     // Vista remota del host: el nuevo estado de cada parte para efectos visuales/F2.
     const remA = this.remotosActivos.get(idA);
     if (idA !== this.idLocalActivo && remA?.entidad) remA.entidad.inventario = invA;

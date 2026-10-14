@@ -58,6 +58,8 @@ export class TruequeUI {
     this.estado = 'propuesta';
     this.mostrar('truequeInvitacion', false);
     this.mostrar('truequePanel', true);
+    const modal = document.getElementById('truequeModal');
+    if (modal) modal.style.display = 'flex';
     this.pintar();
   }
 

@@ -263,6 +263,34 @@ async function main() {
     const activoTrasCancel = await evaluar(cdp, host, `window.game.gestorTrueques.activo()`);
     if (!activoTrasCancel) pase('gestor: tras cancelar no queda trade activo');
     else pana('gestor: tras cancelar', 'sigue activo');
+
+    // 9. RONDA F2 (UI real: OPCIONES → COMERCIAR → modal con clics)
+    await evaluar(cdp, host, `{ document.getElementById('btnComerciar')?.click(); }`);
+    await esperar(cdp, host, `document.querySelectorAll('#truequeSocios .trueque-socio button').length >= 1`, 5000, 'host: lista de socios');
+    await evaluar(cdp, host, `{ document.querySelector('#truequeSocios .trueque-socio button')?.click(); }`);
+    await esperar(cdp, invitado, `document.getElementById('truequeModal')?.style.display === 'flex'`, 8000, 'invitado: ventana de invitación visible');
+    await evaluar(cdp, invitado, `{ document.getElementById('btnTruequeAceptar')?.click(); }`);
+    await esperar(cdp, host, `document.getElementById('truequeModal')?.style.display === 'flex'`, 8000, 'host: ventana de trueque abierta');
+    pase('F2: invitación y apertura de ventanas por clics reales');
+    await evaluar(cdp, invitado, `{
+      const btn = document.querySelector('#truequeMio .trueque-ofrecer[data-id="flecha"]');
+      for (let i = 0; i < 3; i++) btn?.click();
+    }`);
+    await esperar(cdp, invitado, `(document.querySelector('#truequeCesta .trueque-fila .nombre')?.textContent ?? '').includes('Flecha ×3')`, 4000, 'invitado: cesta con flecha ×3');
+    await esperar(cdp, host, `(document.querySelector('#truequeOtro .trueque-fila .nombre')?.textContent ?? '').includes('Flecha ×3')`, 6000, 'host: cesta del otro visible por trade_offer');
+    await evaluar(cdp, host, `{ document.querySelector('#truequeMio .trueque-ofrecer[data-id="pocion_vida"]')?.click(); }`);
+    await esperar(cdp, invitado, `(document.querySelector('#truequeOtro .trueque-fila .nombre')?.textContent ?? '').includes('×1')`, 6000, 'invitado: oferta del host visible');
+    await evaluar(cdp, invitado, `{ document.getElementById('btnTruequeConfirmar')?.click(); }`);
+    await esperar(cdp, host, `document.getElementById('truequeEstado')?.textContent === 'El otro confirmó — completa tu confirmación.'`, 6000, 'host: estado otro-confirmado');
+    await evaluar(cdp, host, `{ document.getElementById('btnTruequeConfirmar')?.click(); }`);
+    await esperar(cdp, host, `document.getElementById('truequeModal')?.style.display !== 'flex'`, 8000, 'host: ventana cerrada tras aplicar');
+    await esperar(cdp, invitado, `document.getElementById('truequeModal')?.style.display !== 'flex'`, 8000, 'invitado: ventana cerrada tras aplicar');
+    const invHostUI = await evaluar(cdp, host, `(window.game.protagonista.inventario.pocion_vida|0) + '/' + (window.game.protagonista.inventario.flecha|0)`);
+    if (invHostUI === '1/26') pase(`F2: host mochila tras trueque UI = ${invHostUI} (pocion 2-1 / flecha 23+3)`);
+    else pana('F2: host mochila tras trueque UI', `esperado 1/26, obtuve ${invHostUI}`);
+    const invGuestUI = await evaluar(cdp, invitado, `(window.game.protagonista.inventario.pocion_vida|0) + '/' + (window.game.protagonista.inventario.flecha|0)`);
+    if (invGuestUI === '5/14') pase(`F2: invitado mochila tras trueque UI = ${invGuestUI} (pocion 4+1 / flecha 17-3)`);
+    else pana('F2: invitado mochila tras trueque UI', `esperado 5/14, obtuve ${invGuestUI}`);
   } catch (e) {
     pana('secuencia de smoke_trueque', `— ${e.message}`);
   }

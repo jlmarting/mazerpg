@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Comercio F1 — trueque entre jugadores** (propuesta comercio): dominio puro `core/intercambio.ts` (cestas saneadas, disposición verificada, aplicación **atómica** con capacidad) + `core/gestorTrueques.ts` (máquina de estados por par: `propuesta → confirmada_uno → aplicada/cancelada`) + protocolo `trade_*` **host autoritativo** con export fresca al confirmar (`trade_apply` difunde el estado final de ambos) + limpieza al desconectar + smoke 2 clientes reales (`scripts/smoke_trueque.mjs`, TRUEQUE_OK) (`0ec911f`, `01b2564`, `329274c`)
 - **UI de acciones por dispositivo** (espec `spec-2-ui-dispositivo-v1`): acordeón/dock según pantalla — **dock táctil** translúcido en tablet con colapso a pastilla persistido, **teclas remapeables** en PC (panel ASIGNAR TECLAS con captura; defaults `1-6`/`e`, reservadas WASD/flechas/Enter/F9/Esc, badges de tecla, selector AUTO/TÁCTIL/ACORDEÓN persistente), **acordeón full-width desplegado** en móvil con banda inferior dinámica (`ALTO_UI_BOTTOM` medido) y dominio puro con tests (`keybinds`, `esquemaAcciones`) (`da6f2d5`, `b850a67`, `821012a`, `0f98bcf`, `1f4ee00`, `939aea2`)
 - **Movimiento con WASD** además de las flechas (mismos deltas), con parada de caminata al soltar (`821012a`)
 - **Smoke headless**: aserciones del esquema UI de acciones (clase `esquema-*` en body, `#actionDock` en el DOM)

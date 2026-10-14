@@ -3836,8 +3836,14 @@ class Game implements IGame {
   private aplicarTruequeEnHost(idA: string, idB: string): void {
     const trade = this.gestorTrueques.par(clavePar(idA, idB));
     if (!trade || !trade.ofertaA || !trade.ofertaB) return;
-    const exportA = this.exportTradeDe(idA);
-    const exportB = this.exportTradeDe(idB);
+    // Fuente de verdad (D2): la exportación fresca traída por cada confirm;
+    // el host usa su estado real; si falta, último estado remoto conocido.
+    const exportA = idA === this.idLocalActivo
+      ? sanearEquipoGuardado(this.protagonista.exportarInventario())
+      : (trade.exportA ?? this.exportTradeDe(idA));
+    const exportB = idB === this.idLocalActivo
+      ? sanearEquipoGuardado(this.protagonista.exportarInventario())
+      : (trade.exportB ?? this.exportTradeDe(idB));
     if (!exportA || !exportB) {
       this.enviarTradeA(idA, { tipo: 'trade_state', estado: 'cancelada' });
       this.enviarTradeA(idB, { tipo: 'trade_state', estado: 'cancelada' });
@@ -3873,6 +3879,11 @@ class Game implements IGame {
     // Host como parte: aplica su estado directamente (antes de difundir).
     if (idA === this.idLocalActivo) this.protagonista.importarInventario(invA);
     if (idB === this.idLocalActivo) this.protagonista.importarInventario(invB);
+    // Vista remota del host: el nuevo estado de cada parte para efectos visuales/F2.
+    const remA = this.remotosActivos.get(idA);
+    if (idA !== this.idLocalActivo && remA?.entidad) remA.entidad.inventario = invA;
+    const remB = this.remotosActivos.get(idB);
+    if (idB !== this.idLocalActivo && remB?.entidad) remB.entidad.inventario = invB;
     this.enviarTradeA(idA, { tipo: 'trade_apply', a: idA, invA, b: idB, invB });
     this.enviarTradeA(idB, { tipo: 'trade_apply', a: idA, invA, b: idB, invB });
     this.registrarEventoLog('[trueque] aplicado y difundido');

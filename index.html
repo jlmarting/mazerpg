@@ -30,8 +30,17 @@
             <div class="menu-dropdown">
                 <button class="menu-btn">OPCIONES ▾</button>
                 <div class="dropdown-content">
-                    <button id="btnDebug" class="menu-btn">DEBUG (D)</button>
+                    <button id="btnDebug" class="menu-btn">DEBUG (F9)</button>
                     <button id="btnLogPanel" class="menu-btn">VER CONEXIONES</button>
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: #fff; font-family: monospace; font-size: 11px;">
+                        UI ACCIONES:
+                        <select id="uiSchemeSelect" style="background: #000; color: #fff; border: 1px solid #444; font-family: monospace; font-size: 10px;">
+                            <option value="auto" selected>AUTO</option>
+                            <option value="dock">TÁCTIL (DOCK)</option>
+                            <option value="acordeon">ACORDEÓN</option>
+                        </select>
+                    </div>
+                    <button id="btnKeybindsPanel" class="menu-btn">ASIGNAR TECLAS</button>
                     <label style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: #fff; font-family: monospace; font-size: 11px; cursor: pointer;">
                         <input type="checkbox" id="panicBtnToggle" style="cursor: pointer;">
                         BOTÓN DEL PÁNICO
@@ -328,6 +337,15 @@
                 </div>
             </div>
             <button id="btnCerrarEquipo" class="btn-save-character">CERRAR</button>
+        </div>
+    </div>
+
+    <div id="keybindsModal" class="lobby-modal-overlay z-50">
+        <div class="character-modal-box">
+            <h2>ASIGNAR TECLAS</h2>
+            <div id="keybindsContent" class="keybinds-content"></div>
+            <div class="keybinds-ayuda">Pulsa una tecla al pulsar CAMBIAR. ESC cancela. Flechas, W/A/S/D, ENTER, F9 y ESC están reservadas.</div>
+            <button id="btnCerrarKeybinds" class="btn-save-character">CERRAR</button>
         </div>
     </div>
 

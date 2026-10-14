@@ -20,7 +20,8 @@ import { ITEMS } from './config/items';
 import { elegirBotin } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
-import { cargarKeybinds, accionParaTecla, KEYBINDS_DEFECTO, type IdAccion } from './ui/keybinds';
+import { cargarKeybinds, guardarKeybinds, asignarTecla, accionParaTecla, KEYBINDS_DEFECTO, ACCIONES_VALIDAS, type IdAccion } from './ui/keybinds';
+import { sanearPreferencia, resolverEsquema, esAcordeonMovil } from './ui/esquemaAcciones';
 import {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
@@ -135,7 +136,10 @@ class Game implements IGame {
     this.setupEntity(this.protagonista);
     this.initMap();
     this.ajustarDimensiones();
-    window.addEventListener('resize', () => this.ajustarDimensiones());
+    window.addEventListener('resize', () => {
+      this.ajustarDimensiones();
+      this.aplicarEsquemaUI();
+    });
     this.setupEventListeners();
     this.verificarUrlParams();
     this.lobbyManager = new LobbyManager(this);
@@ -268,6 +272,21 @@ class Game implements IGame {
     document.getElementById('btnChat')?.addEventListener('click', () => this.ui.toggleChat(this));
     document.getElementById('chkAdmitir')?.addEventListener('change', () => this.iniciarAutoAdmision());
 
+    document.getElementById('uiSchemeSelect')?.addEventListener('change', (e) => {
+      const valor = sanearPreferencia((e.target as HTMLSelectElement).value);
+      localStorage.setItem('mazerpg.ui.scheme', valor);
+      this.aplicarEsquemaUI();
+      const esquema = resolverEsquema(valor, window.matchMedia('(pointer: coarse)').matches, window.innerWidth);
+      this.registrarEventoLog(`Interfaz de acciones: ${esquema === 'dock' ? 'DOCK TÁCTIL' : 'ACORDEÓN'}`);
+    });
+    const selScheme = document.getElementById('uiSchemeSelect') as HTMLSelectElement | null;
+    if (selScheme) selScheme.value = sanearPreferencia(localStorage.getItem('mazerpg.ui.scheme'));
+
+    document.getElementById('btnKeybindsPanel')?.addEventListener('click', () => this.abrirPanelKeybinds());
+    document.getElementById('btnCerrarKeybinds')?.addEventListener('click', () => {
+      document.getElementById('keybindsModal')!.style.display = 'none';
+    });
+
     document.getElementById('btnLogPanel')?.addEventListener('click', () => {
       document.getElementById('logPanel')?.classList.toggle('visible');
     });
@@ -388,6 +407,7 @@ class Game implements IGame {
             }
         }
     });
+    this.refrescarBadgesTeclado();
   }
 
   onStartSolo(dificultad: string): void {
@@ -1207,6 +1227,7 @@ class Game implements IGame {
     // Mostrar menús
     document.getElementById('topMenu')!.style.display = 'block';
     document.getElementById('actionsMenu')!.style.display = 'block';
+    this.aplicarEsquemaUI();
 
     if (this.esLadoAutoritativo()) {
         if (!this.gestorMundo.nodoActivoId) {
@@ -1225,6 +1246,127 @@ class Game implements IGame {
     this.ultimoFrameTime = performance.now();
     this.fpsBajoContador = 0;
     this.cicloDeJuego();
+  }
+
+  /**
+   * Aplica el esquema de acciones (dock táctil / acordeón) según la
+   * preferencia guardada y el dispositivo autodetectado (spec-2 §2).
+   */
+  aplicarEsquemaUI(): void {
+    const preferencia = sanearPreferencia(localStorage.getItem('mazerpg.ui.scheme'));
+    const punteroTosco = window.matchMedia('(pointer: coarse)').matches;
+    const ancho = window.innerWidth;
+    const esquema = resolverEsquema(preferencia, punteroTosco, ancho);
+    const movil = esAcordeonMovil(esquema, punteroTosco, ancho);
+    const body = document.body;
+    body.classList.remove('esquema-dock', 'esquema-acordeon', 'esquema-acordeon-movil');
+    body.classList.add(movil ? 'esquema-acordeon-movil' : `esquema-${esquema}`);
+
+    // Montaje: el MISMO nodo .actions-content vive en el dock (táctil) o en el
+    // acordeón — nunca se clona, para que cooldowns y visibilidad sigan vivos.
+    const contenido = document.querySelector('.actions-content');
+    const actionsMenu = document.getElementById('actionsMenu');
+    const dock = document.getElementById('actionDock');
+    if (contenido && actionsMenu && dock) {
+      const destino = esquema === 'dock' ? dock : actionsMenu;
+      if (contenido.parentElement !== destino) destino.appendChild(contenido);
+    }
+  }
+
+  /** Pinta/actualiza el badge de tecla en cada botón de acción (spec-2 §5). */
+  refrescarBadgesTeclado(): void {
+    const botones: Record<IdAccion, string> = {
+      whirlwind: 'btnWhirlwindAction',
+      fireball: 'btnFireballAction',
+      freeze: 'btnFreezeAction',
+      bow: 'btnBowAction',
+      create_food: 'btnCreateFoodAction',
+      radar: 'btnRadarAction',
+      equipo: 'btnEquipoAction',
+    };
+    for (const [accion, id] of Object.entries(botones) as [IdAccion, string][]) {
+      const btn = document.getElementById(id);
+      if (!btn) continue;
+      let badge = btn.querySelector<HTMLElement>('.key-badge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'key-badge';
+        btn.appendChild(badge);
+      }
+      badge.textContent = this.keybinds[accion];
+    }
+  }
+
+  private etiquetaAccion(accion: IdAccion): string {
+    const etiquetas: Record<IdAccion, string> = {
+      whirlwind: 'GOLPE GIRO',
+      fireball: 'BOLA FUEGO',
+      freeze: 'CONGELAR',
+      bow: 'DISPARO ARCO',
+      create_food: 'CREAR COMIDA',
+      radar: 'RADAR',
+      equipo: 'EQUIPO',
+    };
+    return etiquetas[accion];
+  }
+
+  /** Abre el panel ASIGNAR TECLAS (una fila por acción, spec-2 §4). */
+  abrirPanelKeybinds(): void {
+    const contenido = document.getElementById('keybindsContent');
+    if (!contenido) return;
+    contenido.innerHTML = '';
+    for (const accion of ACCIONES_VALIDAS) {
+      const fila = document.createElement('div');
+      fila.className = 'keybind-row';
+      const nombre = document.createElement('span');
+      nombre.className = 'keybind-nombre';
+      nombre.textContent = this.etiquetaAccion(accion);
+      const tecla = document.createElement('span');
+      tecla.className = 'keybind-tecla';
+      tecla.id = `keybind-tecla-${accion}`;
+      tecla.textContent = this.keybinds[accion];
+      const btn = document.createElement('button');
+      btn.className = 'keybind-cambiar';
+      btn.textContent = 'CAMBIAR';
+      btn.addEventListener('click', () => this.iniciarCapturaTecla(accion, tecla));
+      fila.appendChild(nombre);
+      fila.appendChild(tecla);
+      fila.appendChild(btn);
+      contenido.appendChild(fila);
+    }
+    document.getElementById('keybindsModal')!.style.display = 'flex';
+  }
+
+  /** Espera la siguiente pulsación y la asigna a la acción (Escape cancela). */
+  private iniciarCapturaTecla(accion: IdAccion, teclaEl: HTMLElement): void {
+    if (this.capturandoTecla) return;
+    this.capturandoTecla = true;
+    teclaEl.textContent = '...';
+    const escucharCaptura = (ev: KeyboardEvent) => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      window.removeEventListener('keydown', escucharCaptura, true);
+      this.capturandoTecla = false;
+      if (ev.key === 'Escape') {
+        teclaEl.textContent = this.keybinds[accion];
+        return;
+      }
+      const tecla = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+      const r = asignarTecla(this.keybinds, accion, tecla);
+      if (!r.ok) {
+        teclaEl.textContent = this.keybinds[accion];
+        const causa = r.motivo === 'en-uso' ? `ya la usa ${r.conflicto}` : 'está reservada';
+        this.registrarEventoLog(`Tecla '${tecla}' ${causa}`);
+        this.mostrarAvisoFirebase(`Tecla '${tecla}' ${causa}`);
+        return;
+      }
+      this.keybinds = r.mapa;
+      guardarKeybinds(this.keybinds, (valor) => localStorage.setItem('mazerpg.ui.keybinds', valor));
+      teclaEl.textContent = tecla;
+      this.refrescarBadgesTeclado();
+      this.registrarEventoLog(`Tecla de ${this.etiquetaAccion(accion)} ahora es '${tecla}'`);
+    };
+    window.addEventListener('keydown', escucharCaptura, true);
   }
 
   private sembrarMundoBase(): void {

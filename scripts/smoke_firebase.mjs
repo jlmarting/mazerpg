@@ -158,7 +158,7 @@ async function main() {
 
   try {
     // HOST: MULTIJUGADOR (Firebase) + CREAR
-    const host = await abrir('host');
+    const host = await abrir('host', process.env.SMOKE_HOST_URL || `http://localhost:${PUERTO_PREVIEW}/`);
     await evaluar(cdp, host, `{ document.getElementById('btnModoFirebase')?.click(); }`);
     await evaluar(cdp, host, `{ document.getElementById('btnCrearPartida')?.click(); }`);
     await evaluar(cdp, host, `{ document.querySelector('.diff-btn[data-diff="facil"]')?.click(); }`);

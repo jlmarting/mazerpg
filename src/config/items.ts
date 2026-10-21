@@ -103,4 +103,8 @@ export const ITEMS: Record<string, ItemDef> = {
     id: 'flecha', nombre: 'Flecha', tipo: 'material', peso: 0.1, apilable: true,
     descripcion: 'Munición para arcos.',
   },
+  oro: {
+    id: 'oro', nombre: 'Moneda de oro', tipo: 'material', peso: 0.01, apilable: true,
+    descripcion: 'Moneda de oro. Pesa 10 g.',
+  },
 };

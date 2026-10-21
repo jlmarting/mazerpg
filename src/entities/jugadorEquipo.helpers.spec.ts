@@ -57,6 +57,10 @@ assert(j.inventario.pocion_vida === 2, 'consumir descuenta una poción');
 j.anadirItem('flecha', 5);
 assert(j.inventario.flecha === 25, 'añadir acumula flechas');
 
+// --- Oro: material apilable con peso ---
+j.recibirBotin([{ id: 'oro', cantidad: 100 }]);
+assert(j.inventario.oro === 100, 'recibirBotin acumula 100 monedas en la mochila');
+
 // --- Usar consumible: cura y se gasta (in-game) ---
 j.vidaActual = 1;
 const pocionesAntes = j.inventario.pocion_vida;

@@ -14,8 +14,20 @@ export class EnemigoNPC extends EntidadRPG {
     super(fila, columna, nombre);
     this.id = id;
     this.tipo = tipo;
+    if (tipo === 'Balrog') this.configurarBalrog();
     this.aplicarPenalizadores(dificultad);
     this.asignarExperiencia();
+  }
+
+  /** Boss de F3: stats fijas antes de la dificultad y presencia visual grande. */
+  configurarBalrog() {
+    this.fuerza = 18;
+    this.agilidad = 6;
+    this.inteligencia = 10;
+    this.vidaMaxima = 200;
+    this.vidaActual = 200;
+    this.radioDeVisionIA = 10;
+    this.escalaVisual = 1.5;
   }
 
   aplicarPenalizadores(dificultad: string) {
@@ -54,6 +66,7 @@ export class EnemigoNPC extends EntidadRPG {
         case "Esqueleto": this.puntosExperiencia = 15; break;
         case "Orco": this.puntosExperiencia = 20; break;
         case "Minotauro": this.puntosExperiencia = 50; break;
+        case "Balrog": this.puntosExperiencia = 500; break;
         default: this.puntosExperiencia = 10;
     }
   }

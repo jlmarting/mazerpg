@@ -49,6 +49,8 @@ export interface IEntidadRPG {
     // Propiedades para renderizado
     estadoActual: 'idle' | 'walking' | 'attacking' | 'defending' | 'fallen';
     frameActual: number;
+    /** Multiplicador visual (p. ej. Balrog 1,5). No cambia la colisión. */
+    escalaVisual?: number;
     clase?: string;
     tipo?: string;
     color?: string;

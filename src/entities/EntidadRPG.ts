@@ -22,6 +22,8 @@ export abstract class EntidadRPG implements IEntidadRPG {
   enCombateCon: EntidadRPG | null;
   puntosExperiencia: number = 0;
   inmunidadHasta: number = 0;
+  /** Multiplicador visual; la colisión sigue siendo una celda. */
+  escalaVisual: number = 1;
   consecutiveInteractions: Map<string, number> = new Map();
   public bubbleChat: { texto: string, expira: number } | null = null;
   public onDamageReceived?: (amount: number, entity: EntidadRPG) => void;

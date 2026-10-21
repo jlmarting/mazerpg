@@ -302,6 +302,66 @@ async function main() {
     await evaluar(cdp, host, `window.game.resolverAccion(window.game.idLocalActivo, { tipo: 'mover', df: ${posiciones.llave.df}, dc: ${posiciones.llave.dc} })`);
     await esperar(cdp, invitado, `window.game.mapaLaberinto[${posiciones.llave.nf}][${posiciones.llave.nc}].llave === null`, 8000, 'invitado ve llave recogida');
 
+    // El invitado también debe recoger oro: el host lo suelta en su celda y el
+    // invitado resuelve el movimiento en local (F2/F4 fix).
+    const posGuestOro = await evaluar(cdp, invitado, `({ f: window.game.protagonista.fila, c: window.game.protagonista.columna })`);
+    await evaluar(cdp, host, `window.game.soltarBotin(${posGuestOro.f}, ${posGuestOro.c}, 0, 5)`);
+    await SLEEP(600);
+    const dropsOroGuest = await evaluar(cdp, invitado, `window.game.dropsSuelo.filter((d) => d.id === 'oro' && d.cantidad === 5 && d.f === ${posGuestOro.f} && d.c === ${posGuestOro.c}).length`);
+    if (dropsOroGuest < 1) throw new Error('el invitado no recibió el drop de oro');
+    const oroAntesGuest = await evaluar(cdp, invitado, `window.game.protagonista.inventario.oro ?? 0`);
+    await evaluar(cdp, invitado, `window.game.resolverAccion(window.game.idLocalActivo, { tipo: 'mover', df: 0, dc: 1 })`);
+    await SLEEP(500);
+    const oroDespuesGuest = await evaluar(cdp, invitado, `window.game.protagonista.inventario.oro ?? 0`);
+    if (oroDespuesGuest !== oroAntesGuest + 5) throw new Error('el invitado no recogió el oro');
+    if (await evaluar(cdp, host, `window.game.dropsSuelo.some((d) => d.id === 'oro' && d.cantidad === 5)`)) {
+      throw new Error('el oro sigue en el host tras recogerlo el invitado');
+    }
+    console.log('  PASS invitado recoge oro');
+
+    // Portal clásico: el invitado pisa un portal local y su posición viaja al host.
+    const portal = await evaluar(cdp, invitado, `(() => {
+      const g = window.game;
+      const f = g.protagonista.fila, c = g.protagonista.columna;
+      let destino = null;
+      for (let ff = 0; ff < g.mapaLaberinto.length && !destino; ff++) {
+        for (let cc = 0; cc < g.mapaLaberinto[ff].length; cc++) {
+          if (g.mapaLaberinto[ff][cc].esPortal && (ff !== f || cc !== c)) { destino = { f: ff, c: cc }; break; }
+        }
+      }
+      if (!destino) return { error: 'sin segundo portal' };
+      const d = [[0,1],[1,0],[0,-1],[-1,0]].find(([df, dc]) => {
+        const cel = g.mapaLaberinto[f + df]?.[c + dc];
+        return cel && !cel.esPortal;
+      });
+      if (!d) return { error: 'sin vecino para portal' };
+      const [df, dc] = d;
+      const nf = f + df, nc = c + dc;
+      const actual = g.mapaLaberinto[f][c];
+      const cel = g.mapaLaberinto[nf][nc];
+      cel.esPortal = true; cel.esTransitable = true;
+      if (df === -1) { actual.muros.superior = false; cel.muros.inferior = false; }
+      if (df === 1) { actual.muros.inferior = false; cel.muros.superior = false; }
+      if (dc === -1) { actual.muros.izquierdo = false; cel.muros.derecho = false; }
+      if (dc === 1) { actual.muros.derecho = false; cel.muros.izquierdo = false; }
+      g.protagonista.enCombateCon = null;
+      g.listaDeEnemigos.forEach((e) => { e.enCombateCon = null; });
+      g.listaDeEnemigos = g.listaDeEnemigos.filter((e) => !(e.fila === nf && e.columna === nc));
+      return { df, dc, nf, nc };
+    })()`);
+    if (portal.error) throw new Error(portal.error);
+    await evaluar(cdp, invitado, `window.game.resolverAccion(window.game.idLocalActivo, { tipo: 'mover', df: ${portal.df}, dc: ${portal.dc} })`);
+    await SLEEP(700);
+    const posGuest = await evaluar(cdp, invitado, `({ f: window.game.protagonista.fila, c: window.game.protagonista.columna })`);
+    if (posGuest.f === portal.nf && posGuest.c === portal.nc) throw new Error('el invitado no atravesó el portal');
+    const posHost = await evaluar(cdp, host, `(() => {
+      const g = window.game;
+      const e = g.remotosActivos.get(Array.from(g.remotosActivos.keys())[0]).entidad;
+      return { f: e.fila, c: e.columna };
+    })()`);
+    if (posHost.f !== posGuest.f || posHost.c !== posGuest.c) throw new Error('el host no recibió la posición del portal');
+    console.log('  PASS invitado atraviesa portal y sincroniza posición');
+
     console.log('SMOKE_COFRES_MP_OK');
     try { chrome.kill('SIGKILL'); } catch {}
   } finally {

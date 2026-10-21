@@ -1655,20 +1655,21 @@ class Game implements IGame {
     if (xpVal) xpVal.textContent = "0";
     this.registrarEventoLog("Has renacido en el inicio.");
 
-    if (this.network && this.network.activo) {
-        this.enviarMultiplayer({
-            tipo: 'posicion',
-            f: this.protagonista.fila,
-            c: this.protagonista.columna,
-            cam: false,
-            id: this.idLocalActivo,
-            nick: this.protagonista.nombre,
-            hp: this.protagonista.vidaActual,
-            maxHp: this.protagonista.vidaMaxima,
-            est: this.protagonista.estadoActual,
-            fr: this.protagonista.frameActual
-        });
-    }
+    this.enviarMultiplayer({
+        tipo: 'posicion',
+        f: this.protagonista.fila,
+        c: this.protagonista.columna,
+        cam: false,
+        id: this.idLocalActivo,
+        nick: this.protagonista.nombre,
+        hp: this.protagonista.vidaActual,
+        maxHp: this.protagonista.vidaMaxima,
+        est: this.protagonista.estadoActual,
+        fr: this.protagonista.frameActual,
+        oro: this.protagonista.inventario.oro ?? 0,
+        xp: this.protagonista.puntosExperiencia,
+        bajas: this.protagonista.bajas,
+    });
   }
 
   cicloDeJuego() {
@@ -2660,6 +2661,7 @@ class Game implements IGame {
                     entidad.vidaActual = Math.min(entidad.vidaMaxima, entidad.vidaActual + 1);
                 }
             }
+            if (entidad === this.protagonista) this.comprobarSalida(entidad);
         }
     } else if (accion.tipo === 'fireball') {
         if (enBurbuja) this.lanzarBolaDeFuego(entidad, false);
@@ -3294,14 +3296,15 @@ class Game implements IGame {
     this.registrarEventoLog(`${entidad.nombre} ha atravesado un portal.`);
     if (entidad === this.protagonista) {
         this.ui.crearTextoFlotanteEnCelda(aparicion.fila, aparicion.columna, "¡PORTAL!", "#0000ff", this);
-        if (this.network && this.network.activo) {
-            this.enviarMultiplayer({
-                tipo: 'posicion',
-                f: aparicion.fila, c: aparicion.columna, cam: false,
-                id: this.idLocalActivo, nick: this.protagonista.nombre,
-                hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
-            });
-        }
+        this.enviarMultiplayer({
+            tipo: 'posicion',
+            f: aparicion.fila, c: aparicion.columna, cam: false,
+            id: this.idLocalActivo, nick: this.protagonista.nombre,
+            hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima,
+            oro: this.protagonista.inventario.oro ?? 0,
+            xp: this.protagonista.puntosExperiencia,
+            bajas: this.protagonista.bajas,
+        });
         this.actualizarPanelAcciones();
     }
   }
@@ -3411,14 +3414,15 @@ class Game implements IGame {
             this.registrarEventoLog(`${entidad.nombre} ha atravesado un portal.`);
             if (entidad === this.protagonista) {
                 this.ui.crearTextoFlotanteEnCelda(dest.f, dest.c, "¡PORTAL!", "#0000ff", this);
-                if (this.network && this.network.activo) {
-                    this.enviarMultiplayer({
-                        tipo: 'posicion',
-                        f: dest.f, c: dest.c, cam: false,
-                        id: this.idLocalActivo, nick: this.protagonista.nombre,
-                        hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
-                    });
-                }
+                this.enviarMultiplayer({
+                    tipo: 'posicion',
+                    f: dest.f, c: dest.c, cam: false,
+                    id: this.idLocalActivo, nick: this.protagonista.nombre,
+                    hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima,
+                    oro: this.protagonista.inventario.oro ?? 0,
+                    xp: this.protagonista.puntosExperiencia,
+                    bajas: this.protagonista.bajas,
+                });
             }
         }
     }

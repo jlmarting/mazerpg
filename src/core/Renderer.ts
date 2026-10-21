@@ -117,7 +117,7 @@ export class Renderer {
     if (!drops || drops.length === 0) return;
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
     const { colOffset, filaOffset } = offset;
-    const emoji: Record<string, string> = { pico: '⛏️', comida: '🍎', pocion_vida: '🧪', flecha: '➶' };
+    const emoji: Record<string, string> = { pico: '⛏️', comida: '🍎', pocion_vida: '🧪', flecha: '➶', oro: '🪙' };
     for (const d of drops) {
       const x = (d.c - colOffset) * TAMANO_CELDA;
       const y = (d.f - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
@@ -513,6 +513,7 @@ export class Renderer {
     const stHeroe = game.protagonista.statsEfectivos();
     this.ctx.fillText(`FUE:${stHeroe.fuerza} AGI:${stHeroe.agilidad}`, 20, 44);
     this.ctx.fillText(`INT:${stHeroe.inteligencia} XP:${game.protagonista.puntosExperiencia}`, 20, 56);
+    this.ctx.fillText(`ORO:${game.protagonista.inventario.oro ?? 0}`, 20, 68);
 
     let enemigoVisible = game.obtenerEnemigoAMostrar();
     if (enemigoVisible) {

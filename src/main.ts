@@ -23,7 +23,7 @@ import type { InventarioGuardado } from './core/inventario';
 import { TruequeUI } from './ui/TruequeUI';
 import { anadirLinea } from './ui/truequeModelo';
 import { ITEMS } from './config/items';
-import { elegirBotin } from './config/botin';
+import { elegirBotin, sortearOro } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import { cargarKeybinds, guardarKeybinds, asignarTecla, accionParaTecla, KEYBINDS_DEFECTO, ACCIONES_VALIDAS, type IdAccion } from './ui/keybinds';
@@ -1914,12 +1914,14 @@ class Game implements IGame {
     const agiStat = document.getElementById('agiStat');
     const intStat = document.getElementById('intStat');
     const xpStat = document.getElementById('xpStat');
+    const oroStat = document.getElementById('oroStat');
 
     if (hpStat) hpStat.textContent = `${Math.floor(this.protagonista.vidaActual)}/${this.protagonista.vidaMaxima}`;
     if (fueStat) fueStat.textContent = this.protagonista.fuerza.toString();
     if (agiStat) agiStat.textContent = this.protagonista.agilidad.toString();
     if (intStat) intStat.textContent = this.protagonista.inteligencia.toString();
     if (xpStat) xpStat.textContent = this.protagonista.puntosExperiencia.toString();
+    if (oroStat) oroStat.textContent = (this.protagonista.inventario.oro ?? 0).toString();
 
     const ahoraTick = Date.now();
         if (ahoraTick - this.ultimoTick >= this.config.tickRate) {
@@ -2814,8 +2816,9 @@ class Game implements IGame {
     this.enviarMultiplayer(msg);
   }
   /** Suelta botín en el suelo (al morir un mob): queda como drop que se recoge al pisar. */
-  soltarBotin(f: number, c: number, veces: number = 1 + Math.floor(Math.random() * 2)): void {
+  soltarBotin(f: number, c: number, veces: number = 1 + Math.floor(Math.random() * 2), oro: number = 0): void {
     const botin = elegirBotin(Math.random, veces);
+    if (oro > 0) botin.push({ id: 'oro', cantidad: oro });
     for (const b of botin) {
       this.dropsSuelo.push({ f, c, id: b.id, cantidad: b.cantidad });
       this.difundirLoot({ tipo: 'loot_spawn', f, c, id: b.id, cantidad: b.cantidad });
@@ -3319,7 +3322,7 @@ class Game implements IGame {
                 this.registrarEventoLog(`¡Has ganado ${o.puntosExperiencia} XP!`);
                 const xpVal = document.getElementById('xpVal');
                 if (xpVal) xpVal.textContent = this.protagonista.puntosExperiencia.toString();
-                this.soltarBotin(o.fila, o.columna);
+                this.soltarBotin(o.fila, o.columna, undefined, sortearOro(o.tipo));
             }
         }
     });

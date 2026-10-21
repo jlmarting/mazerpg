@@ -7,7 +7,7 @@ export interface Posicion {
 
 function celdaLibre(celda: Celda | undefined): boolean {
   if (!celda || !celda.esTransitable) return false;
-  if (celda.cofre !== null || celda.llave !== null || celda.esPortal) return false;
+  if (celda.cofre !== null || celda.llave !== null || celda.esPortal || celda.esSalida) return false;
   if (celda.alimento !== null || celda.burbuja !== null || celda.tienePico) return false;
   return true;
 }

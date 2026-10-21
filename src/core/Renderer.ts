@@ -91,26 +91,40 @@ export class Renderer {
   dibujarLaberinto(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig, drops?: { f: number; c: number; id: string }[]) {
     this.cacheMazeDibujar(mapaLaberinto, offset, config);
 
-    const { TAMANO_CELDA, ALTO_UI_TOP, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
-    const { colOffset, filaOffset } = offset;
-    const filaMeta = NUMERO_FILAS - 1;
-    const colMeta = NUMERO_COLUMNAS - 1;
-    const metaEnNodo = filaMeta < mapaLaberinto.length && colMeta < (mapaLaberinto[0]?.length ?? 0);
-    if (metaEnNodo &&
-        filaMeta >= filaOffset && filaMeta < filaOffset + config.CELDAS_VISIBLES_Y &&
-        colMeta >= colOffset && colMeta < colOffset + config.CELDAS_VISIBLES_X) {
-      this.ctx.fillStyle = 'rgba(0, 200, 0, 0.6)';
-      this.ctx.fillRect((colMeta - colOffset) * TAMANO_CELDA + 2, (filaMeta - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2, TAMANO_CELDA - 4, TAMANO_CELDA - 4);
-      this.ctx.fillStyle = '#050';
-      this.ctx.font = 'bold 10px monospace';
-      this.ctx.textAlign = 'center';
-      this.ctx.fillText('META', (colMeta - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2, (filaMeta - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2 + 4);
-      this.ctx.textAlign = 'left';
-    }
-
     this.dibujarPulsoHousing(mapaLaberinto, offset, config);
     this.dibujarDrops(offset, config, drops);
     this.dibujarTesoros(mapaLaberinto, offset, config);
+    this.dibujarSalida(mapaLaberinto, offset, config);
+  }
+
+  /** Portal de salida aleatorio (F4): pulso verde sobre la celda marcada. */
+  private dibujarSalida(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+    const { colOffset, filaOffset } = offset;
+    const fInicio = Math.max(0, Math.floor(filaOffset));
+    const fFin = Math.min(mapaLaberinto.length - 1, Math.ceil(filaOffset + CELDAS_VISIBLES_Y));
+    const cInicio = Math.max(0, Math.floor(colOffset));
+    const cFin = Math.min((mapaLaberinto[0]?.length ?? 0) - 1, Math.ceil(colOffset + CELDAS_VISIBLES_X));
+    const fase = (performance.now() % 1200) / 1200;
+    const alpha = 0.3 + 0.35 * (1 - fase);
+    for (let fila = fInicio; fila <= fFin; fila++) {
+      for (let columna = cInicio; columna <= cFin; columna++) {
+        const celda = mapaLaberinto[fila]?.[columna];
+        if (!celda?.esSalida) continue;
+        const x = (columna - colOffset) * TAMANO_CELDA;
+        const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+        this.ctx.fillStyle = `rgba(0, 220, 120, ${alpha})`;
+        this.ctx.fillRect(x + 2, y + 2, TAMANO_CELDA - 4, TAMANO_CELDA - 4);
+        this.ctx.strokeStyle = '#00ff88';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(x + 2, y + 2, TAMANO_CELDA - 4, TAMANO_CELDA - 4);
+        this.ctx.fillStyle = '#004d26';
+        this.ctx.font = 'bold 9px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('SALIDA', x + TAMANO_CELDA / 2, y + TAMANO_CELDA / 2 + 3);
+        this.ctx.textAlign = 'left';
+      }
+    }
   }
 
   /** Dibuja cofres y llaves visibles (capa dinámica: el estado cambia al abrir/recoger). */

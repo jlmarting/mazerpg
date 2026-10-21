@@ -43,6 +43,7 @@ function serializarColaV2(mapaLaberinto: Celda[][], filas: number, columnas: num
   let seccionE = "";
   let seccionC = "";
   let seccionK = "";
+  let seccionX = "";
   for (let f = 0; f < filas; f++) {
     for (let c = 0; c < columnas; c++) {
       const celda = mapaLaberinto[f][c];
@@ -62,6 +63,9 @@ function serializarColaV2(mapaLaberinto: Celda[][], filas: number, columnas: num
       if (celda.llave !== null) {
         seccionK += (seccionK ? ';' : '') + f.toString(36) + ',' + c.toString(36) + ',' + celda.llave;
       }
+      if (celda.esSalida) {
+        seccionX = f.toString(36) + ',' + c.toString(36);
+      }
     }
   }
   let cola = "";
@@ -70,6 +74,7 @@ function serializarColaV2(mapaLaberinto: Celda[][], filas: number, columnas: num
   if (seccionE) cola += "|E" + seccionE;
   if (seccionC) cola += "|C" + seccionC;
   if (seccionK) cola += "|K" + seccionK;
+  if (seccionX) cola += "|X" + seccionX;
   return cola;
 }
 
@@ -107,6 +112,7 @@ export function deserializarMapa(mapaLaberinto: Celda[][], datos: string): { fil
       celda.muros.inferior = !!(valor & 4);
       celda.muros.izquierdo = !!(valor & 8);
       celda.esTransitable = !!(valor & 16);
+      celda.esSalida = false;
     }
   }
 
@@ -156,6 +162,10 @@ function aplicarColaV2(mapaLaberinto: Celda[][], filas: number, columnas: number
         const tipo = campos[2];
         if (tipo !== 'hierro' && tipo !== 'acero' && tipo !== 'titanio') return;
         celda.llave = tipo;
+      });
+    } else if (letra === 'X') {
+      aplicarSeccion(mapaLaberinto, filas, columnas, parte.substring(1), (celda) => {
+        celda.esSalida = true;
       });
     }
     // letra desconocida: saltar hasta el próximo | (el split ya la aísla)

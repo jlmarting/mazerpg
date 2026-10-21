@@ -23,6 +23,8 @@ export class Celda {
   cofreAbierto: boolean = false;
   /** Llave depositada en el suelo; se recoge al pisar. */
   llave: TipoLlave | null = null;
+  /** Celda de salida del mapa (F4). */
+  esSalida: boolean = false;
   golpesCavar: number = 0;
   tipoEscenario: 'ninguno' | 'puerta' | 'trampa' = 'ninguno';
   estadoEscenario: string = 'idle';

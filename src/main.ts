@@ -1297,6 +1297,18 @@ class Game implements IGame {
         this.protagonista.columna = pos.c;
         this.asustarMonstruosCercanos(pos.f, pos.c);
         this.sembrarMundoBase();
+        if (this.nodoActivo?.tipo === 'mazmorra') {
+            const salida = elegirCeldaLejos(
+                this.mapaLaberinto,
+                { fila: this.protagonista.fila, columna: this.protagonista.columna },
+                15,
+            ) ?? elegirCeldaLejos(
+                this.mapaLaberinto,
+                { fila: this.protagonista.fila, columna: this.protagonista.columna },
+                0,
+            );
+            if (salida) this.mapaLaberinto[salida.fila][salida.columna].esSalida = true;
+        }
         this.generarEnemigos();
         if (!this.mundoCargado) {
             this.generarEscenarioDinamicoDemo();
@@ -1575,7 +1587,7 @@ class Game implements IGame {
             f = Math.floor(Math.random() * dims.filas);
             c = Math.floor(Math.random() * dims.columnas);
             s++;
-        } while (((f < 5 && c < 5) || !this.mapaLaberinto[f][c].esTransitable) && s < 1000);
+        } while (((f < 5 && c < 5) || !this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].esSalida) && s < 1000);
         const t = tipos[i % tipos.length];
         const e = new EnemigoNPC(f, c, t, t, i, this.config.dificultad);
         this.setupEntity(e);

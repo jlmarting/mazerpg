@@ -27,6 +27,23 @@ export interface Botin {
   cantidad: number;
 }
 
+/** Rango inclusivo de monedas por tipo de enemigo (decisión 2026-10-21). */
+export const ORO_POR_TIPO: Record<string, readonly [number, number]> = {
+  Goblin: [1, 3],
+  Esqueleto: [2, 4],
+  Orco: [3, 6],
+  Minotauro: [5, 10],
+  Balrog: [25, 50],
+};
+
+export const ORO_POR_DEFECTO: readonly [number, number] = [1, 2];
+
+/** Sortea monedas para un tipo; `rng` inyectable para tests deterministas. */
+export function sortearOro(tipo: string, rng: () => number = Math.random): number {
+  const [min, max] = ORO_POR_TIPO[tipo] ?? ORO_POR_DEFECTO;
+  return min + Math.floor(rng() * (max - min + 1));
+}
+
 /** Sortea `veces` items de la tabla (ponderado). `rng` en [0,1). */
 export function elegirBotin(rng: () => number = Math.random, veces: number = 1, tabla: EntradaBotin[] = TABLA_BOTIN): Botin[] {
   const total = tabla.reduce((s, e) => s + e.peso, 0);

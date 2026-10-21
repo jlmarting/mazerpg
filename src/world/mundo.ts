@@ -36,7 +36,8 @@ export interface ConectorMundo {
 export type DeltaCambio =
   | { tipo: 'cavar' }
   | { tipo: 'escenario'; tipoEscenario: 'puerta' | 'trampa' | 'ninguno'; estado: string }
-  | { tipo: 'objeto'; campo: 'alimento' | 'tienePico' | 'burbuja'; valor: unknown | null }
+  | { tipo: 'objeto'; campo: 'alimento' | 'tienePico' | 'burbuja' | 'llave'; valor: unknown | null }
+  | { tipo: 'cofre'; abierto: boolean }
   | { tipo: 'decor'; campo: 'sueloDecor' | 'mueble'; valor: string | null }
   | { tipo: 'conector'; accion: 'añadir' | 'quitar'; conector: ConectorMundo };
 
@@ -187,6 +188,7 @@ function clavePlegado(delta: DeltaMundo): string {
       return `${delta.fila}:${delta.columna}:${cambio.tipo}:${cambio.campo}`;
     case 'cavar':
     case 'escenario':
+    case 'cofre':
     case 'conector':
       return `${delta.fila}:${delta.columna}:${cambio.tipo}`;
   }
@@ -225,6 +227,11 @@ export function aplicarDelta(celdas: Celda[][], delta: DeltaMundo): boolean {
     case 'escenario':
       celda.tipoEscenario = cambio.tipoEscenario;
       celda.estadoEscenario = cambio.estado;
+      return true;
+    case 'cofre':
+      if (typeof cambio.abierto !== 'boolean') return false;
+      if (celda.cofre === null) return false;
+      celda.cofreAbierto = cambio.abierto;
       return true;
     case 'objeto':
       switch (cambio.campo) {
@@ -266,6 +273,18 @@ export function aplicarDelta(celdas: Celda[][], delta: DeltaMundo): boolean {
               nombreSecreto: (valor as { nombreSecreto: string }).nombreSecreto,
               destino: (valor as { destino: string }).destino,
             };
+            return true;
+          }
+          return false;
+        }
+        case 'llave': {
+          const valor = cambio.valor;
+          if (valor === null) {
+            celda.llave = null;
+            return true;
+          }
+          if (valor === 'hierro' || valor === 'acero' || valor === 'titanio') {
+            celda.llave = valor;
             return true;
           }
           return false;

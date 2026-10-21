@@ -139,6 +139,7 @@ export function poblarTesoros(
 
   const numHierro = 1 + Math.floor(rng() * 5);
   const numAcero = Math.floor(rng() * 4);
+  const numTitanio = Math.floor(rng() * 2);
   const cofres: CofreColocado[] = [];
 
   for (let i = 0; i < numHierro; i++) {
@@ -147,6 +148,10 @@ export function poblarTesoros(
   }
   for (let i = 0; i < numAcero; i++) {
     const cofre = colocarCofre(celdas, validas, 'acero', rng);
+    if (cofre) cofres.push(cofre);
+  }
+  for (let i = 0; i < numTitanio; i++) {
+    const cofre = colocarCofre(celdas, validas, 'titanio', rng);
     if (cofre) cofres.push(cofre);
   }
 

@@ -57,11 +57,12 @@ const acero = cofres.filter((x) => x.cofre === 'acero').length;
 const titanio = cofres.filter((x) => x.cofre === 'titanio').length;
 assert(hierro >= 1 && hierro <= 5, `hierro 1–5 (${hierro})`);
 assert(acero >= 0 && acero <= 3, `acero 0–3 (${acero})`);
-assert(titanio === 0, 'titanio no se genera en F2');
+assert(titanio >= 0 && titanio <= 1, `titanio 0–1 (${titanio})`);
 assert(cofres.every((x) => x.esTransitable === false), 'los cofres bloquean la celda');
 const llaves = celdas.filter((x) => x.llave !== null);
 assert(hierro === 0 || llaves.some((x) => x.llave === 'hierro'), 'garantiza llave de hierro');
 assert(acero === 0 || llaves.some((x) => x.llave === 'acero'), 'garantiza llave de acero');
+assert(!llaves.some((x) => x.llave === 'titanio'), 'la llave de titanio no se coloca en salas');
 assert(conectado(nodo), 'la conectividad se conserva');
 
 const otro = generarNodo({ nombre: 'mazmorra', version: 1, seed: semilla, params: {} }, 60, 60);
@@ -79,15 +80,27 @@ const r = poblarTesoros(sintetico, [{ fila: 2, columna: 2, alto: 6, ancho: 6 }],
 assert(r.cofres.length === 1 && r.cofres[0].tipo === 'hierro', 'rng 0 → 1 cofre de hierro');
 assert(r.llaves.length === 1 && r.llaves[0].tipo === 'hierro', 'rng 0 → 1 llave de hierro');
 
+const sintetico2 = mapa(21, 21);
+for (let f = 1; f <= 18; f++) {
+  for (let c = 1; c <= 18; c++) sintetico2[f][c].esTransitable = true;
+}
+let tirada = 0;
+const rngTitanio = () => (tirada++ === 2 ? 0.999 : 0);
+const r2 = poblarTesoros(sintetico2, [{ fila: 2, columna: 2, alto: 18, ancho: 18 }], rngTitanio);
+assert(r2.cofres.some((x) => x.tipo === 'titanio'), 'la tirada alta genera cofre de titanio');
+
 for (let s = 1; s <= 10; s++) {
   const n = generarNodo({ nombre: 'mazmorra', version: 1, seed: s * 7919, params: {} }, 40, 40);
   const planas = n.flat();
   const ch = planas.filter((x) => x.cofre === 'hierro').length;
   const ca = planas.filter((x) => x.cofre === 'acero').length;
+  const ct = planas.filter((x) => x.cofre === 'titanio').length;
   assert(ch >= 1 && ch <= 5, `semilla ${s}: hierro 1–5 (${ch})`);
   assert(ca >= 0 && ca <= 3, `semilla ${s}: acero 0–3 (${ca})`);
+  assert(ct >= 0 && ct <= 1, `semilla ${s}: titanio 0–1 (${ct})`);
   assert(planas.filter((x) => x.llave === 'hierro').length === (ch > 0 ? 1 : 0), `semilla ${s}: llave de hierro`);
   assert(planas.filter((x) => x.llave === 'acero').length === (ca > 0 ? 1 : 0), `semilla ${s}: llave de acero`);
+  assert(!planas.some((x) => x.llave === 'titanio'), `semilla ${s}: sin llave de titanio en salas`);
   assert(conectado(n), `semilla ${s}: conectividad`);
 }
 

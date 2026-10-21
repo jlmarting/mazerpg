@@ -12,4 +12,9 @@ assert(oro.peso === 0.01, 'el oro pesa 0.01 kg por moneda');
 assert(oro.apilable === true, 'el oro se apila');
 assert(Math.abs(pesoTotal(equipoVacio(), { oro: 100 }) - 1) < 1e-9, '100 monedas pesan 1 kg');
 
+for (const id of ['llave_hierro', 'llave_acero', 'llave_titanio']) {
+  const it = ITEMS[id];
+  assert(!!it && it.tipo === 'material' && it.peso === 0.05 && it.apilable, `llave ${id} material 0,05 kg`);
+}
+
 console.log('items.helpers: todas las comprobaciones pasan');

@@ -107,4 +107,16 @@ export const ITEMS: Record<string, ItemDef> = {
     id: 'oro', nombre: 'Moneda de oro', tipo: 'material', peso: 0.01, apilable: true,
     descripcion: 'Moneda de oro. Pesa 10 g.',
   },
+  llave_hierro: {
+    id: 'llave_hierro', nombre: 'Llave de hierro', tipo: 'material', peso: 0.05, apilable: true,
+    descripcion: 'Abre todos los cofres de hierro.',
+  },
+  llave_acero: {
+    id: 'llave_acero', nombre: 'Llave de acero', tipo: 'material', peso: 0.05, apilable: true,
+    descripcion: 'Abre todos los cofres de acero.',
+  },
+  llave_titanio: {
+    id: 'llave_titanio', nombre: 'Llave de titanio', tipo: 'material', peso: 0.05, apilable: true,
+    descripcion: 'Abre el cofre de titanio.',
+  },
 };

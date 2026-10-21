@@ -15,6 +15,7 @@ import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
+import { LLAVE_POR_COFRE, oroDeCofre, puedeAbrirCofre } from './core/tesoros';
 import { sanearEquipoGuardado } from './core/inventario';
 import { GestorTrueques, clavePar } from './core/gestorTrueques';
 import { aplicarIntercambio, sanearCesta, type EstadoParte } from './core/intercambio';
@@ -2441,6 +2442,11 @@ class Game implements IGame {
 
         if (!esMovimientoValido) {
             console.warn(`resolverAccion: Movimiento inválido para ${entidad.nombre} hacia (${sigFila}, ${sigColumna}) desde (${entidad.fila}, ${entidad.columna})`);
+            const celdaObjetivo = this.mapaLaberinto[sigFila][sigColumna];
+            if (celdaObjetivo?.cofre && entidad === this.protagonista) {
+                this.intentarAbrirCofre(sigFila, sigColumna, id);
+                return;
+            }
         }
 
         if (!esMovimientoValido && (typeof (entidad as any).puedeCavar === 'function' ? (entidad as any).puedeCavar() : (entidad as any).tienePico)) {
@@ -2514,6 +2520,16 @@ class Game implements IGame {
                 this.renderer.invalidarCacheLaberinto();
                 this.enviarMultiplayer({ tipo: 'shield_collected', f: sigFila, c: sigColumna, tick: deltaEscudo.tick });
                 this.registrarEventoLog(`${entidad.nombre} recoge escudo: inmunidad 30 s.`);
+            }
+            if (celdaNueva.llave && entidad === this.protagonista) {
+                const tipoLlave = celdaNueva.llave;
+                this.protagonista.recibirBotin([{ id: LLAVE_POR_COFRE[tipoLlave], cantidad: 1 }]);
+                const deltaLlave = this.construirDelta(sigFila, sigColumna, { tipo: 'objeto', campo: 'llave', valor: null }, id);
+                this.aplicarDeltaAutorizado(deltaLlave);
+                this.renderer.invalidarCacheLaberinto();
+                this.enviarMultiplayer({ tipo: 'llave_recogida', f: sigFila, c: sigColumna, tick: deltaLlave.tick });
+                this.guardarSesionActual();
+                this.registrarEventoLog(`Recogida: llave de ${tipoLlave}.`);
             }
             if (enBurbuja) {
                 this.verificarPortal(entidad);
@@ -2826,9 +2842,32 @@ class Game implements IGame {
     this.registrarEventoLog(`¡Botín en el suelo (${f},${c}): ${botin.map((b) => ITEMS[b.id]?.nombre ?? b.id).join(', ')}!`);
   }
 
+  /** Apertura bump-to-open: solo el protagonista, llave reutilizable, oro directo. */
+  private intentarAbrirCofre(f: number, c: number, id: string): void {
+    const celda = this.mapaLaberinto[f]?.[c];
+    if (!celda?.cofre) return;
+    const tipo = celda.cofre;
+    if (celda.cofreAbierto) {
+      this.registrarEventoLog('El cofre ya está abierto.');
+      return;
+    }
+    if (!puedeAbrirCofre(tipo, this.protagonista.inventario)) {
+      this.registrarEventoLog(`Cofre de ${tipo} cerrado: necesitas la llave de ${tipo}.`);
+      return;
+    }
+    const delta = this.construirDelta(f, c, { tipo: 'cofre', abierto: true }, id);
+    if (!this.aplicarDeltaAutorizado(delta)) return;
+    const oro = oroDeCofre(tipo);
+    this.protagonista.recibirBotin([{ id: 'oro', cantidad: oro }]);
+    this.renderer.invalidarCacheLaberinto();
+    this.enviarMultiplayer({ tipo: 'cofre_abierto', f, c, tick: delta.tick });
+    this.guardarSesionActual();
+    this.registrarEventoLog(`¡Cofre de ${tipo} abierto! +${oro} monedas.`);
+    if (document.getElementById('equipoModal')?.style.display === 'flex') this.lobbyManager.renderEquipo();
+  }
+
   /** Recoge los drops de una celda (solo el protagonista). */
-  recogerDropsEn(f: number, c: number, entidad: any): void {
-    if (entidad !== this.protagonista) return;
+  recogerDropsEn(f: number, c: number, entidad: any): void {    if (entidad !== this.protagonista) return;
     const aqui = this.dropsSuelo.filter((d) => d.f === f && d.c === c);
     if (aqui.length === 0) return;
     this.dropsSuelo = this.dropsSuelo.filter((d) => !(d.f === f && d.c === c));
@@ -3655,6 +3694,16 @@ class Game implements IGame {
             if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
             // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'burbuja', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
+            this.renderer?.invalidarCacheLaberinto();
+            break;
+        case 'cofre_abierto':
+            if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'cofre', abierto: true }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
+            this.renderer?.invalidarCacheLaberinto();
+            break;
+        case 'llave_recogida':
+            if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'llave', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
         case 'dig_completed':

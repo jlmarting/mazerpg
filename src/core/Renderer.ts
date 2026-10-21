@@ -253,6 +253,7 @@ export class Renderer {
 
     const x = (entidad.visualColumna - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
     const y = (entidad.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+    const tamEntidad = TAMANO_CELDA * (entidad.escalaVisual ?? 1);
 
     this.ctx.save();
 
@@ -301,17 +302,17 @@ export class Renderer {
                 keyADibujar, clase, entidad.estadoActual, aparienciaEfectiva(clase, entidad.apariencia));
             if (variante) keyADibujar = variante;
         }
-        dibujado = this.spriteManager.dibujarSprite(this.ctx, keyADibujar, x - TAMANO_CELDA / 2, y - TAMANO_CELDA / 2, TAMANO_CELDA, TAMANO_CELDA);
+        dibujado = this.spriteManager.dibujarSprite(this.ctx, keyADibujar, x - tamEntidad / 2, y - tamEntidad / 2, tamEntidad, tamEntidad);
     }
 
     if (!dibujado) {
         if (!entidad.estaVivo) {
-            this.dibujarTumba(x, y, TAMANO_CELDA);
+            this.dibujarTumba(x, y, tamEntidad);
         } else {
             if (esNPC) {
-                this.dibujarNPCFallback(entidad, x, y, TAMANO_CELDA);
+                this.dibujarNPCFallback(entidad, x, y, tamEntidad);
             } else {
-                this.dibujarJugadorFallback(entidad, x, y, TAMANO_CELDA);
+                this.dibujarJugadorFallback(entidad, x, y, tamEntidad);
             }
         }
     }
@@ -319,8 +320,18 @@ export class Renderer {
     this.ctx.restore();
 
     // Dibujar elementos adicionales
-    this.dibujarBarraVida(entidad, offset, config, mapaLaberinto, x, y);
+    this.dibujarBarraVida(entidad, offset, config, mapaLaberinto, x, y, tamEntidad);
     this.dibujarBubbleChat(entidad, offset, config, x, y);
+
+    // Balrog: etiqueta roja visible a distancia
+    if (entidad.tipo === 'Balrog' && entidad.estaVivo) {
+        this.ctx.save();
+        this.ctx.fillStyle = '#ff3b30';
+        this.ctx.font = 'bold 12px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('BALROG', x, y - tamEntidad * 0.65);
+        this.ctx.restore();
+    }
 
     // Dibujar etiqueta de nombre para otros jugadores
     if (!esNPC && prefix === 'player') {
@@ -439,6 +450,56 @@ export class Renderer {
       this.ctx.ellipse(x, y + 2, escala, escala * 1.2, 0, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.stroke();
+    } else if (tipo === "Balrog") {
+      const pulso = 0.8 + 0.2 * Math.sin(performance.now() / 160);
+      this.ctx.save();
+      this.ctx.shadowColor = '#ff3300';
+      this.ctx.shadowBlur = 18 * pulso;
+      // Alas
+      this.ctx.fillStyle = '#4a0000';
+      this.ctx.beginPath();
+      this.ctx.moveTo(x - escala * 0.4, y);
+      this.ctx.lineTo(x - escala * 1.8, y - escala * 0.9);
+      this.ctx.lineTo(x - escala * 1.2, y + escala * 0.8);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.beginPath();
+      this.ctx.moveTo(x + escala * 0.4, y);
+      this.ctx.lineTo(x + escala * 1.8, y - escala * 0.9);
+      this.ctx.lineTo(x + escala * 1.2, y + escala * 0.8);
+      this.ctx.closePath();
+      this.ctx.fill();
+      // Cuerpo
+      this.ctx.fillStyle = '#b30000';
+      this.ctx.beginPath();
+      this.ctx.ellipse(x, y, escala * 1.1, escala * 1.35, 0, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.strokeStyle = '#ffcc00';
+      this.ctx.lineWidth = 2;
+      this.ctx.stroke();
+      // Cuernos
+      this.ctx.strokeStyle = '#1a0000';
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.moveTo(x - escala * 0.6, y - escala * 0.9);
+      this.ctx.lineTo(x - escala * 0.9, y - escala * 1.6);
+      this.ctx.moveTo(x + escala * 0.6, y - escala * 0.9);
+      this.ctx.lineTo(x + escala * 0.9, y - escala * 1.6);
+      this.ctx.stroke();
+      // Ojos
+      this.ctx.fillStyle = '#ffe600';
+      this.ctx.beginPath();
+      this.ctx.arc(x - escala * 0.35, y - escala * 0.2, escala * 0.14, 0, Math.PI * 2);
+      this.ctx.arc(x + escala * 0.35, y - escala * 0.2, escala * 0.14, 0, Math.PI * 2);
+      this.ctx.fill();
+      // Boca
+      this.ctx.strokeStyle = '#1a0000';
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.moveTo(x - escala * 0.3, y + escala * 0.45);
+      this.ctx.quadraticCurveTo(x, y + escala * 0.7, x + escala * 0.3, y + escala * 0.45);
+      this.ctx.stroke();
+      this.ctx.restore();
     } else {
       this.ctx.fillStyle = '#5C4033';
       this.ctx.fillRect(x - escala, y - escala/2, escala * 2, escala * 1.5);
@@ -449,7 +510,7 @@ export class Renderer {
   /**
    * Dibuja la barra de vida sobre una entidad.
    */
-  dibujarBarraVida(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig, mapaLaberinto?: Celda[][], preCalcX?: number, preCalcY?: number) {
+  dibujarBarraVida(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig, mapaLaberinto?: Celda[][], preCalcX?: number, preCalcY?: number, tamanoEntidad: number = config.TAMANO_CELDA) {
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, vistaDebugActivada, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
 
@@ -466,9 +527,9 @@ export class Renderer {
         }
     }
 
-    const x = preCalcX ? preCalcX - TAMANO_CELDA / 2 + 2 : (entidad.visualColumna - colOffset) * TAMANO_CELDA + 2;
-    const y = preCalcY ? preCalcY - TAMANO_CELDA / 2 + 2 : (entidad.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2;
-    const anchoBarra = TAMANO_CELDA - 4;
+    const x = preCalcX ? preCalcX - tamanoEntidad / 2 + 2 : (entidad.visualColumna - colOffset) * TAMANO_CELDA + 2;
+    const y = preCalcY ? preCalcY - tamanoEntidad / 2 + 2 : (entidad.visualFila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + 2;
+    const anchoBarra = tamanoEntidad - 4;
     const altoBarra = 4;
 
     const pct = entidad.vidaActual / entidad.vidaMaxima;

@@ -131,6 +131,9 @@ const recogerLlaveCerca = `(() => {
   if (df === 1) { actual.muros.inferior = false; cel.muros.superior = false; }
   if (dc === -1) { actual.muros.izquierdo = false; cel.muros.derecho = false; }
   if (dc === 1) { actual.muros.derecho = false; cel.muros.izquierdo = false; }
+  g.protagonista.enCombateCon = null;
+  g.listaDeEnemigos.forEach((e) => { e.enCombateCon = null; });
+  g.listaDeEnemigos = g.listaDeEnemigos.filter((e) => !(e.fila === nf && e.columna === nc));
   g.resolverAccion(g.idLocalActivo, { tipo: 'mover', df, dc });
   return {
     llave: g.protagonista.inventario.llave_acero ?? 0,
@@ -218,6 +221,12 @@ async function main() {
     await esperar(cdp, solo, 'window.game.motorIniciado === true', 10000, 'motor solo');
 
     const cerca = await evaluar(cdp, solo, setupCerca);
+    await evaluar(cdp, solo, `(() => {
+      const g = window.game;
+      g.protagonista.enCombateCon = null;
+      g.listaDeEnemigos.forEach((e) => { e.enCombateCon = null; });
+      g.listaDeEnemigos = g.listaDeEnemigos.filter((e) => !(e.fila === ${cerca.nf} && e.columna === ${cerca.nc}));
+    })()`);
     await evaluar(cdp, solo, `window.game.resolverAccion(window.game.idLocalActivo, { tipo: 'mover', df: ${cerca.df}, dc: ${cerca.dc} })`);
     const sinLlave = await evaluar(cdp, solo, `({
       abierto: window.game.mapaLaberinto[${cerca.nf}][${cerca.nc}].cofreAbierto,
@@ -226,6 +235,7 @@ async function main() {
     if (sinLlave.abierto || !sinLlave.log) throw new Error('sin llave: no bloqueó o no avisó');
 
     await evaluar(cdp, solo, `window.game.protagonista.recibirBotin([{ id: 'llave_hierro', cantidad: 1 }])`);
+    await evaluar(cdp, solo, `window.game.protagonista.enCombateCon = null; window.game.listaDeEnemigos.forEach((e) => { e.enCombateCon = null; })`);
     const oroAntes = await evaluar(cdp, solo, `window.game.protagonista.inventario.oro ?? 0`);
     await evaluar(cdp, solo, `window.game.resolverAccion(window.game.idLocalActivo, { tipo: 'mover', df: ${cerca.df}, dc: ${cerca.dc} })`);
     const trasAbrir = await evaluar(cdp, solo, `({
@@ -279,9 +289,16 @@ async function main() {
     }
 
     await evaluar(cdp, host, `window.game.protagonista.recibirBotin([{ id: 'llave_hierro', cantidad: 1 }])`);
+    await evaluar(cdp, host, `window.game.protagonista.enCombateCon = null; window.game.listaDeEnemigos.forEach((e) => { e.enCombateCon = null; })`);
     await evaluar(cdp, host, `window.game.resolverAccion(window.game.idLocalActivo, { tipo: 'mover', df: ${posiciones.cofre.df}, dc: ${posiciones.cofre.dc} })`);
     await esperar(cdp, invitado, `window.game.mapaLaberinto[${posiciones.cofre.nf}][${posiciones.cofre.nc}].cofreAbierto === true`, 8000, 'invitado ve cofre abierto');
 
+    await evaluar(cdp, host, `(() => {
+      const g = window.game;
+      g.protagonista.enCombateCon = null;
+      g.listaDeEnemigos.forEach((e) => { e.enCombateCon = null; });
+      g.listaDeEnemigos = g.listaDeEnemigos.filter((e) => !(e.fila === ${posiciones.llave.nf} && e.columna === ${posiciones.llave.nc}));
+    })()`);
     await evaluar(cdp, host, `window.game.resolverAccion(window.game.idLocalActivo, { tipo: 'mover', df: ${posiciones.llave.df}, dc: ${posiciones.llave.dc} })`);
     await esperar(cdp, invitado, `window.game.mapaLaberinto[${posiciones.llave.nf}][${posiciones.llave.nc}].llave === null`, 8000, 'invitado ve llave recogida');
 

@@ -1,6 +1,7 @@
 import { Celda } from './Celda';
-import { generarLaberintoBSP, mulberry32 } from './generation';
+import { generarLaberintoBSP, mulberry32, type SalaBSP } from './generation';
 import { poblarObjetosAmbiente } from './objetosAmbiente';
+import { poblarTesoros } from './poblarTesoros';
 import type { GenSpec } from './mundo';
 
 export { mulberry32 };
@@ -10,6 +11,7 @@ export type GeneradorFn = (
   filas: number,
   columnas: number,
   params: Record<string, number | string>,
+  salas?: SalaBSP[],
 ) => Celda[][];
 
 function crearMapaVacio(filas: number, columnas: number): Celda[][] {
@@ -46,9 +48,10 @@ export function generarMazmorra(
   filas: number,
   columnas: number,
   _params: Record<string, number | string>,
+  salas?: SalaBSP[],
 ): Celda[][] {
   const mapa = crearMapaVacio(filas, columnas);
-  generarLaberintoBSP(mapa, rng);
+  generarLaberintoBSP(mapa, rng, salas);
   return mapa;
 }
 
@@ -294,10 +297,12 @@ export function generarNodo(gen: GenSpec, filas: number, columnas: number): Celd
     throw new Error(`Versión no soportada para ${gen.nombre}: ${gen.version}`);
   }
   const rng = mulberry32(gen.seed);
-  const celdas = generador(rng, filas, columnas, gen.params);
+  const salas: SalaBSP[] = [];
+  const celdas = generador(rng, filas, columnas, gen.params, salas);
   // Un nodo puede pedir un interior limpio (p.ej. la casa: sin comida/burbujas/portales).
   if (gen.params.sinAmbientales !== 1) {
     poblarObjetosAmbiente(celdas, rng);
+    if (gen.nombre === 'mazmorra') poblarTesoros(celdas, salas, rng);
   }
   return celdas;
 }

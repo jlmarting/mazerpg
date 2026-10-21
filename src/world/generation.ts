@@ -2,6 +2,13 @@ import { Celda } from './Celda';
 
 const TAMANO_MINIMO_NODO = 6;
 
+export interface SalaBSP {
+  fila: number;
+  columna: number;
+  alto: number;
+  ancho: number;
+}
+
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return function () {
@@ -41,7 +48,7 @@ class NodoEspacial {
   ancho: number;
   hijoIzquierdo: NodoEspacial | null = null;
   hijoDerecho: NodoEspacial | null = null;
-  sala: { fila: number; columna: number; alto: number; ancho: number } | null = null;
+  sala: SalaBSP | null = null;
   mapaLaberinto: Celda[][];
   rng: () => number;
 
@@ -105,10 +112,10 @@ class NodoEspacial {
     }
   }
 
-  obtenerSala(): { fila: number; columna: number; alto: number; ancho: number } | null {
+  obtenerSala(): SalaBSP | null {
     if (this.sala) return this.sala;
-    let salaIzq: { fila: number; columna: number; alto: number; ancho: number } | null = null;
-    let salaDer: { fila: number; columna: number; alto: number; ancho: number } | null = null;
+    let salaIzq: SalaBSP | null = null;
+    let salaDer: SalaBSP | null = null;
 
     if (this.hijoIzquierdo) salaIzq = this.hijoIzquierdo.obtenerSala();
     if (this.hijoDerecho) salaDer = this.hijoDerecho.obtenerSala();
@@ -117,6 +124,16 @@ class NodoEspacial {
     if (!salaIzq) return salaDer;
     if (!salaDer) return salaIzq;
     return this.rng() > 0.5 ? salaIzq : salaDer;
+  }
+
+  /** Recorre el árbol y acumula las salas hoja (las que existen de verdad). */
+  recolectarSalas(destino: SalaBSP[]): void {
+    if (this.sala) {
+      destino.push(this.sala);
+      return;
+    }
+    if (this.hijoIzquierdo) this.hijoIzquierdo.recolectarSalas(destino);
+    if (this.hijoDerecho) this.hijoDerecho.recolectarSalas(destino);
   }
 
   crearPasilloEntre(salaA: { fila: number; columna: number; alto: number; ancho: number }, salaB: { fila: number; columna: number; alto: number; ancho: number }) {
@@ -143,7 +160,7 @@ class NodoEspacial {
   }
 }
 
-export function generarLaberintoBSP(mapaLaberinto: Celda[][], rng: () => number = mulberry32(Date.now())) {
+export function generarLaberintoBSP(mapaLaberinto: Celda[][], rng: () => number = mulberry32(Date.now()), salas?: SalaBSP[]) {
   const filas = mapaLaberinto.length;
   const columnas = filas > 0 ? mapaLaberinto[0].length : 0;
 
@@ -166,6 +183,7 @@ export function generarLaberintoBSP(mapaLaberinto: Celda[][], rng: () => number 
     }
   }
   raiz.crearSalasYPasillos();
+  if (salas) raiz.recolectarSalas(salas);
 
   // Post-procesamiento: asegurar que celdas transitables adyacentes no tengan muros entre ellas
   for (let f = 0; f < filas; f++) {

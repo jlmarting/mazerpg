@@ -204,6 +204,10 @@ async function main() {
     else pana('esquema UI de acciones aplicado', '— body sin clase esquema-*');
     if (await evaluar(cdp, sessionId, `!!document.getElementById('actionDock')`)) pase('dock táctil presente en el DOM');
     else pana('dock táctil presente en el DOM', '— #actionDock ausente');
+    if (await evaluar(cdp, sessionId, `getComputedStyle(document.getElementById('actionDock')).display === 'flex'`)) pase('dock visible en pantalla');
+    else pana('dock visible en pantalla', '— #actionDock no está en display:flex');
+    if (await evaluar(cdp, sessionId, `getComputedStyle(document.querySelector('#btnFireballAction .btn-text')).display === 'none'`)) pase('acciones del dock en modo icono (sin texto)');
+    else pana('acciones del dock en modo icono (sin texto)', '— .btn-text visible');
 
     // El spawn es aleatorio: si cae sobre un conector (1/3600 aprox) el cruce ocurre
     // solo. Normalizamos antes de las aserciones para que el smoke sea determinista.

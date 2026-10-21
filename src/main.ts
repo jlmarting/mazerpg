@@ -1327,7 +1327,7 @@ class Game implements IGame {
    */
   aplicarEsquemaUI(): void {
     const body = document.body;
-    body.classList.remove('esquema-acordeon', 'esquema-acordeon-movil');
+    body.classList.remove('esquema-acordeon', 'esquema-acordeon-movil', 'dock-collapsed');
     body.classList.add('esquema-dock');
 
     const contenido = document.querySelector('.actions-content');
@@ -1336,7 +1336,11 @@ class Game implements IGame {
     if (contenido && dock && contenido.parentElement !== dock) {
       dock.appendChild(contenido);
     }
-    actionsMenu?.classList.remove('visible');
+    if (dock) dock.style.display = 'flex';
+    if (actionsMenu) {
+      actionsMenu.classList.remove('visible');
+      actionsMenu.style.display = 'none';
+    }
     this.ajustarDimensiones();
   }
 

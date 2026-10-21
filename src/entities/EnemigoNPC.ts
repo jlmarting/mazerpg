@@ -9,6 +9,8 @@ export class EnemigoNPC extends EntidadRPG {
   radioDeVisionIA: number = 5;
   huyendoHasta: number = 0;
   inmovilizadoHasta: number = 0;
+  /** F3: evita duplicar la llave de titanio si llegan varios impactos tras la muerte. */
+  llaveSoltada: boolean = false;
 
   constructor(fila: number, columna: number, nombre: string, tipo: string, id: number, dificultad: string = 'dificil') {
     super(fila, columna, nombre);

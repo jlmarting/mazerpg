@@ -11,6 +11,7 @@ import { NetworkManager } from './network/NetworkManager';
 import { NetworkManagerHttp } from './network/NetworkManagerHttp';
 import { SignalingClient, crearSignalingClient, getSignalingUrl } from './network/SignalingClient';
 import { eliminarMurosEntre } from './world/generation';
+import { elegirCeldaLejos, elegirCeldaParaLlave } from './world/spawn';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
@@ -1580,6 +1581,20 @@ class Game implements IGame {
         this.setupEntity(e);
         this.listaDeEnemigos.push(e);
     }
+
+    // F3: un Balrog por mazmorra, lejos del punto de entrada.
+    if (this.nodoActivo?.tipo === 'mazmorra') {
+        const pos = elegirCeldaLejos(
+            this.mapaLaberinto,
+            { fila: this.protagonista.fila, columna: this.protagonista.columna },
+            20,
+        );
+        if (pos) {
+            const boss = new EnemigoNPC(pos.fila, pos.columna, 'Balrog', 'Balrog', 1000, this.config.dificultad);
+            this.setupEntity(boss);
+            this.listaDeEnemigos.push(boss);
+        }
+    }
   }
 
   obtenerPosicionInicioAleatoria(): {f: number, c: number} {
@@ -2866,6 +2881,34 @@ class Game implements IGame {
     if (document.getElementById('equipoModal')?.style.display === 'flex') this.lobbyManager.renderEquipo();
   }
 
+  /** F3: el Balrog suelta la llave de titanio como celda persistente (no drop volátil). */
+  private soltarLlaveTitanio(enemigo: EnemigoNPC): void {
+    if (enemigo.llaveSoltada) return;
+    enemigo.llaveSoltada = true;
+    const pos = elegirCeldaParaLlave(this.mapaLaberinto, enemigo.fila, enemigo.columna);
+    if (!pos) {
+      this.protagonista.recibirBotin([{ id: 'llave_titanio', cantidad: 1 }]);
+      this.registrarEventoLog('¡El Balrog suelta la llave de titanio! (directa al inventario)');
+      return;
+    }
+    const delta = this.construirDelta(pos.fila, pos.columna, { tipo: 'objeto', campo: 'llave', valor: 'titanio' }, this.idLocalActivo);
+    if (!this.aplicarDeltaAutorizado(delta)) {
+      this.protagonista.recibirBotin([{ id: 'llave_titanio', cantidad: 1 }]);
+      this.registrarEventoLog('¡El Balrog suelta la llave de titanio! (directa al inventario)');
+      return;
+    }
+    this.renderer.invalidarCacheLaberinto();
+    this.enviarMultiplayer({ tipo: 'llave_soltada', f: pos.fila, c: pos.columna, tick: delta.tick });
+    this.registrarEventoLog('¡El Balrog suelta la llave de titanio!');
+  }
+
+  /** F3: solo el lado autoritativo decide el drop del boss (host o solo). */
+  private alMorirEnemigo(enemigo: EnemigoNPC): void {
+    if (enemigo.tipo !== 'Balrog') return;
+    if (!this.esHost && this.mpActivo) return;
+    this.soltarLlaveTitanio(enemigo);
+  }
+
   /** Recoge los drops de una celda (solo el protagonista). */
   recogerDropsEn(f: number, c: number, entidad: any): void {    if (entidad !== this.protagonista) return;
     const aqui = this.dropsSuelo.filter((d) => d.f === f && d.c === c);
@@ -3363,6 +3406,7 @@ class Game implements IGame {
                 if (xpVal) xpVal.textContent = this.protagonista.puntosExperiencia.toString();
                 this.soltarBotin(o.fila, o.columna, undefined, sortearOro(o.tipo));
             }
+            if (o.tipo === 'Balrog') this.alMorirEnemigo(o as EnemigoNPC);
         }
     });
   }
@@ -3706,6 +3750,11 @@ class Game implements IGame {
             this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'llave', valor: null }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
             this.renderer?.invalidarCacheLaberinto();
             break;
+        case 'llave_soltada':
+            if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
+            this.aplicarDeltaAutorizado(this.construirDelta(msg.f, msg.c, { tipo: 'objeto', campo: 'llave', valor: 'titanio' }, idEmisor, typeof msg.tick === 'number' ? msg.tick : null));
+            this.renderer?.invalidarCacheLaberinto();
+            break;
         case 'dig_completed':
             if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
             // Delta del mundo (§3a): sin gate de burbuja; mandan árbitro y dueño.
@@ -3792,7 +3841,10 @@ class Game implements IGame {
         case 'npc_damaged_by_guest':
             if (this.esHost) {
                 const targetNpc = this.listaDeEnemigos.find(e => e.id === msg.id);
-                if (targetNpc) targetNpc.recibirDano(msg.dano);
+                if (targetNpc) {
+                    targetNpc.recibirDano(msg.dano);
+                    if (!targetNpc.estaVivo) this.alMorirEnemigo(targetNpc);
+                }
             }
             break;
         case 'victoria':

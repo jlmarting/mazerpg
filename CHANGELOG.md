@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Balrog y cofre de titanio** (F3): un Balrog por mazmorra con stats fijas (200 HP, 500 XP), escala visual 1,5× y fallback programático llamativo; cofre de titanio 0–1 (100 oro) y llave de titanio persistente que el boss suelta al morir, con autoridad del host también si mata un invitado; smoke 1 y 2 clientes (`b33dab7`…`a0cb1e3`)
 - **Cofres, llaves y salas de tesoro** (F2): 1–5 cofres de hierro y 0–3 de acero en salas del BSP, llave reutilizable garantizada por tipo, apertura bump-to-open con mensaje de llave faltante, oro directo al inventario (10/30), persistencia por deltas LWW, secciones de mapa `|C`/`|K` para invitados, render de cofres/llaves y HUD de llaves; smoke 1 y 2 clientes (`9ee3995`…`542b3bf`)
 - **Oro**: material apilable con peso (10 g/moneda), drops por tipo de enemigo al morir (Goblin 1–3 … Balrog 25–50), recogida al pisar y contador en HUD + dropdown de estadísticas — F1 de la serie oro/tesoros (`eea1e49`, `e91714f`, `44402a5`)
 - **Smoke de multijugador Firebase** (`scripts/smoke_firebase.mjs`): 2 clientes reales con claves inyectadas — sala + conexión + posición sincronizada; `SMOKE_GUEST_URL` permite probar un invitado contra la web desplegada (cross-origin Pages↔local). Veredicto del fallo del mando en Pages: **sala fantasma** en la lista (no bug de código)

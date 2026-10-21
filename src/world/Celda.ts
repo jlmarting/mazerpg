@@ -1,3 +1,5 @@
+import type { TipoCofre, TipoLlave } from '../core/tesoros';
+
 export interface Muros {
   superior: boolean;
   derecho: boolean;
@@ -16,6 +18,11 @@ export class Celda {
   burbuja: { nombreSecreto: string, destino: string } | null = null;
   esPortal: boolean = false;
   tienePico: boolean = false;
+  /** Cofre de tesoro: ocupa la celda (no transitable) hasta que se abre. */
+  cofre: TipoCofre | null = null;
+  cofreAbierto: boolean = false;
+  /** Llave depositada en el suelo; se recoge al pisar. */
+  llave: TipoLlave | null = null;
   golpesCavar: number = 0;
   tipoEscenario: 'ninguno' | 'puerta' | 'trampa' = 'ninguno';
   estadoEscenario: string = 'idle';

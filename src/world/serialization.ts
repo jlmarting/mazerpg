@@ -41,6 +41,8 @@ function serializarColaV2(mapaLaberinto: Celda[][], filas: number, columnas: num
   let seccionS = "";
   let seccionD = "";
   let seccionE = "";
+  let seccionC = "";
+  let seccionK = "";
   for (let f = 0; f < filas; f++) {
     for (let c = 0; c < columnas; c++) {
       const celda = mapaLaberinto[f][c];
@@ -54,12 +56,20 @@ function serializarColaV2(mapaLaberinto: Celda[][], filas: number, columnas: num
       if (celda.tipoEscenario !== 'ninguno') {
         seccionE += (seccionE ? ';' : '') + f.toString(36) + ',' + c.toString(36) + ',' + celda.tipoEscenario + ',' + celda.estadoEscenario;
       }
+      if (celda.cofre !== null) {
+        seccionC += (seccionC ? ';' : '') + f.toString(36) + ',' + c.toString(36) + ',' + celda.cofre + ',' + (celda.cofreAbierto ? '1' : '0');
+      }
+      if (celda.llave !== null) {
+        seccionK += (seccionK ? ';' : '') + f.toString(36) + ',' + c.toString(36) + ',' + celda.llave;
+      }
     }
   }
   let cola = "";
   if (seccionS) cola += "|S" + seccionS;
   if (seccionD) cola += "|D" + seccionD;
   if (seccionE) cola += "|E" + seccionE;
+  if (seccionC) cola += "|C" + seccionC;
+  if (seccionK) cola += "|K" + seccionK;
   return cola;
 }
 
@@ -133,6 +143,19 @@ function aplicarColaV2(mapaLaberinto: Celda[][], filas: number, columnas: number
           celda.tipoEscenario = campos[2];
           celda.estadoEscenario = campos.slice(3).join(',');
         }
+      });
+    } else if (letra === 'C') {
+      aplicarSeccion(mapaLaberinto, filas, columnas, parte.substring(1), (celda, campos) => {
+        const tipo = campos[2];
+        if (tipo !== 'hierro' && tipo !== 'acero' && tipo !== 'titanio') return;
+        celda.cofre = tipo;
+        celda.cofreAbierto = campos[3] === '1';
+      });
+    } else if (letra === 'K') {
+      aplicarSeccion(mapaLaberinto, filas, columnas, parte.substring(1), (celda, campos) => {
+        const tipo = campos[2];
+        if (tipo !== 'hierro' && tipo !== 'acero' && tipo !== 'titanio') return;
+        celda.llave = tipo;
       });
     }
     // letra desconocida: saltar hasta el próximo | (el split ya la aísla)

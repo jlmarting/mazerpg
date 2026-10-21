@@ -640,14 +640,59 @@ export class Renderer {
       this.ctx.fillText(msj, 10, this.canvas.height - ALTO_UI_BOTTOM + 20 + (i * 15));
     });
 
+    if (!game.juegoTerminado) {
+      const celdaActual = game.mapaLaberinto?.[game.protagonista.fila]?.[game.protagonista.columna];
+      if (celdaActual?.esSalida) {
+        const info = game.esperaInfo;
+        const texto = info
+          ? `EN LA SALIDA — esperando a ${info.esperando} jugador(es)`
+          : 'EN LA SALIDA';
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(0, 80, 40, 0.85)';
+        this.ctx.fillRect(this.canvas.width / 2 - 170, ALTO_UI_TOP + 10, 340, 24);
+        this.ctx.fillStyle = '#7dffb0';
+        this.ctx.font = 'bold 12px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(texto, this.canvas.width / 2, ALTO_UI_TOP + 26);
+        this.ctx.textAlign = 'left';
+        this.ctx.restore();
+      } else if (!game.protagonista.estaVivo) {
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        this.ctx.fillRect(this.canvas.width / 2 - 150, ALTO_UI_TOP + 10, 300, 24);
+        this.ctx.fillStyle = '#ff6666';
+        this.ctx.font = 'bold 12px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('HAS CAÍDO — esperando el final', this.canvas.width / 2, ALTO_UI_TOP + 26);
+        this.ctx.textAlign = 'left';
+        this.ctx.restore();
+      }
+    }
+
     if (game.juegoTerminado) {
       this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
       this.ctx.fillRect(0, ALTO_UI_TOP, this.canvas.width, this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM);
       this.ctx.fillStyle = '#fff';
-      this.ctx.font = 'bold 16px monospace';
       this.ctx.textAlign = 'center';
-      const msjFin = game.protagonista.vidaActual > 0 ? "¡VICTORIA!" : "HAS CAÍDO";
-      this.ctx.fillText(msjFin, this.canvas.width / 2, ALTO_UI_TOP + 100);
+      const resultados = [...(game.resultados ?? [])].sort((a: any, b: any) => b.puntuacion - a.puntuacion);
+      if (resultados.length > 0) {
+        this.ctx.font = 'bold 18px monospace';
+        this.ctx.fillText('RESULTADOS', this.canvas.width / 2, ALTO_UI_TOP + 60);
+        const columnas = [0.15, 0.4, 0.52, 0.62, 0.72, 0.85];
+        const cabeceras = ['JUGADOR', 'ORO', 'XP', 'BAJAS', 'TIEMPO', 'PUNTOS'];
+        this.ctx.font = 'bold 11px monospace';
+        cabeceras.forEach((h, i) => this.ctx.fillText(h, this.canvas.width * columnas[i], ALTO_UI_TOP + 90));
+        this.ctx.font = '12px monospace';
+        resultados.forEach((r: any, idx: number) => {
+          const y = ALTO_UI_TOP + 115 + idx * 20;
+          const valores = [r.nombre, String(r.oro), String(r.xp), String(r.bajas), `${r.segundos}s`, String(r.puntuacion)];
+          valores.forEach((v, i) => this.ctx.fillText(v, this.canvas.width * columnas[i], y));
+        });
+      } else {
+        this.ctx.font = 'bold 16px monospace';
+        const msjFin = game.protagonista.vidaActual > 0 ? "¡VICTORIA!" : "HAS CAÍDO";
+        this.ctx.fillText(msjFin, this.canvas.width / 2, ALTO_UI_TOP + 100);
+      }
       this.ctx.textAlign = 'left';
     }
   }

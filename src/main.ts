@@ -17,6 +17,7 @@ import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
 import { LLAVE_POR_COFRE, oroDeCofre, puedeAbrirCofre } from './core/tesoros';
+import { calcularPuntuacion, type ResultadoPartida } from './core/puntuacion';
 import { sanearEquipoGuardado } from './core/inventario';
 import { GestorTrueques, clavePar } from './core/gestorTrueques';
 import { aplicarIntercambio, sanearCesta, type EstadoParte } from './core/intercambio';
@@ -81,6 +82,14 @@ class Game implements IGame {
     tickRate: 16
   };
   public juegoTerminado: boolean = false;
+  /** Resultados finales (solo o fin de partida MP). */
+  public resultados: ResultadoPartida[] = [];
+  /** Estado de espera en la salida (MP). */
+  public esperaInfo: { total: number; esperando: number } | null = null;
+  public inicioPartida: number = Date.now();
+  private roster: Set<string> | null = null;
+  private ultimoChequeoFin: number = 0;
+  private ultimoProgreso: number = 0;
   /** Mapa de teclas por acción (predeterminado 1-6 / 'e', remapeable persistente). */
   public keybinds: Record<IdAccion, string> = { ...KEYBINDS_DEFECTO };
   /** true mientras el panel ASIGNAR TECLAS espera la siguiente pulsación. */
@@ -440,7 +449,7 @@ class Game implements IGame {
       if (accion === 'radar') this.lanzarRadar(this.protagonista, true);
 
       if (haMovido) {
-        this.comprobarVictoria();
+        this.comprobarSalida();
       }
     });
 
@@ -1278,6 +1287,11 @@ class Game implements IGame {
   iniciarMotorJuego() {
     if (this.motorIniciado) return;
     this.motorIniciado = true;
+    this.inicioPartida = Date.now();
+    this.resultados = [];
+    this.esperaInfo = null;
+    this.roster = null;
+    this.juegoTerminado = false;
     // Quita el overlay de "conectando" (p. ej. el invitado ya tiene el canal P2P).
     this.lobbyManager.hideConnecting();
     this.ui.ocultarLobby();
@@ -1563,7 +1577,7 @@ class Game implements IGame {
 
     const haMovido = this.protagonista.intentarMover(deltaFila, deltaColumna, this);
     if (haMovido) {
-        this.comprobarVictoria();
+        this.comprobarSalida();
         setTimeout(() => {
             if (this.protagonista) this.protagonista.estaCaminando = false;
         }, 150);
@@ -1877,6 +1891,19 @@ class Game implements IGame {
     if (this.esHost) {
       this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
       this.enviarSnapshot();
+      this.verificarFinPartida();
+    } else if (this.mpActivo) {
+      const ahora = Date.now();
+      if (ahora - this.ultimoProgreso >= 1000) {
+        this.ultimoProgreso = ahora;
+        this.enviarMultiplayer({
+          tipo: 'progreso',
+          id: this.idLocalActivo,
+          oro: this.protagonista.inventario.oro ?? 0,
+          xp: this.protagonista.puntosExperiencia,
+          bajas: this.protagonista.bajas,
+        });
+      }
     }
   }
 
@@ -2095,12 +2122,94 @@ class Game implements IGame {
     }));
   }
 
-  comprobarVictoria() {
-    if (this.protagonista.fila === this.config.NUMERO_FILAS - 1 && this.protagonista.columna === this.config.NUMERO_COLUMNAS - 1) {
+  /** F4: fin en solitario o aviso de espera en MP al pisar la celda de salida. */
+  comprobarSalida(entidad: any = this.protagonista): void {
+    if (entidad !== this.protagonista) return;
+    const celda = this.mapaLaberinto[entidad.fila]?.[entidad.columna];
+    if (!celda?.esSalida) return;
+    if (!this.mpActivo) {
         this.juegoTerminado = true;
+        this.resultados = [this.resultadoLocal()];
         this.registrarEventoLog("¡Has escapado!");
-        if (this.network.activo) this.enviarMultiplayer({ tipo: 'victoria', nick: this.protagonista.nombre });
+        return;
     }
+    this.registrarEventoLog("Has llegado a la salida. Esperando al resto...");
+    this.enviarMultiplayer({
+        tipo: 'posicion',
+        f: entidad.fila, c: entidad.columna, cam: false,
+        id: this.idLocalActivo, nick: this.protagonista.nombre,
+        hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima,
+        oro: this.protagonista.inventario.oro ?? 0,
+        xp: this.protagonista.puntosExperiencia,
+        bajas: this.protagonista.bajas,
+    });
+  }
+
+  private resultadoDeEntidad(nombre: string, oro: number, xp: number, bajas: number): ResultadoPartida {
+    const segundos = Math.max(0, Math.floor((Date.now() - this.inicioPartida) / 1000));
+    const marcador = { oro, xp, bajas, segundos };
+    return { nombre, ...marcador, puntuacion: calcularPuntuacion(marcador) };
+  }
+
+  private resultadoLocal(): ResultadoPartida {
+    return this.resultadoDeEntidad(
+      this.protagonista.nombre,
+      this.protagonista.inventario.oro ?? 0,
+      this.protagonista.puntosExperiencia,
+      this.protagonista.bajas,
+    );
+  }
+
+  private resultadoDeId(id: string): ResultadoPartida {
+    const entidad = this.obtenerEntidadPorId(id);
+    if (!entidad) return this.resultadoDeEntidad(id, 0, 0, 0);
+    const oro = entidad === this.protagonista
+      ? (this.protagonista.inventario.oro ?? 0)
+      : ((entidad as any).oro ?? 0);
+    return this.resultadoDeEntidad(entidad.nombre, oro, entidad.puntosExperiencia, entidad.bajas);
+  }
+
+  private estaEnCeldaSalida(id: string): boolean {
+    const e = this.obtenerEntidadPorId(id);
+    return !!e && !!this.mapaLaberinto[e.fila]?.[e.columna]?.esSalida;
+  }
+
+  /** F4 (host): congela el roster al primer jugador que llega y cierra cuando todos están fuera. */
+  private verificarFinPartida(): void {
+    if (!this.esHost || !this.mpActivo || this.juegoTerminado) return;
+    const ahora = Date.now();
+    if (ahora - this.ultimoChequeoFin < 1000) return;
+    this.ultimoChequeoFin = ahora;
+
+    const todos = [this.idLocalActivo, ...this.remotosActivos.keys()];
+    if (!this.roster && todos.some((id) => this.estaEnCeldaSalida(id))) {
+      this.roster = new Set(todos);
+      this.registrarEventoLog(`Roster congelado: ${this.roster.size} jugador(es).`);
+    }
+    if (!this.roster) return;
+
+    const fuera = (id: string): boolean => {
+      if (id !== this.idLocalActivo && !this.remotosActivos.has(id)) return true;
+      const e = this.obtenerEntidadPorId(id);
+      if (!e || !e.estaVivo) return true;
+      return !!this.mapaLaberinto[e.fila]?.[e.columna]?.esSalida;
+    };
+    const esperando = [...this.roster].filter((id) => !fuera(id)).length;
+    this.esperaInfo = { total: this.roster.size, esperando };
+    this.enviarMultiplayer({ tipo: 'espera', total: this.roster.size, esperando });
+    if (esperando === 0) this.finPartida();
+  }
+
+  private finPartida(): void {
+    if (!this.roster) return;
+    const resultados = [...this.roster]
+      .map((id) => this.resultadoDeId(id))
+      .sort((a, b) => b.puntuacion - a.puntuacion);
+    this.resultados = resultados;
+    this.esperaInfo = null;
+    this.juegoTerminado = true;
+    this.enviarMultiplayer({ tipo: 'fin_partida', resultados });
+    this.registrarEventoLog('Partida terminada: todos fuera.');
   }
 
 
@@ -3404,13 +3513,18 @@ class Game implements IGame {
             d = 0;
         }
 
+        // F4: quien está en la celda de salida es inmune.
+        if (this.mapaLaberinto[o.fila]?.[o.columna]?.esSalida) {
+            d = 0;
+        }
+
         o.recibirDano(d);
         this.registrarEventoLog(`${l.nombre} -> ${o.nombre} (-${d} HP)`);
         if (!o.estaVivo) {
             this.registrarEventoLog(`${o.nombre} derrotado.`);
             l.enCombateCon = null;
             if (o === this.protagonista) {
-                this.juegoTerminado = true;
+                if (!this.mpActivo) this.juegoTerminado = true;
             } else if (l === this.protagonista) {
                 this.protagonista.puntosExperiencia += o.puntosExperiencia;
                 this.protagonista.bajas += 1;
@@ -3809,6 +3923,9 @@ class Game implements IGame {
                 if (msg.fr !== undefined) {
                     jPos.entidad.frameActual = msg.fr;
                 }
+                if (msg.oro !== undefined) (jPos.entidad as any).oro = msg.oro;
+                if (msg.xp !== undefined) jPos.entidad.puntosExperiencia = msg.xp;
+                if (msg.bajas !== undefined) jPos.entidad.bajas = msg.bajas;
             }
             if (this.esHost) this.enviarMultiplayer({ ...msg, id: idSujeto }, idEmisor);
             break;
@@ -3860,9 +3977,25 @@ class Game implements IGame {
                 }
             }
             break;
+        case 'progreso': {
+            const jProg = this.remotosActivos.get(idSujeto);
+            if (jProg?.entidad) {
+                (jProg.entidad as any).oro = msg.oro;
+                jProg.entidad.puntosExperiencia = msg.xp;
+                jProg.entidad.bajas = msg.bajas;
+            }
+            break;
+        }
+        case 'espera':
+            this.esperaInfo = { total: msg.total, esperando: msg.esperando };
+            break;
         case 'victoria':
+            this.registrarEventoLog(`${msg.nick} ha llegado a la salida.`);
+            break;
+        case 'fin_partida':
+            this.resultados = msg.resultados ?? [];
+            this.esperaInfo = null;
             this.juegoTerminado = true;
-            this.registrarEventoLog(`${msg.nick} ha ganado!`);
             break;
         case 'host_migration_trigger':
             this.registrarEventoLog(`Iniciando migración de Host (Razón: ${msg.reason})`);

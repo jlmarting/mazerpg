@@ -78,31 +78,40 @@ export class EnemigoNPC extends EntidadRPG {
 
     if (Date.now() < this.inmovilizadoHasta) return;
 
+    const enSalida = (ent: any): boolean =>
+      !!game.mapaLaberinto[ent?.fila]?.[ent?.columna]?.esSalida;
+
     // Si ya estamos en combate, resolvemos ronda si el objetivo sigue cerca
     if (this.enCombateCon) {
-        const dF = Math.abs(this.fila - this.enCombateCon.fila);
-        const dC = Math.abs(this.columna - this.enCombateCon.columna);
-        if (dF + dC <= 1) {
-            const ahora = Date.now();
-            if (ahora - this.ultimaVezActuadoIA >= 1000) {
-                game.resolverRondaDeCombate(this, this.enCombateCon);
-                this.ultimaVezActuadoIA = ahora;
-            }
-            return;
-        } else {
-            // Se alejó, rompemos el combate
+        if (enSalida(this.enCombateCon)) {
             this.enCombateCon = null;
+        } else {
+            const dF = Math.abs(this.fila - this.enCombateCon.fila);
+            const dC = Math.abs(this.columna - this.enCombateCon.columna);
+            if (dF + dC <= 1) {
+                const ahora = Date.now();
+                if (ahora - this.ultimaVezActuadoIA >= 1000) {
+                    game.resolverRondaDeCombate(this, this.enCombateCon);
+                    this.ultimaVezActuadoIA = ahora;
+                }
+                return;
+            } else {
+                // Se alejó, rompemos el combate
+                this.enCombateCon = null;
+            }
         }
     }
 
     const ahora = Date.now();
     if (ahora - this.ultimaVezActuadoIA < 800) return;
 
-    let objetivoInteres = game.protagonista;
-    let minD = Math.sqrt(Math.pow(this.fila - game.protagonista.fila, 2) + Math.pow(this.columna - game.protagonista.columna, 2));
+    let objetivoInteres: any = enSalida(game.protagonista) ? null : game.protagonista;
+    let minD = objetivoInteres
+      ? Math.sqrt(Math.pow(this.fila - game.protagonista.fila, 2) + Math.pow(this.columna - game.protagonista.columna, 2))
+      : Infinity;
 
     game.network.jugadoresRemotos.forEach((j: any) => {
-      if (j.entidad && j.entidad.estaVivo) {
+      if (j.entidad && j.entidad.estaVivo && !enSalida(j.entidad)) {
         const distRemoto = Math.sqrt(Math.pow(this.fila - j.entidad.fila, 2) + Math.pow(this.columna - j.entidad.columna, 2));
         if (distRemoto < minD) {
           minD = distRemoto;
@@ -110,6 +119,12 @@ export class EnemigoNPC extends EntidadRPG {
         }
       }
     });
+
+    if (!objetivoInteres) {
+      this.vagarAleatoriamente(game);
+      this.ultimaVezActuadoIA = ahora;
+      return;
+    }
 
     if (minD <= this.radioDeVisionIA) {
       if (Date.now() < this.huyendoHasta) {

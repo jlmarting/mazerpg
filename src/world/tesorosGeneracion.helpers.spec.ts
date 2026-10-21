@@ -79,4 +79,16 @@ const r = poblarTesoros(sintetico, [{ fila: 2, columna: 2, alto: 6, ancho: 6 }],
 assert(r.cofres.length === 1 && r.cofres[0].tipo === 'hierro', 'rng 0 → 1 cofre de hierro');
 assert(r.llaves.length === 1 && r.llaves[0].tipo === 'hierro', 'rng 0 → 1 llave de hierro');
 
+for (let s = 1; s <= 10; s++) {
+  const n = generarNodo({ nombre: 'mazmorra', version: 1, seed: s * 7919, params: {} }, 40, 40);
+  const planas = n.flat();
+  const ch = planas.filter((x) => x.cofre === 'hierro').length;
+  const ca = planas.filter((x) => x.cofre === 'acero').length;
+  assert(ch >= 1 && ch <= 5, `semilla ${s}: hierro 1–5 (${ch})`);
+  assert(ca >= 0 && ca <= 3, `semilla ${s}: acero 0–3 (${ca})`);
+  assert(planas.filter((x) => x.llave === 'hierro').length === (ch > 0 ? 1 : 0), `semilla ${s}: llave de hierro`);
+  assert(planas.filter((x) => x.llave === 'acero').length === (ca > 0 ? 1 : 0), `semilla ${s}: llave de acero`);
+  assert(conectado(n), `semilla ${s}: conectividad`);
+}
+
 console.log('tesorosGeneracion.helpers: todas las comprobaciones pasan');

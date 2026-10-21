@@ -110,6 +110,32 @@ export class Renderer {
 
     this.dibujarPulsoHousing(mapaLaberinto, offset, config);
     this.dibujarDrops(offset, config, drops);
+    this.dibujarTesoros(mapaLaberinto, offset, config);
+  }
+
+  /** Dibuja cofres y llaves visibles (capa dinámica: el estado cambia al abrir/recoger). */
+  private dibujarTesoros(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+    const { colOffset, filaOffset } = offset;
+    const emojiCofre: Record<string, string> = { hierro: '📦', acero: '🗃️', titanio: '💎' };
+    const emojiLlave: Record<string, string> = { hierro: '🗝️', acero: '🔑', titanio: '💠' };
+    const fInicio = Math.max(0, Math.floor(filaOffset));
+    const fFin = Math.min(mapaLaberinto.length - 1, Math.ceil(filaOffset + CELDAS_VISIBLES_Y));
+    const cInicio = Math.max(0, Math.floor(colOffset));
+    const cFin = Math.min((mapaLaberinto[0]?.length ?? 0) - 1, Math.ceil(colOffset + CELDAS_VISIBLES_X));
+    for (let fila = fInicio; fila <= fFin; fila++) {
+      for (let columna = cInicio; columna <= cFin; columna++) {
+        const celda = mapaLaberinto[fila]?.[columna];
+        if (!celda) continue;
+        const x = (columna - colOffset) * TAMANO_CELDA;
+        const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+        if (celda.cofre) {
+          this.dibujarItemCache(this.ctx, `cofre_${celda.cofre}`, celda.cofre, x, y, TAMANO_CELDA, celda.cofreAbierto ? '📭' : (emojiCofre[celda.cofre] ?? '📦'));
+        } else if (celda.llave) {
+          this.dibujarItemCache(this.ctx, `llave_${celda.llave}`, celda.llave, x, y, TAMANO_CELDA, emojiLlave[celda.llave] ?? '🔑');
+        }
+      }
+    }
   }
 
   /** Dibuja el botín caído en el suelo (capa dinámica, fuera de la caché del laberinto). */
@@ -512,8 +538,14 @@ export class Renderer {
     this.ctx.fillText(`HP: ${game.protagonista.vidaActual}/${game.protagonista.vidaMaxima}`, 20, 32);
     const stHeroe = game.protagonista.statsEfectivos();
     this.ctx.fillText(`FUE:${stHeroe.fuerza} AGI:${stHeroe.agilidad}`, 20, 44);
-    this.ctx.fillText(`INT:${stHeroe.inteligencia} XP:${game.protagonista.puntosExperiencia}`, 20, 56);
-    this.ctx.fillText(`ORO:${game.protagonista.inventario.oro ?? 0}`, 20, 68);
+    this.ctx.fillText(`INT:${stHeroe.inteligencia} XP:${game.protagonista.puntosExperiencia} ORO:${game.protagonista.inventario.oro ?? 0}`, 20, 56);
+    this.ctx.textAlign = 'right';
+    this.ctx.fillText(
+      `LLAVES:H${game.protagonista.inventario.llave_hierro ?? 0} A${game.protagonista.inventario.llave_acero ?? 0} T${game.protagonista.inventario.llave_titanio ?? 0}`,
+      this.canvas.width - 10,
+      56,
+    );
+    this.ctx.textAlign = 'left';
 
     let enemigoVisible = game.obtenerEnemigoAMostrar();
     if (enemigoVisible) {

@@ -75,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo desplegada en GitHub Pages (base relativa + workflow) (`2fb27b4`, `2eca656`)
 
 ### Changed
+- **Controles uniformes**: se elimina el acordeón inferior y el selector AUTO/TÁCTIL/ACORDEÓN; el dock de acciones se usa en todos los dispositivos (móvil, tablet y PC), con la misma disposición y plegado
 - **Zoom por defecto 1 → 2** (celda 64px, mitad del slider) y toggle de debug de la tecla `D` a **`F9`** (`939aea2`, `821012a`)
 - Housing: persistencia bajo clave fija `mazerpg.casa.local` (una sola casa por dispositivo) y limpieza de casas legacy por `idLocal`
 - Renderer: dibuja por las dimensiones reales del nodo activo (soporta nodos menores que el mundo, p.ej. la casa contenida)

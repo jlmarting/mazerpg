@@ -30,9 +30,7 @@ import { elegirBotin, sortearOro } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import { cargarKeybinds, guardarKeybinds, asignarTecla, accionParaTecla, KEYBINDS_DEFECTO, ACCIONES_VALIDAS, type IdAccion } from './ui/keybinds';
-import { sanearPreferencia, resolverEsquema, esAcordeonMovil } from './ui/esquemaAcciones';
-import {
-    NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
+import { NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
     TIEMPO_DESVANECIMIENTO_NIEBLA
 } from './world/constants';
@@ -316,16 +314,6 @@ class Game implements IGame {
 
     document.getElementById('btnChat')?.addEventListener('click', () => this.ui.toggleChat(this));
     document.getElementById('chkAdmitir')?.addEventListener('change', () => this.iniciarAutoAdmision());
-
-    document.getElementById('uiSchemeSelect')?.addEventListener('change', (e) => {
-      const valor = sanearPreferencia((e.target as HTMLSelectElement).value);
-      localStorage.setItem('mazerpg.ui.scheme', valor);
-      this.aplicarEsquemaUI();
-      const esquema = resolverEsquema(valor, window.matchMedia('(pointer: coarse)').matches, window.innerWidth);
-      this.registrarEventoLog(`Interfaz de acciones: ${esquema === 'dock' ? 'DOCK TÁCTIL' : 'ACORDEÓN'}`);
-    });
-    const selScheme = document.getElementById('uiSchemeSelect') as HTMLSelectElement | null;
-    if (selScheme) selScheme.value = sanearPreferencia(localStorage.getItem('mazerpg.ui.scheme'));
 
     document.getElementById('btnKeybindsPanel')?.addEventListener('click', () => this.abrirPanelKeybinds());
     document.getElementById('btnCerrarKeybinds')?.addEventListener('click', () => {
@@ -1334,30 +1322,21 @@ class Game implements IGame {
   }
 
   /**
-   * Aplica el esquema de acciones (dock táctil / acordeón) según la
-   * preferencia guardada y el dispositivo autodetectado (spec-2 §2).
+   * Dock de acciones uniforme en todos los dispositivos (decisión 2026-10-21):
+   * se abandona el acordeón inferior; el mismo nodo se monta siempre en el dock.
    */
   aplicarEsquemaUI(): void {
-    const preferencia = sanearPreferencia(localStorage.getItem('mazerpg.ui.scheme'));
-    const punteroTosco = window.matchMedia('(pointer: coarse)').matches;
-    const ancho = window.innerWidth;
-    const esquema = resolverEsquema(preferencia, punteroTosco, ancho);
-    const movil = esAcordeonMovil(esquema, punteroTosco, ancho);
     const body = document.body;
-    body.classList.remove('esquema-dock', 'esquema-acordeon', 'esquema-acordeon-movil');
-    body.classList.add(movil ? 'esquema-acordeon-movil' : `esquema-${esquema}`);
+    body.classList.remove('esquema-acordeon', 'esquema-acordeon-movil');
+    body.classList.add('esquema-dock');
 
-    // Montaje: el MISMO nodo .actions-content vive en el dock (táctil) o en el
-    // acordeón — nunca se clona, para que cooldowns y visibilidad sigan vivos.
     const contenido = document.querySelector('.actions-content');
     const actionsMenu = document.getElementById('actionsMenu');
     const dock = document.getElementById('actionDock');
-    if (contenido && actionsMenu && dock) {
-      const destino = esquema === 'dock' ? dock : actionsMenu;
-      if (contenido.parentElement !== destino) destino.appendChild(contenido);
+    if (contenido && dock && contenido.parentElement !== dock) {
+      dock.appendChild(contenido);
     }
-    // En móvil el acordeón nace desplegado full-width (spec-2 §6).
-    if (movil && actionsMenu) actionsMenu.classList.add('visible');
+    actionsMenu?.classList.remove('visible');
     this.ajustarDimensiones();
   }
 

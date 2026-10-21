@@ -21,6 +21,7 @@ export abstract class EntidadRPG implements IEntidadRPG {
   ultimaVezMovido: number;
   enCombateCon: EntidadRPG | null;
   puntosExperiencia: number = 0;
+  bajas: number = 0;
   inmunidadHasta: number = 0;
   /** Multiplicador visual; la colisión sigue siendo una celda. */
   escalaVisual: number = 1;

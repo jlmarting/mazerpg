@@ -3401,6 +3401,7 @@ class Game implements IGame {
                 this.juegoTerminado = true;
             } else if (l === this.protagonista) {
                 this.protagonista.puntosExperiencia += o.puntosExperiencia;
+                this.protagonista.bajas += 1;
                 this.registrarEventoLog(`¡Has ganado ${o.puntosExperiencia} XP!`);
                 const xpVal = document.getElementById('xpVal');
                 if (xpVal) xpVal.textContent = this.protagonista.puntosExperiencia.toString();

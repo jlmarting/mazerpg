@@ -82,4 +82,14 @@ Configuración de build, convenciones de calidad y gestión de entornos.
 
 ---
 
-> **Convención de numeración**: cada área temática tiene un rango reservado (`00-09` WebRTC, `10-19` Arquitectura, `20-29` Renderizado, etc.). Los huecos dentro de un rango permiten insertar píldoras nuevas sin renumerar todo.
+## Agentes
+
+Control del cliente real por un agente externo: MCP, CDP y comportamiento autónomo.
+
+| # | Título | Estado | Descripción |
+|---|--------|--------|-------------|
+| 60 | [Pilotar el juego desde fuera: hospedar, localizar y seguir por CDP](agents/60-procedimiento-agentico-host-cdp.md) | ✅ | Hospedar Firebase con el driver, leer `remotosActivos` por CDP, BFS sobre el mapa en bitmask y seguidor que combate sin robar el objetivo del humano |
+
+---
+
+> **Convención de numeración**: cada área temática tiene un rango reservado (`00-09` WebRTC, `10-19` Arquitectura, `20-29` Renderizado, `30-39` Mundo, `40-49` Entidades, `50-59` Tooling, `60-69` Agentes). Los huecos dentro de un rango permiten insertar píldoras nuevas sin renumerar todo.

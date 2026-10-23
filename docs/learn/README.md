@@ -14,6 +14,7 @@ Píldoras dedicadas a la arquitectura de red P2P, señalización y sincronizaci�
 | 02 | [Signaling híbrido](webrtc/02-signaling-hibrido.md) | ✅ | Cómo usar Firebase y HTTP como transportes de signaling sobre la misma base P2P |
 | 03 | [Buffering de candidatos ICE](webrtc/03-buffering-candidatos-ice.md) | ✅ | Patrón para manejar la condición de carrera entre ICE candidates y `setRemoteDescription` |
 | 04 | [Host-Authority con Snapshots](webrtc/04-host-authority-snapshots.md) | ✅ | Arquitectura host-autoritativa: snapshots periódicos, predicción local y snap-back con umbral |
+| 05 | [Migración de host en topología estrella](~/Aureus/DEVCONTEXT/00_Learn/juegos/75-migracion-host-topologia-estrella.md) | ✅ *(en el vault global)* | Por qué elegir un nuevo host con la vista local de cada invitado provoca *split-brain*, y la coordinación (lease + epoch + CAS en la sala) para reasignar autoridad, reconectar a los supervivientes y reincorporar al ex-host como invitado — píldora extrapolable, canónica en `00_Learn` |
 
 ---
 

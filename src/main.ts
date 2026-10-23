@@ -156,8 +156,10 @@ class Game implements IGame {
     this.initMap();
     this.ajustarDimensiones();
     window.addEventListener('resize', () => {
+      // Solo se recalculan dimensiones: aplicar el esquema de UI de partida aquí
+      // encendía el dock de acciones en el lobby (en móvil `resize` se dispara
+      // al moverse la barra de direcciones) y tapaba los botones de inicio.
       this.ajustarDimensiones();
-      this.aplicarEsquemaUI();
     });
     this.setupEventListeners();
     this.verificarUrlParams();

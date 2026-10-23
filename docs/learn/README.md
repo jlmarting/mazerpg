@@ -83,6 +83,16 @@ Configuración de build, convenciones de calidad y gestión de entornos.
 
 ---
 
+## UI y Navegador
+
+Layout, viewport y ciclo de vida de la UI en el navegador (con foco en móvil).
+
+| # | Título | Estado | Descripción |
+|---|--------|--------|-------------|
+| 70 | [Medir no es actuar — el `resize` que enciende la UI de partida y el `100vh` que mide la pantalla equivocada](~/Aureus/DEVCONTEXT/00_Learn/web/76-medir-no-es-actuar-resize-dvh-movil.md) | ✅ *(en el vault global)* | En móvil `resize` no es «giraste la pantalla» sino «cambió el alto visible» (barra de direcciones en cada scroll, teclado, zoom, la propia carga) y dispara **incluido al arrancar la app**: un handler que redimensiona *y* muta estado enciende la UI de partida en el lobby y tapa los botones de inicio. Antídotos: **medir ≠ actuar**, **apagar en el camino de vuelta** (simetría mostrar/ocultar) y **`100dvh` con fallback a `100vh`** + `env(safe-area-inset-bottom)` — píldora extrapolable, canónica en `00_Learn` |
+
+---
+
 ## Agentes
 
 Control del cliente real por un agente externo: MCP, CDP y comportamiento autónomo.
@@ -93,4 +103,4 @@ Control del cliente real por un agente externo: MCP, CDP y comportamiento autón
 
 ---
 
-> **Convención de numeración**: cada área temática tiene un rango reservado (`00-09` WebRTC, `10-19` Arquitectura, `20-29` Renderizado, `30-39` Mundo, `40-49` Entidades, `50-59` Tooling, `60-69` Agentes). Los huecos dentro de un rango permiten insertar píldoras nuevas sin renumerar todo.
+> **Convención de numeración**: cada área temática tiene un rango reservado (`00-09` WebRTC, `10-19` Arquitectura, `20-29` Renderizado, `30-39` Mundo, `40-49` Entidades, `50-59` Tooling, `60-69` Agentes, `70-79` UI y Navegador). Los huecos dentro de un rango permiten insertar píldoras nuevas sin renumerar todo.

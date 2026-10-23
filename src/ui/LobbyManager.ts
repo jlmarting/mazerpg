@@ -721,6 +721,9 @@ export class LobbyManager {
     if (topMenu) topMenu.style.display = 'none';
     const actionsMenu = document.getElementById('actionsMenu');
     if (actionsMenu) actionsMenu.style.display = 'none';
+    // El dock de acciones es UI de partida: al volver al lobby se oculta.
+    const actionDock = document.getElementById('actionDock');
+    if (actionDock) actionDock.style.display = 'none';
   }
 
   private showElement(id: string, display: string = 'block', condition: boolean = true): void {

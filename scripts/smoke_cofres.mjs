@@ -133,7 +133,7 @@ const recogerLlaveCerca = `(() => {
   if (dc === 1) { actual.muros.derecho = false; cel.muros.izquierdo = false; }
   g.protagonista.enCombateCon = null;
   g.listaDeEnemigos.forEach((e) => { e.enCombateCon = null; });
-  g.listaDeEnemigos = g.listaDeEnemigos.filter((e) => !(e.fila === nf && e.columna === nc));
+  g.listaDeEnemigos = [];
   g.resolverAccion(g.idLocalActivo, { tipo: 'mover', df, dc });
   return {
     llave: g.protagonista.inventario.llave_acero ?? 0,
@@ -225,7 +225,7 @@ async function main() {
       const g = window.game;
       g.protagonista.enCombateCon = null;
       g.listaDeEnemigos.forEach((e) => { e.enCombateCon = null; });
-      g.listaDeEnemigos = g.listaDeEnemigos.filter((e) => !(e.fila === ${cerca.nf} && e.columna === ${cerca.nc}));
+      g.listaDeEnemigos = [];
     })()`);
     await evaluar(cdp, solo, `window.game.resolverAccion(window.game.idLocalActivo, { tipo: 'mover', df: ${cerca.df}, dc: ${cerca.dc} })`);
     const sinLlave = await evaluar(cdp, solo, `({
@@ -361,6 +361,66 @@ async function main() {
     })()`);
     if (posHost.f !== posGuest.f || posHost.c !== posGuest.c) throw new Error('el host no recibió la posición del portal');
     console.log('  PASS invitado atraviesa portal y sincroniza posición');
+
+    // Flecha del invitado: el objetivo lo elige su cliente (su niebla) y el host
+    // aplica el daño por id, sin depender de la burbuja del anfitrión.
+    const bowSetup = await evaluar(cdp, invitado, `(() => {
+      const g = window.game;
+      const f = g.protagonista.fila, c = g.protagonista.columna;
+      const mob = g.listaDeEnemigos.find((e) => e.estaVivo);
+      if (!mob) return { error: 'sin mob' };
+      const dirs = [[1,0],[0,1],[-1,0],[0,-1]];
+      const d = dirs.find(([df, dc]) => {
+        const cel = g.mapaLaberinto[f + df]?.[c + dc];
+        return cel && cel.esTransitable;
+      });
+      if (!d) return { error: 'sin vecino transitable' };
+      const [df, dc] = d;
+      const nf = f + df, nc = c + dc;
+      const actual = g.mapaLaberinto[f][c];
+      const cel = g.mapaLaberinto[nf][nc];
+      if (df === -1) { actual.muros.superior = false; cel.muros.inferior = false; }
+      if (df === 1) { actual.muros.inferior = false; cel.muros.superior = false; }
+      if (dc === -1) { actual.muros.izquierdo = false; cel.muros.derecho = false; }
+      if (dc === 1) { actual.muros.derecho = false; cel.muros.izquierdo = false; }
+      cel.ultimoAvistamiento = Date.now() + 100000;
+      mob.fila = nf; mob.columna = nc; mob.vidaActual = 9999; mob.vidaMaxima = 9999; mob.estaVivo = true;
+      mob.inmovilizadoHasta = Date.now() + 10000;
+      g.listaDeEnemigos = [mob];
+      g.protagonista.ultimaVezHabilidad.bow = 0;
+      return { id: mob.id, f: nf, c: nc, guestF: f, guestC: c };
+    })()`);
+    if (bowSetup.error) throw new Error('bow: ' + bowSetup.error);
+    await evaluar(cdp, host, `(() => {
+      const g = window.game;
+      const mob = g.listaDeEnemigos.find((e) => e.id === ${bowSetup.id});
+      if (!mob) return { error: 'host sin mob' };
+      mob.fila = ${bowSetup.f}; mob.columna = ${bowSetup.c};
+      mob.vidaActual = 9999; mob.vidaMaxima = 9999; mob.estaVivo = true;
+      mob.inmovilizadoHasta = Date.now() + 10000;
+      g.listaDeEnemigos = [mob];
+      const guest = g.remotosActivos.get(Array.from(g.remotosActivos.keys())[0]);
+      if (guest?.entidad) { guest.entidad.fila = ${bowSetup.guestF}; guest.entidad.columna = ${bowSetup.guestC}; }
+      return { ok: true };
+    })()`);
+    await evaluar(cdp, invitado, `(() => {
+      const g = window.game;
+      const mob = g.listaDeEnemigos.find((e) => e.id === ${bowSetup.id});
+      if (mob) {
+        mob.fila = ${bowSetup.f}; mob.columna = ${bowSetup.c}; mob.estaVivo = true; mob.vidaActual = 9999;
+        g.mapaLaberinto[${bowSetup.f}][${bowSetup.c}].ultimoAvistamiento = Date.now() + 100000;
+      }
+      g.lanzarArco(g.protagonista, true);
+    })()`);
+    await SLEEP(350);
+    await SLEEP(1500);
+    const vidaHostBow = await evaluar(cdp, host, `(() => {
+      const g = window.game;
+      const mob = g.listaDeEnemigos.find((e) => e.id === ${bowSetup.id});
+      return mob ? mob.vidaActual : -1;
+    })()`);
+    if (vidaHostBow < 0 || vidaHostBow >= 9999) throw new Error('la flecha del invitado no dañó al objetivo');
+    console.log('  PASS flecha del invitado daña al objetivo');
 
     console.log('SMOKE_COFRES_MP_OK');
     try { chrome.kill('SIGKILL'); } catch {}

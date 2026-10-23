@@ -2664,20 +2664,22 @@ class Game implements IGame {
             if (entidad === this.protagonista) this.comprobarSalida(entidad);
         }
     } else if (accion.tipo === 'fireball') {
-        if (enBurbuja) this.lanzarBolaDeFuego(entidad, false);
+        // El invitado ya validó su propia burbuja en local; el host no debe
+        // descartar sus habilidades por la posición del anfitrión.
+        if (entidad !== this.protagonista || enBurbuja) this.lanzarBolaDeFuego(entidad, false);
     } else if (accion.tipo === 'bow') {
-        if (enBurbuja) this.lanzarArco(entidad, false);
+        if (entidad !== this.protagonista || enBurbuja) this.lanzarArco(entidad, false, accion.targetId);
     } else if (accion.tipo === 'create_food') {
         // Edición interactiva (§3a): crea comida vía delta, pasa fuera de burbuja.
         this.crearComidaHabilidad(entidad, false);
     } else if (accion.tipo === 'radar') {
-        if (enBurbuja) this.lanzarRadar(entidad, false);
+        if (entidad !== this.protagonista || enBurbuja) this.lanzarRadar(entidad, false);
     } else if (accion.tipo === 'whirlwind') {
-        if (enBurbuja) this.lanzarWhirlwind(entidad, false);
+        if (entidad !== this.protagonista || enBurbuja) this.lanzarWhirlwind(entidad, false);
     } else if (accion.tipo === 'freeze') {
-        if (enBurbuja) this.lanzarCongelar(entidad, false);
+        if (entidad !== this.protagonista || enBurbuja) this.lanzarCongelar(entidad, false);
     } else if (accion.tipo === 'stop_walking') {
-        if (enBurbuja) entidad.estaCaminando = false;
+        if (entidad !== this.protagonista || enBurbuja) entidad.estaCaminando = false;
     }
   }
 
@@ -3027,7 +3029,25 @@ class Game implements IGame {
     if (document.getElementById('equipoModal')?.style.display === 'flex') this.lobbyManager.renderEquipo();
   }
 
-  lanzarArco(emisor: any, esLocal: boolean) {
+  /** Objetivo visible más cercano para una flecha (fog del cliente que dispara). */
+  private elegirObjetivoFlecha(emisor: any, ahora: number): any | null {
+      let target: any = null;
+      let minDist = Infinity;
+      this.listaDeEnemigos.forEach(e => {
+          if (!e.estaVivo) return;
+          const celda = this.mapaLaberinto[e.fila]?.[e.columna];
+          const visible = !!celda && celda.ultimoAvistamiento > 0 && (ahora - celda.ultimoAvistamiento < this.config.TIEMPO_DESVANECIMIENTO_NIEBLA);
+          if (!visible) return;
+          const dist = Math.sqrt(Math.pow(e.fila - emisor.fila, 2) + Math.pow(e.columna - emisor.columna, 2));
+          if (dist < minDist) {
+              minDist = dist;
+              target = e;
+          }
+      });
+      return target;
+  }
+
+  lanzarArco(emisor: any, esLocal: boolean, objetivoId?: number) {
       const ahora = Date.now();
       const cooldown = (10 / emisor.agilidad) * 1000;
 
@@ -3041,10 +3061,18 @@ class Game implements IGame {
           emisor.ultimaVezHabilidad.bow = ahora;
 
           if (this.mpActivo) {
+              // El cliente que dispara elige el objetivo con SU niebla; el host
+              // recibe el id y aplica el daño sin depender de su propia visión.
+              const objetivo = this.elegirObjetivoFlecha(emisor, ahora);
+              if (!objetivo) {
+                  this.registrarEventoLog('Sin objetivo a la vista.');
+                  return;
+              }
+              const accion = { tipo: 'bow', targetId: objetivo.id };
               if (this.esHost) {
-                  this.colaAcciones.push({ id: this.idLocalActivo, accion: { tipo: 'bow' } });
+                  this.colaAcciones.push({ id: this.idLocalActivo, accion });
               } else {
-                  this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'bow' } });
+                  this.enviarMultiplayer({ tipo: 'action', accion });
               }
               return;
           }
@@ -3052,22 +3080,10 @@ class Game implements IGame {
 
       // Lógica de disparo
       let target: any = null;
-      let minDist = Infinity;
-
-      this.listaDeEnemigos.forEach(e => {
-          if (e.estaVivo) {
-              const celda = this.mapaLaberinto[e.fila][e.columna];
-              const visible = celda.ultimoAvistamiento > 0 && (ahora - celda.ultimoAvistamiento < this.config.TIEMPO_DESVANECIMIENTO_NIEBLA);
-
-              if (visible) {
-                  let dist = Math.sqrt(Math.pow(e.fila - emisor.fila, 2) + Math.pow(e.columna - emisor.columna, 2));
-                  if (dist < minDist) {
-                      minDist = dist;
-                      target = e;
-                  }
-              }
-          }
-      });
+      if (objetivoId !== undefined) {
+          target = this.listaDeEnemigos.find(e => e.id === objetivoId && e.estaVivo) ?? null;
+      }
+      if (!target) target = this.elegirObjetivoFlecha(emisor, ahora);
 
       if (target) {
           this.bolasDeFuego.push({
@@ -3087,6 +3103,7 @@ class Game implements IGame {
           if (this.esHost && this.mpActivo) {
               this.enviarMultiplayer({
                   tipo: 'arrow_spawn',
+                  id: emisor === this.protagonista ? this.idLocalActivo : (emisor as any).id ?? null,
                   ex: emisor.columna,
                   ey: emisor.fila,
                   tx: target.columna,
@@ -3560,9 +3577,10 @@ class Game implements IGame {
                 const emisorA = this.obtenerEntidadPorId(idSujeto);
                 if (emisorA) emisorA.setEstado('attacking', 800);
                 if (this.bolasDeFuego.length < 50) {
+                    const esPropio = msg.id === this.idLocalActivo;
                     this.bolasDeFuego.push({
-                        x: msg.ex,
-                        y: msg.ey,
+                        x: esPropio ? this.protagonista.columna : msg.ex,
+                        y: esPropio ? this.protagonista.fila : msg.ey,
                         targetX: msg.tx,
                         targetY: msg.ty,
                         pct: 0,

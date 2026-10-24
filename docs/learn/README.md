@@ -56,6 +56,7 @@ Procedural generation, serialización compacta y post-procesamiento de mapas.
 | 30 | [Generación Procedural con BSP](world/30-generacion-procedural-bsp.md) | ✅ | Binary Space Partitioning: dividir recursivamente, crear salas en hojas y conectar con pasillos |
 | 31 | [Serialización Compacta con Bitmasking + Base36](world/31-serializacion-compacta-bitmasking.md) | ✅ | Comprimir cada celda a un dígito base36 usando bits para muros y transitabilidad |
 | 32 | [Garantía de Conectividad vía Post-procesamiento](world/32-garantia-conectividad-postprocesamiento.md) | ✅ | Forzar rutas manuales tras la generación para asegurar que inicio y fin sean alcanzables |
+| 33 | [Transitable no es alcanzable](~/Aureus/DEVCONTEXT/00_Learn/juegos/80-transitable-no-es-alcanzable.md) | ✅ *(en el vault global)* | «Transitable» es de la celda, «alcanzable» del grafo: el test de flood fill (`alcanzables === transitables`) destapó bolsas huérfanas en `generarAbierto` al ampliar 60×60 → 80×80; sellar vs carvar, y el contrato extendido a `natural` — píldora extrapolable, canónica en `00_Learn` |
 
 ---
 

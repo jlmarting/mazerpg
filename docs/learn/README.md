@@ -15,6 +15,7 @@ Píldoras dedicadas a la arquitectura de red P2P, señalización y sincronizaci�
 | 03 | [Buffering de candidatos ICE](webrtc/03-buffering-candidatos-ice.md) | ✅ | Patrón para manejar la condición de carrera entre ICE candidates y `setRemoteDescription` |
 | 04 | [Host-Authority con Snapshots](webrtc/04-host-authority-snapshots.md) | ✅ | Arquitectura host-autoritativa: snapshots periódicos, predicción local y snap-back con umbral |
 | 05 | [Migración de host en topología estrella](~/Aureus/DEVCONTEXT/00_Learn/juegos/75-migracion-host-topologia-estrella.md) | ✅ *(en el vault global)* | Por qué elegir un nuevo host con la vista local de cada invitado provoca *split-brain*, y la coordinación (lease + epoch + CAS en la sala) para reasignar autoridad, reconectar a los supervivientes y reincorporar al ex-host como invitado — píldora extrapolable, canónica en `00_Learn` |
+| 06 | [La vista también es estado de red](~/Aureus/DEVCONTEXT/00_Learn/juegos/79-vista-tambien-es-estado-de-red.md) | ✅ *(en el vault global)* | El invitado no tiene árbol de mundo: si el tema de render (`casa`/`dungeon`) se deduce de `nodoActivo`, pinta los datos correctos con la paleta equivocada. La vista viaja en el protocolo (`ambiente` en `mapa`); además, las guardas de reenvío miran el transporte MP activo (`mpActivo`), no Firebase ni `persistenciaMundo` — píldora extrapolable, canónica en `00_Learn` |
 
 ---
 

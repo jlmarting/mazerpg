@@ -75,6 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo desplegada en GitHub Pages (base relativa + workflow) (`2fb27b4`, `2eca656`)
 
 ### Changed
+- **Escenario ampliado 60×60 → 80×80**: +78 % de superficie (3.600 → 6.400 celdas) y densidad de enemigos reescalada (40 → 70 base) para que la exploración pese; sin cambios de persistencia ni red (ronda 20261025a)
+- **Bump `1.1.2 → 1.2.0`** (menor): escenario ampliado 80×80 desplegado
 - **Controles uniformes**: se elimina el acordeón inferior y el selector AUTO/TÁCTIL/ACORDEÓN; el dock de acciones se usa en todos los dispositivos (móvil, tablet y PC), visible también en PC, en modo icono (sin texto) y con la misma disposición (`6423eea`, `9a19db1`)
 - **Zoom por defecto 1 → 2** (celda 64px, mitad del slider) y toggle de debug de la tecla `D` a **`F9`** (`939aea2`, `821012a`)
 - Housing: persistencia bajo clave fija `mazerpg.casa.local` (una sola casa por dispositivo) y limpieza de casas legacy por `idLocal`

@@ -198,7 +198,7 @@ function main(): void {
   );
   assert(ENEMIGOS_BASE === 70, 'densidad base de enemigos reescalada a 80x80 (70)');
 
-  for (const nombre of ['mazmorra', 'abierto']) {
+  for (const nombre of ['mazmorra', 'abierto', 'natural']) {
     const gen80 = { nombre, version: 1, seed: 20261025, params: {} };
     const nodo80 = generarNodo(gen80, 80, 80);
     assert(

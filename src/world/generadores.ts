@@ -324,6 +324,7 @@ export function generarNatural(
     }
   }
   conectarTransitables(mapa);
+  sellarComponentesAisladas(mapa);
   return mapa;
 }
 

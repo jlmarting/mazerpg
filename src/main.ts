@@ -133,6 +133,8 @@ class Game implements IGame {
   private readonly arbitroDeltas: ArbitroDeltas = new ArbitroDeltas();
   private portalesInactivosCache: Set<string> = new Set();
   private portalesInactivosRecalculadoEn: number = Number.NEGATIVE_INFINITY;
+  /** Tema de render del nodo que el host tiene activo; el invitado no tiene árbol propio. */
+  private ambienteRemoto: 'casa' | 'dungeon' | null = null;
   private readonly INTERVALO_PORTALES_MS: number = 250;
   /** Debounce del guardado del espejo de la casa (solo sin Firebase). */
   private static readonly DEBOUNCE_ESPEJO_CASA_MS = 1500;
@@ -1717,7 +1719,12 @@ class Game implements IGame {
     this.renderer.aplicarZoom(this.config);
     this.renderer.setPortalesHousingInactivos(this.portalesHousingInactivos());
     this.renderer.setPortalesHousing(this.idsPortalesHousing());
-    this.renderer.setAmbiente(this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon');
+    // El invitado no tiene nodo propio en su gestor: el tema lo dicta el host
+    // en el mensaje 'mapa' (si no, la casa se pintaba como mazmorra).
+    const ambiente = !this.esHost && this.mpActivo && this.ambienteRemoto !== null
+      ? this.ambienteRemoto
+      : (this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon');
+    this.renderer.setAmbiente(ambiente);
     this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config, this.dropsSuelo);
 
     let persistence = this.config.TIEMPO_DESVANECIMIENTO_NIEBLA;
@@ -2051,7 +2058,7 @@ class Game implements IGame {
 
   /** Reenvío del estado completo del nodo activo a TODOS los invitados conectados: mapa v2 (re-dimensiona la rejilla del invitado) + enemigos + objetos + spawn. El invitado debe conocer el nodo del host en cada cruce, no solo al join. */
   private reenviarEstadoAInvitados(): void {
-    if (!this.network?.activo) return;
+    if (!this.mpActivo) return;
     this.remotosActivos.forEach((_, guestId: string) => this.enviarMapaAlInvitado(guestId));
   }
 
@@ -2065,7 +2072,8 @@ class Game implements IGame {
         id: e.id, f: e.fila, c: e.columna, n: e.nombre, t: e.tipo, v: e.vidaActual, vm: e.vidaMaxima
     }));
 
-    jInfo.dc.send(JSON.stringify({ tipo: 'mapa', datos: mapaCompacto, dificultad: this.config.dificultad }));
+    const ambiente = this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon';
+    jInfo.dc.send(JSON.stringify({ tipo: 'mapa', datos: mapaCompacto, dificultad: this.config.dificultad, ambiente }));
     jInfo.dc.send(JSON.stringify({ tipo: 'enemigos', lista: enemigos }));
 
     const objetos: any[] = [];
@@ -3348,13 +3356,18 @@ class Game implements IGame {
 
   /** Persiste la foto del nodo saliente y restaura la lista del destino desde su snapshot (async, patrón handler 'enemigos'). */
   private conmutarSnapshotEnemigos(nodoSalienteId: string, fotoEnemigos: EnemigoFoto[] | null): void {
-    const persistencia = this.persistenciaMundo;
-    if (!this.esHost || !persistencia) {
-        return;
-    }
+    if (!this.esHost) return;
     // El destino se captura de forma síncrona: no depende de ningún await.
     const destinoId = this.gestorMundo.nodoActivoId;
     if (!destinoId) return;
+    const persistencia = this.persistenciaMundo;
+    if (!persistencia) {
+        // HTTP/manual: no hay historia persistida que rehidratar, pero el nodo
+        // destino ya está materializado y el invitado debe recibirlo igual. En
+        // microtask para que atravesarConector termine de mover al protagonista.
+        queueMicrotask(() => this.reenviarEstadoAInvitados());
+        return;
+    }
     void (async () => {
         try {
             // La foto escribe en el nodo saliente fijo (datos capturados de forma síncrona): sin carrera.
@@ -3804,11 +3817,13 @@ class Game implements IGame {
             }
             break;
         case 'mapa':
+            this.ambienteRemoto = msg.ambiente === 'casa' ? 'casa' : 'dungeon';
             const dims = deserializarMapa(this.mapaLaberinto, msg.datos);
             this.config.NUMERO_FILAS = dims.filas;
             this.config.NUMERO_COLUMNAS = dims.columnas;
             if (msg.dificultad) this.config.dificultad = msg.dificultad;
             this.ajustarDimensiones();
+            this.renderer?.invalidarCacheLaberinto();
             this.registrarEventoLog('Mapa del host recibido.');
             break;
         case 'enemigos':

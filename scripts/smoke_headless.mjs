@@ -198,6 +198,16 @@ async function main() {
     await esperar(cdp, sessionId, `window.game.motorIniciado === true`, 10000, 'motor iniciado');
     await esperar(cdp, sessionId, `window.game.gestorMundo.nodoActivoId !== '' && !!window.game.gestorMundo.nodoActivoId`, 10000, 'nodo activo sembrado');
 
+    // 4a. Escenario ampliado 80x80 (ronda 20261025a): dimensiones y densidad de enemigos
+    const filasJuego = await evaluar(cdp, sessionId, `window.game.config.NUMERO_FILAS`);
+    const columnasJuego = await evaluar(cdp, sessionId, `window.game.config.NUMERO_COLUMNAS`);
+    if (filasJuego === 80 && columnasJuego === 80) pase(`escenario ampliado 80x80 (${filasJuego}x${columnasJuego})`);
+    else pana('escenario ampliado 80x80', `— ${filasJuego}x${columnasJuego}`);
+    const enemigosNoBoss = await evaluar(cdp, sessionId, `window.game.listaDeEnemigos.filter(e => e.nombre !== 'Balrog').length`);
+    const esperadosFacil = Math.floor(70 * 0.75);
+    if (enemigosNoBoss === esperadosFacil) pase(`densidad de enemigos 80x80 (fácil: ${enemigosNoBoss})`);
+    else pana('densidad de enemigos 80x80', `— ${enemigosNoBoss} (esperado ${esperadosFacil})`);
+
     // 4b. Esquema UI por dispositivo (spec-2): body class + dock presente en el DOM
     const esquemaClase = await evaluar(cdp, sessionId, `Array.from(document.body.classList).filter((c) => c.startsWith('esquema-')).join(',')`);
     if (esquemaClase && esquemaClase.length > 0) pase(`esquema UI de acciones aplicado (${esquemaClase})`);

@@ -1,6 +1,7 @@
 import { Celda } from './Celda';
 import { generarNodo, mulberry32, GENERADORES, dimensionesPlanta } from './generadores';
 import { generarLaberintoBSP } from './generation';
+import { NUMERO_FILAS, NUMERO_COLUMNAS, ENEMIGOS_BASE } from './constants';
 
 let ok = 0;
 let total = 0;
@@ -87,6 +88,16 @@ function hayTransitable(mapa: Celda[][]): boolean {
     }
   }
   return false;
+}
+
+function contarTransitables(mapa: Celda[][]): number {
+  let n = 0;
+  for (const fila of mapa) {
+    for (const celda of fila) {
+      if (celda.esTransitable) n++;
+    }
+  }
+  return n;
 }
 
 const NOMBRES = ['mazmorra', 'abierto', 'planta', 'natural'] as const;
@@ -179,6 +190,30 @@ function main(): void {
   const bspC = crearMapa();
   generarLaberintoBSP(bspC, mulberry32(124));
   assert(!mapasIguales(bspA, bspC), 'generarLaberintoBSP con distinto seed difiere');
+
+  // --- Escenario 80x80 (ronda 20261025a-escenario-amplio) ---
+  assert(
+    NUMERO_FILAS === 80 && NUMERO_COLUMNAS === 80,
+    'escenario base del juego ampliado a 80x80',
+  );
+  assert(ENEMIGOS_BASE === 70, 'densidad base de enemigos reescalada a 80x80 (70)');
+
+  for (const nombre of ['mazmorra', 'abierto']) {
+    const gen80 = { nombre, version: 1, seed: 20261025, params: {} };
+    const nodo80 = generarNodo(gen80, 80, 80);
+    assert(
+      filasDe(nodo80) === 80 && columnasDe(nodo80) === 80,
+      `generarNodo ${nombre} respeta 80x80`,
+    );
+    const nodo80b = generarNodo(gen80, 80, 80);
+    assert(mapasIguales(nodo80, nodo80b), `generarNodo ${nombre} 80x80 es determinista`);
+    const transitables80 = contarTransitables(nodo80);
+    assert(transitables80 > 0, `generarNodo ${nombre} 80x80 produce celdas transitables`);
+    assert(
+      contarAlcanzables(nodo80) === transitables80,
+      `generarNodo ${nombre} 80x80 deja todas las celdas transitables conectadas`,
+    );
+  }
 
   // --- M2: plano de casa (planta v2) ---
   const dims = dimensionesPlanta({ habitacionesX: 3, habitacionesY: 2 });

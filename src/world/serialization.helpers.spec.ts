@@ -78,9 +78,8 @@ function contarDecor(mapa: Celda[][]): number {
   return n;
 }
 
-/** Nodo 60x60 determinista con decor disperso para el presupuesto. */
-function mapaGrande(): Celda[][] {
-  const N = 60;
+/** Nodo NxN determinista (60 por defecto) con decor disperso para el presupuesto. */
+function mapaGrande(N = 60): Celda[][] {
   const mapa = mapaBasico(N, N);
   const suelos: Array<'madera' | 'baldosa' | 'alfombra'> = ['madera', 'baldosa', 'alfombra'];
   for (let f = 0; f < N; f++) {
@@ -263,6 +262,30 @@ function main(): void {
     if (dt < dtEncode) dtEncode = dt;
   }
   assert(dtEncode <= 10, `presupuesto: encode nodo + JSON.stringify snapshot 40 enemigos ≤ 10 ms (medido ${dtEncode.toFixed(3)} ms)`);
+
+  // 10. nodo 80x80 (ronda 20261025a-escenario-amplio): round-trip completo y presupuesto
+  const grande80 = mapaGrande(80);
+  const payload80 = serializarMapa(grande80, { v2: true });
+  const destino80: Celda[][] = [];
+  const dims80 = deserializarMapa(destino80, payload80);
+  assert(
+    dims80.filas === 80 && dims80.columnas === 80 && estructurasIguales(grande80, destino80),
+    'decode del nodo 80x80 v2 sincroniza muros, transitable y decor (toda la cuadrícula)',
+  );
+  assert(
+    payload80.length > payloadGrande.length,
+    'el payload 80x80 es mayor que el 60x60 (superficie ampliada)',
+  );
+  deserializarMapa([], payload80);
+  let dtDecode80 = Infinity;
+  for (let intento = 0; intento < 5; intento++) {
+    const destino: Celda[][] = [];
+    const t0 = performance.now();
+    deserializarMapa(destino, payload80);
+    const dt = performance.now() - t0;
+    if (dt < dtDecode80) dtDecode80 = dt;
+  }
+  assert(dtDecode80 <= 10, `presupuesto: decode 80x80 v2 ≤ 10 ms (medido ${dtDecode80.toFixed(3)} ms)`);
 
   console.log(`${ok}/${total} ok`);
 }

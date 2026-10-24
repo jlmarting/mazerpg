@@ -30,7 +30,7 @@ import { elegirBotin, sortearOro } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IGame } from './types';
 import { cargarKeybinds, guardarKeybinds, asignarTecla, accionParaTecla, KEYBINDS_DEFECTO, ACCIONES_VALIDAS, type IdAccion } from './ui/keybinds';
-import { NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
+import { NUMERO_FILAS, NUMERO_COLUMNAS, ENEMIGOS_BASE, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
     TIEMPO_DESVANECIMIENTO_NIEBLA
 } from './world/constants';
@@ -1573,7 +1573,7 @@ class Game implements IGame {
 
   generarEnemigos() {
     const tipos = ["Esqueleto", "Orco", "Goblin", "Minotauro"];
-    let cantidad = 40;
+    let cantidad = ENEMIGOS_BASE;
     if (this.config.dificultad === 'facil' || this.config.dificultad === 'medio') {
         cantidad = Math.floor(cantidad * 0.75);
     } else if (this.config.dificultad === 'locura') {

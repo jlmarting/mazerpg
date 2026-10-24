@@ -3,10 +3,10 @@
  *
  * Regresión del bug «el invitado no ve el tiling de la casa»:
  *  1. El host cruza a su casa => el invitado recibe el nuevo mapa 9×16 con
- *     sueloDecor/muebles (no se queda con el mapa 60×60 de la mazmorra).
+ *     sueloDecor/muebles (no se queda con el mapa 80×80 de la mazmorra).
  *  2. El invitado cambia el tema de render a 'casa' (el host lo dicta en el
  *     mensaje 'mapa') => dibuja sprites casa_suelo_* y casa_mueble_*.
- *  3. El host vuelve a la mazmorra => el invitado recupera 60×60 y 'dungeon'.
+ *  3. El host vuelve a la mazmorra => el invitado recupera 80×80 y 'dungeon'.
  *
  * Uso: node scripts/smoke_housing_mp.mjs
  */
@@ -191,10 +191,10 @@ async function main() {
     await esperar(cdp, invitado, 'window.game.mapaLaberinto.length > 0', 10000, 'invitado con mapa inicial');
 
     const inicio = await evaluar(cdp, invitado, contarDecor);
-    if (inicio.filas !== 60 || inicio.columnas !== 60) {
+    if (inicio.filas !== 80 || inicio.columnas !== 80) {
       throw new Error(`mapa inicial inesperado: ${inicio.filas}×${inicio.columnas}`);
     }
-    console.log('  PASS invitado arranca en la mazmorra 60×60');
+    console.log('  PASS invitado arranca en la mazmorra 80×80');
 
     // El host entra en su casa por el conector real.
     await evaluar(cdp, host, `window.game.teleportHousing()`);
@@ -228,7 +228,7 @@ async function main() {
     await esperar(
       cdp,
       invitado,
-      'window.game.mapaLaberinto.length === 60 && window.game.renderer.ambiente === "dungeon"',
+      'window.game.mapaLaberinto.length === 80 && window.game.renderer.ambiente === "dungeon"',
       8000,
       'invitado de vuelta a la mazmorra',
     );
@@ -236,7 +236,7 @@ async function main() {
     if (spritesVuelta.ambiente !== 'dungeon' || spritesVuelta.dungeonSuelo === 0) {
       throw new Error(`el invitado no recuperó el tiling de mazmorra: ${JSON.stringify(spritesVuelta)}`);
     }
-    console.log('  PASS invitado recupera 60×60 y tema dungeon al volver');
+    console.log('  PASS invitado recupera 80×80 y tema dungeon al volver');
 
     console.log('SMOKE_HOUSING_MP_OK');
   } finally {

@@ -68,7 +68,54 @@ export function generarAbierto(
     }
   }
   conectarTransitables(mapa);
+  sellarComponentesAisladas(mapa);
   return mapa;
+}
+
+/**
+ * Deja sólo la componente transitable más grande. Las bolsas menores quedan
+ * inalcanzables (ni el jugador ni los enemigos pueden llegar), así que se sellan.
+ * Debe llamarse después de `conectarTransitables`.
+ */
+function sellarComponentesAisladas(mapa: Celda[][]): void {
+  const filas = mapa.length;
+  const columnas = filas > 0 ? mapa[0].length : 0;
+  const vistos = new Set<number>();
+  let mayor: number[] = [];
+
+  for (let f = 0; f < filas; f++) {
+    for (let c = 0; c < columnas; c++) {
+      const inicio = f * columnas + c;
+      if (!mapa[f][c].esTransitable || vistos.has(inicio)) continue;
+      const componente: number[] = [];
+      const pila: Array<[number, number]> = [[f, c]];
+      vistos.add(inicio);
+      while (pila.length > 0) {
+        const [pf, pc] = pila.pop()!;
+        componente.push(pf * columnas + pc);
+        const vecinos: Array<[number, number]> = [
+          [pf - 1, pc], [pf + 1, pc], [pf, pc - 1], [pf, pc + 1],
+        ];
+        for (const [nf, nc] of vecinos) {
+          if (nf < 0 || nc < 0 || nf >= filas || nc >= columnas) continue;
+          const indice = nf * columnas + nc;
+          if (vistos.has(indice) || !mapa[nf][nc].esTransitable) continue;
+          vistos.add(indice);
+          pila.push([nf, nc]);
+        }
+      }
+      if (componente.length > mayor.length) mayor = componente;
+    }
+  }
+
+  const conservar = new Set(mayor);
+  for (let f = 0; f < filas; f++) {
+    for (let c = 0; c < columnas; c++) {
+      if (mapa[f][c].esTransitable && !conservar.has(f * columnas + c)) {
+        mapa[f][c].esTransitable = false;
+      }
+    }
+  }
 }
 
 export function generarPlanta(

@@ -87,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo desplegada en GitHub Pages (base relativa + workflow) (`2fb27b4`, `2eca656`)
 
 ### Changed
+- **Bump `1.4.0 → 1.5.0`** (menor): migración de host en multijugador — elección única con CAS/epoch, reconexión de supervivientes, ex-host como invitado y corona `[HOST]`
 - **Bump `1.3.0 → 1.4.0`** (menor): F4 completa — interés adaptativo, streaming de nodos hot/cold+LOD y MP compacto
 - **F4a — interés adaptativo**: `radioSim`/`radioVis` dinámicos por dispositivo, clase, FPS y jugadores con histéresis (móvil 3/1, tablet 4/2, PC 5/3; explorador +1); el host mantiene autoridad 3 para acciones de remotos; los monstruos usan `radioVis`; helper puro `interes` con specs y smokes solo/MP
 - **Mundo continuo F3 + coop WebRTC multi-invitado**: costuras/render multi-nodo y cruce caminando, invitado MP continuo, coop manual multi-invitado con QR en 3 partes y UI por rol; bump `1.2.0 → 1.3.0`

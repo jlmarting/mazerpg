@@ -4,12 +4,17 @@ import { SpriteManager } from './SpriteManager';
 import { AvatarCompositor } from './AvatarCompositor';
 import { aparienciaEfectiva } from './avatarTintes';
 import { carasHaciaSuelo, hashCelda, varianteSuelo } from '../world/autotile';
+import type { NivelNodo } from '../world/streaming';
+
+const LOD_TAMANO_CELDA = 8;
 
 interface CacheNodo {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   valido: boolean;
   ambiente: 'dungeon' | 'casa';
+  nivel: 'hot' | 'lod';
+  tamanoCelda: number;
 }
 
 interface NodoRender {
@@ -23,6 +28,7 @@ interface NodoRender {
 interface NodoRenderEntry {
   nodo: NodoRender;
   transform: { df: number; dc: number };
+  nivel?: NivelNodo;
 }
 
 /**
@@ -131,13 +137,23 @@ export class Renderer {
     nodoActivoId?: string,
     persistenceOverride?: number,
   ): void {
+    const orden: Record<NivelNodo, number> = { cold: 0, lod: 1, hot: 2, activo: 3 };
+    const ordenados = [...nodos].sort(
+      (a, b) => (orden[a.nivel ?? 'hot'] ?? 2) - (orden[b.nivel ?? 'hot'] ?? 2),
+    );
     let offsetActivo: CameraOffset | null = null;
-    for (const entry of nodos) {
+    for (const entry of ordenados) {
       const offset = {
         colOffset: offsetMundo.colOffset - entry.transform.dc,
         filaOffset: offsetMundo.filaOffset - entry.transform.df,
       };
-      this.cacheNodoDibujar(entry.nodo, offset, config);
+      const nivel = entry.nivel ?? 'hot';
+      if (nivel === 'lod') {
+        // LOD: miniatura atenuada, sin capas dinámicas ni niebla por celda.
+        this.cacheNodoDibujar(entry.nodo, offset, config, 'lod');
+        continue;
+      }
+      this.cacheNodoDibujar(entry.nodo, offset, config, 'hot');
       this.dibujarPulsoHousing(entry.nodo.celdas, offset, config);
       this.dibujarTesoros(entry.nodo.celdas, offset, config);
       this.dibujarSalida(entry.nodo.celdas, offset, config);
@@ -1007,20 +1023,25 @@ export class Renderer {
 
   getCtx() { return this.ctx; }
 
-  private inicializarCacheNodo(nodo: NodoRender, config: GameConfig): CacheNodo {
-    const { TAMANO_CELDA } = config;
-    const w = Math.max(1, nodo.columnas) * TAMANO_CELDA;
-    const h = Math.max(1, nodo.filas) * TAMANO_CELDA;
+  private inicializarCacheNodo(
+    nodo: NodoRender,
+    config: GameConfig,
+    nivel: 'hot' | 'lod' = 'hot',
+  ): CacheNodo {
+    const tam = nivel === 'lod' ? LOD_TAMANO_CELDA : config.TAMANO_CELDA;
+    const clave = nivel === 'lod' ? `${nodo.id}:lod` : nodo.id;
+    const w = Math.max(1, nodo.columnas) * tam;
+    const h = Math.max(1, nodo.filas) * tam;
     const ambiente: 'dungeon' | 'casa' =
       nodo.id === '__laberinto__' ? this.ambiente : nodo.tipo === 'personal' ? 'casa' : 'dungeon';
 
-    let entry = this.cacheNodos.get(nodo.id);
-    if (!entry || entry.canvas.width !== w || entry.canvas.height !== h || entry.ambiente !== ambiente) {
+    let entry = this.cacheNodos.get(clave);
+    if (!entry || entry.canvas.width !== w || entry.canvas.height !== h || entry.ambiente !== ambiente || entry.nivel !== nivel) {
       const canvas = document.createElement('canvas');
       canvas.width = w;
       canvas.height = h;
-      entry = { canvas, ctx: canvas.getContext('2d')!, valido: false, ambiente };
-      this.cacheNodos.set(nodo.id, entry);
+      entry = { canvas, ctx: canvas.getContext('2d')!, valido: false, ambiente, nivel, tamanoCelda: tam };
+      this.cacheNodos.set(clave, entry);
     }
     if (entry.valido) return entry;
 
@@ -1040,35 +1061,35 @@ export class Renderer {
       for (let columna = 0; columna < columnasNodo; columna++) {
         const celda = filaCeldas[columna];
         if (!celda) continue;
-        const x = columna * TAMANO_CELDA;
-        const y = fila * TAMANO_CELDA;
+        const x = columna * tam;
+        const y = fila * tam;
 
         if (!celda.esTransitable) {
-          this.pintarBloqueMuro(ctx, mapaLaberinto, fila, columna, x, y, TAMANO_CELDA, filasNodo, columnasNodo);
+          this.pintarBloqueMuro(ctx, mapaLaberinto, fila, columna, x, y, tam, filasNodo, columnasNodo);
           continue;
         }
 
-        this.pintarSuelo(ctx, celda, fila, columna, x, y, TAMANO_CELDA);
+        this.pintarSuelo(ctx, celda, fila, columna, x, y, tam);
 
         // Sombra interior en los bordes que dan a muro: profundidad barata (en caché).
         // En una costura abierta (muro false) no se pinta, para que el nodo vecino
         // se lea como continuación y no como borde de mapa.
         ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-        const banda = Math.max(3, Math.floor(TAMANO_CELDA * 0.12));
+        const banda = Math.max(3, Math.floor(tam * 0.12));
         const sombraSuperior = celda.muros.superior || (fila > 0 && !mapaLaberinto[fila - 1][columna].esTransitable);
         const sombraInferior = celda.muros.inferior || (fila < filasNodo - 1 && !mapaLaberinto[fila + 1][columna].esTransitable);
         const sombraIzquierda = celda.muros.izquierdo || (columna > 0 && !mapaLaberinto[fila][columna - 1].esTransitable);
         const sombraDerecha = celda.muros.derecho || (columna < columnasNodo - 1 && !mapaLaberinto[fila][columna + 1].esTransitable);
-        if (sombraSuperior) ctx.fillRect(x, y, TAMANO_CELDA, banda);
-        if (sombraInferior) ctx.fillRect(x, y + TAMANO_CELDA - banda, TAMANO_CELDA, banda);
-        if (sombraIzquierda) ctx.fillRect(x, y, banda, TAMANO_CELDA);
-        if (sombraDerecha) ctx.fillRect(x + TAMANO_CELDA - banda, y, banda, TAMANO_CELDA);
+        if (sombraSuperior) ctx.fillRect(x, y, tam, banda);
+        if (sombraInferior) ctx.fillRect(x, y + tam - banda, tam, banda);
+        if (sombraIzquierda) ctx.fillRect(x, y, banda, tam);
+        if (sombraDerecha) ctx.fillRect(x + tam - banda, y, banda, tam);
 
         if (celda.burbuja) {
           ctx.strokeStyle = '#87CEEB';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(x + TAMANO_CELDA / 2, y + TAMANO_CELDA / 2, TAMANO_CELDA / 2.5, 0, Math.PI * 2);
+          ctx.arc(x + tam / 2, y + tam / 2, tam / 2.5, 0, Math.PI * 2);
           ctx.stroke();
           ctx.fillStyle = 'rgba(135, 206, 235, 0.3)';
           ctx.fill();
@@ -1082,14 +1103,14 @@ export class Renderer {
           ctx.globalAlpha = atenuado ? 0.25 : 1;
           if (esHousing && this.spriteManager.obtenerSprite('casa_portal_casita')) {
             // El portal de housing se ve como una casita (el pulso se dibuja en la capa viva).
-            this.spriteManager.dibujarSprite(ctx, 'casa_portal_casita', x, y, TAMANO_CELDA, TAMANO_CELDA);
+            this.spriteManager.dibujarSprite(ctx, 'casa_portal_casita', x, y, tam, tam);
           } else {
             ctx.fillStyle = 'rgba(0, 0, 255, 0.4)';
             ctx.beginPath();
-            ctx.moveTo(x + TAMANO_CELDA / 2, y + 5);
-            ctx.lineTo(x + TAMANO_CELDA - 5, y + TAMANO_CELDA / 2);
-            ctx.lineTo(x + TAMANO_CELDA / 2, y + TAMANO_CELDA - 5);
-            ctx.lineTo(x + 5, y + TAMANO_CELDA / 2);
+            ctx.moveTo(x + tam / 2, y + 5);
+            ctx.lineTo(x + tam - 5, y + tam / 2);
+            ctx.lineTo(x + tam / 2, y + tam - 5);
+            ctx.lineTo(x + 5, y + tam / 2);
             ctx.closePath();
             ctx.fill();
             ctx.strokeStyle = '#0000ff';
@@ -1099,17 +1120,17 @@ export class Renderer {
         }
 
         if (celda.alimento) {
-          this.dibujarItemCache(ctx, celda.alimento.tipo, 'food', x, y, TAMANO_CELDA, '🍎');
+          this.dibujarItemCache(ctx, celda.alimento.tipo, 'food', x, y, tam, '🍎');
         }
 
         if (celda.tienePico) {
-          this.dibujarItemCache(ctx, 'pickaxe', 'pickaxe', x, y, TAMANO_CELDA, '⛏️');
+          this.dibujarItemCache(ctx, 'pickaxe', 'pickaxe', x, y, tam, '⛏️');
         }
 
         if (celda.tipoEscenario !== 'ninguno') {
           const spriteDyn = `dynamic_${celda.tipoEscenario}_${celda.estadoEscenario}_0`;
           if (this.spriteManager.obtenerSprite(spriteDyn)) {
-            this.spriteManager.dibujarSprite(ctx, spriteDyn, x, y, TAMANO_CELDA, TAMANO_CELDA);
+            this.spriteManager.dibujarSprite(ctx, spriteDyn, x, y, tam, tam);
           }
         }
       }
@@ -1279,8 +1300,40 @@ export class Renderer {
   }
 
   invalidarCacheNodo(nodoId: string): void {
-    const entry = this.cacheNodos.get(nodoId);
-    if (entry) entry.valido = false;
+    for (const clave of [nodoId, `${nodoId}:lod`]) {
+      const entry = this.cacheNodos.get(clave);
+      if (entry) entry.valido = false;
+    }
+  }
+
+  private eliminarCacheNodo(nodoId: string): void {
+    this.cacheNodos.delete(nodoId);
+    this.cacheNodos.delete(`${nodoId}:lod`);
+  }
+
+  private eliminarCacheCompleta(nodoId: string): void {
+    this.cacheNodos.delete(nodoId);
+  }
+
+  private eliminarCacheLod(nodoId: string): void {
+    this.cacheNodos.delete(`${nodoId}:lod`);
+  }
+
+  /** F4b: ajusta las cachés al nivel de streaming (cold se elimina). */
+  aplicarNiveles(
+    niveles: ReadonlyMap<string, NivelNodo>,
+    nodos: ReadonlyArray<{ nodo: NodoRender; transform: { df: number; dc: number } }>,
+  ): void {
+    for (const { nodo } of nodos) {
+      const nivel = niveles.get(nodo.id) ?? 'cold';
+      if (nivel === 'cold') {
+        this.eliminarCacheNodo(nodo.id);
+      } else if (nivel === 'lod') {
+        this.eliminarCacheCompleta(nodo.id);
+      } else {
+        this.eliminarCacheLod(nodo.id);
+      }
+    }
   }
 
   invalidarCacheLaberinto() {
@@ -1321,13 +1374,26 @@ export class Renderer {
     }
   }
 
-  private cacheNodoDibujar(nodo: NodoRender, offset: CameraOffset, config: GameConfig) {
+  private cacheNodoDibujar(
+    nodo: NodoRender,
+    offset: CameraOffset,
+    config: GameConfig,
+    nivel: 'hot' | 'lod' = 'hot',
+  ) {
     const { TAMANO_CELDA, ALTO_UI_TOP } = config;
-    const entry = this.inicializarCacheNodo(nodo, config);
+    const entry = this.inicializarCacheNodo(nodo, config, nivel);
     const dx = -offset.colOffset * TAMANO_CELDA;
     const dy = -offset.filaOffset * TAMANO_CELDA + ALTO_UI_TOP;
     this.ctx.imageSmoothingEnabled = false;
-    this.ctx.drawImage(entry.canvas, dx, dy);
+    if (nivel === 'lod') {
+      const ancho = Math.max(1, nodo.columnas) * TAMANO_CELDA;
+      const alto = Math.max(1, nodo.filas) * TAMANO_CELDA;
+      this.ctx.globalAlpha = 0.55;
+      this.ctx.drawImage(entry.canvas, dx, dy, ancho, alto);
+      this.ctx.globalAlpha = 1;
+    } else {
+      this.ctx.drawImage(entry.canvas, dx, dy);
+    }
     this.ctx.imageSmoothingEnabled = true;
   }
 }

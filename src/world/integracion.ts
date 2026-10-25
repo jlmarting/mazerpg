@@ -494,3 +494,95 @@ export function sembrarMundoBase(params: {
     portalHousingVuelta,
   };
 }
+
+/**
+ * F4b: cadena determinista de zonas al este de `origenZona1`. Crea
+ * `zona-abierto-2..N` con costuras este/oeste y transforms derivados; es
+ * idempotente (no duplica nodos ni conectores).
+ */
+export function sembrarCadenaZonas(
+  gestor: GestorMundo,
+  origenZona1: NodoMundo,
+  cantidad: number = 3,
+  dimsZona: { filas: number; columnas: number } = { filas: 40, columnas: 40 },
+): NodoMundo[] {
+  const creadas: NodoMundo[] = [];
+  let anterior = origenZona1;
+  let filaEntrada = filaDeEntrada(gestor, origenZona1);
+
+  for (let n = 2; n <= 1 + cantidad; n++) {
+    const id = `zona-abierto-${n}`;
+    let nodo = gestor.mundo.get(id) ?? null;
+    if (!nodo) {
+      const gen: GenSpec = {
+        nombre: 'abierto',
+        version: 1,
+        seed: semillaDerivada(anterior.gen.seed, id),
+        params: {},
+      };
+      nodo = {
+        id,
+        padreId: anterior.id,
+        transform: { df: 0, dc: 0 },
+        filas: dimsZona.filas,
+        columnas: dimsZona.columnas,
+        tipo: 'abierto',
+        gen,
+        celdas: generarNodo(gen, dimsZona.filas, dimsZona.columnas),
+        ownerId: null,
+      };
+      gestor.mundo.set(nodo.id, nodo);
+    }
+
+    const idIda = `conector-zona-abierto-${n}`;
+    if (!gestor.conectores.has(idIda)) {
+      const filaO = Math.max(0, Math.min(anterior.filas - 1, filaEntrada));
+      const filaD = Math.max(0, Math.min(nodo.filas - 1, filaEntrada));
+      const origen = prepararCeldaCostura(anterior.celdas, 'este', filaO);
+      const destino = prepararCeldaCostura(nodo.celdas, 'oeste', filaD);
+      const ida: ConectorMundo = {
+        id: idIda,
+        tipo: 'salida',
+        nodoOrigenId: anterior.id,
+        filaO: origen.fila,
+        columnaO: origen.columna,
+        nodoDestinoId: nodo.id,
+        filaD: destino.fila,
+        columnaD: destino.columna,
+        housingOwnerId: null,
+        lado: 'este',
+      };
+      gestor.registrarConector(ida);
+      const vuelta: ConectorMundo = {
+        id: `${idIda}-vuelta`,
+        tipo: 'entrada',
+        nodoOrigenId: nodo.id,
+        filaO: destino.fila,
+        columnaO: destino.columna,
+        nodoDestinoId: anterior.id,
+        filaD: origen.fila,
+        columnaD: origen.columna,
+        housingOwnerId: null,
+        lado: 'oeste',
+      };
+      gestor.registrarConector(vuelta);
+      filaEntrada = destino.fila;
+    } else {
+      const ida = gestor.conectores.get(idIda)!;
+      filaEntrada = ida.filaD;
+    }
+
+    creadas.push(nodo);
+    anterior = nodo;
+  }
+  return creadas;
+}
+
+/** Fila por la que se entra a una zona (su costura oeste); fallback al centro. */
+function filaDeEntrada(gestor: GestorMundo, nodo: NodoMundo): number {
+  for (const conector of gestor.conectores.values()) {
+    if (conector.nodoDestinoId === nodo.id && conector.lado === 'este') return conector.filaD;
+    if (conector.nodoOrigenId === nodo.id && conector.lado === 'oeste') return conector.filaO;
+  }
+  return Math.floor(nodo.filas / 2);
+}

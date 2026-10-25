@@ -13,6 +13,7 @@ import { SignalingClient, crearSignalingClient, getSignalingUrl } from './networ
 import { eliminarMurosEntre } from './world/generation';
 import { elegirCeldaLejos, elegirCeldaParaLlave } from './world/spawn';
 import { serializarMapa, deserializarMapa } from './world/serialization';
+import { generarNodo } from './world/generadores';
 import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
@@ -41,10 +42,12 @@ import { PersistenciaMundo } from './world/PersistenciaMundo';
 import { HousingLocal } from './world/housing';
 import { EspejoLocal, type DocNodoLocal } from './world/espejoLocal';
 import { GestorMundo } from './world/GestorMundo';
-import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, rehidratarNodoTrasCruce, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
+import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, rehidratarNodoTrasCruce, sembrarCadenaZonas, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
 import { ArbitroDeltas } from './world/ArbitroDeltas';
-import { celdaDestinoEnCostura, nodosVisibles } from './world/costura';
-import { conTickAutor, consolidarCeldasLWW, FMT_DELTA, leerSnapshotNodo, rehidratarHistoria, restaurarEnemigos, type ConectorMundo, type DeltaMundo, type EnemigoFoto, type GenSpec, type NodoMundo, type SnapshotNodo } from './world/mundo';
+import { abrirCeldaCostura, celdaDestinoEnCostura } from './world/costura';
+import { consolidarDeltasNodo, costurasDeNodo, type NodoRemoto } from './world/mundoRemoto';
+import { calcularStreaming, type NivelNodo, type SeleccionStreaming } from './world/streaming';
+import { aplicarDelta, conTickAutor, consolidarCeldasLWW, FMT_DELTA, leerSnapshotNodo, rehidratarHistoria, restaurarEnemigos, type ConectorMundo, type DeltaMundo, type EnemigoFoto, type GenSpec, type NodoMundo, type SnapshotNodo } from './world/mundo';
 
 declare global {
     interface Window {
@@ -128,6 +131,12 @@ class Game implements IGame {
   private readonly FPS_MINIMO: number = 15;
   /** F4a: estado del interés adaptativo (expuesto para debug/smoke). */
   public interesActual: EstadoInteres | null = null;
+  /** F4b: clasificación hot/lod/cold del último frame (debug/smoke). */
+  public streamingActual: SeleccionStreaming | null = null;
+  /** F4b.3: mundo compacto recibido del host (gen+deltas). */
+  public mundoRemotoCompacto: boolean = false;
+  /** F4b.3: deltas de la sesión por nodo (host) para el invitado. */
+  private deltasMundo: Map<string, DeltaMundo[]> = new Map();
   private fpsEma: number = 60;
   private fpsBajoMs: number = 0;
   private fpsAltoMs: number = 0;
@@ -265,10 +274,17 @@ class Game implements IGame {
   }
 
   /** Nodos visibles para el renderer (con transform absoluto). */
-  private nodosRenderizables(offsetMundo: { colOffset: number; filaOffset: number }): Array<{
-    nodo: NodoMundo;
-    transform: { df: number; dc: number };
-  }> {
+  /**
+   * F4b: clasifica los nodos cargados en activo/hot/lod/cold y devuelve las
+   * entradas que se dibujan (todo menos cold), la lista completa (para evictar
+   * caches) y la selección para debug/smoke.
+   */
+  private nodosStreaming(offsetMundo: { colOffset: number; filaOffset: number }): {
+    entradas: Array<{ nodo: NodoMundo; transform: { df: number; dc: number }; nivel: NivelNodo }>;
+    candidatos: Array<{ nodo: NodoMundo; transform: { df: number; dc: number } }>;
+    seleccion: SeleccionStreaming;
+  } {
+    let candidatos: Array<{ nodo: NodoMundo; transform: { df: number; dc: number } }>;
     if (this.gestorMundo.mundo.size === 0 || !this.gestorMundo.nodoActivoId) {
       const nodo: NodoMundo = {
         id: '__activo__',
@@ -281,38 +297,47 @@ class Game implements IGame {
         celdas: this.mapaLaberinto,
         ownerId: null,
       };
-      return [{ nodo, transform: { df: 0, dc: 0 } }];
+      candidatos = [{ nodo, transform: { df: 0, dc: 0 } }];
+    } else {
+      const activo = this.nodoActivo;
+      if (activo?.tipo === 'personal') {
+        candidatos = [{ nodo: activo, transform: this.gestorMundo.transformAbsoluto(activo.id) }];
+      } else {
+        const entries = Array.from(this.gestorMundo.mundo.values()).map((nodo) => ({
+          nodo,
+          transform: this.gestorMundo.transformAbsoluto(nodo.id),
+        }));
+        candidatos = entries.filter((e) => {
+          if (e.nodo.id === this.gestorMundo.nodoActivoId) return true;
+          // Los portales (casa) y nodos sin colocar no se cosen al mundo.
+          if (e.nodo.tipo === 'personal') return false;
+          if (e.nodo.padreId === null) return true;
+          return e.transform.df !== 0 || e.transform.dc !== 0;
+        });
+      }
     }
 
-    const activo = this.nodoActivo;
-    if (activo?.tipo === 'personal') {
-      return [{ nodo: activo, transform: this.gestorMundo.transformAbsoluto(activo.id) }];
-    }
-
-    const entries = Array.from(this.gestorMundo.mundo.values()).map((nodo) => ({
-      nodo,
-      transform: this.gestorMundo.transformAbsoluto(nodo.id),
-    }));
-    const candidatos = entries.filter((e) => {
-      if (e.nodo.id === this.gestorMundo.nodoActivoId) return true;
-      // Los portales (casa) y nodos sin colocar no se cosen al mundo.
-      if (e.nodo.tipo === 'personal') return false;
-      if (e.nodo.padreId === null) return true;
-      return e.transform.df !== 0 || e.transform.dc !== 0;
-    });
-    const ids = new Set(
-      nodosVisibles(
-        candidatos.map((e) => ({
-          id: e.nodo.id,
-          transform: e.transform,
-          filas: e.nodo.filas,
-          columnas: e.nodo.columnas,
-        })),
-        offsetMundo,
-        this.config,
-      ),
+    const vista = {
+      minFila: offsetMundo.filaOffset,
+      maxFila: offsetMundo.filaOffset + this.config.CELDAS_VISIBLES_Y,
+      minColumna: offsetMundo.colOffset,
+      maxColumna: offsetMundo.colOffset + this.config.CELDAS_VISIBLES_X,
+    };
+    const activoId = this.gestorMundo.nodoActivoId || '__activo__';
+    const seleccion = calcularStreaming(
+      candidatos.map((e) => ({
+        id: e.nodo.id,
+        transform: e.transform,
+        filas: e.nodo.filas,
+        columnas: e.nodo.columnas,
+      })),
+      activoId,
+      vista,
     );
-    return candidatos.filter((e) => ids.has(e.nodo.id));
+    const entradas = candidatos
+      .filter((e) => seleccion.niveles.get(e.nodo.id) !== 'cold')
+      .map((e) => ({ ...e, nivel: seleccion.niveles.get(e.nodo.id) ?? 'cold' }));
+    return { entradas, candidatos, seleccion };
   }
 
   initMap() {
@@ -1360,10 +1385,14 @@ class Game implements IGame {
   private costuraDelNodoActivo(): ConectorMundo | null {
     const activoId = this.gestorMundo.nodoActivoId;
     if (!activoId) return null;
+    let primera: ConectorMundo | null = null;
     for (const conector of this.gestorMundo.conectores.values()) {
-      if (conector.lado && conector.nodoOrigenId === activoId) return conector;
+      if (!conector.lado || conector.nodoOrigenId !== activoId) continue;
+      // En una cadena hay ida (este) y vuelta (oeste); el atajo debe avanzar.
+      if (conector.lado === 'este') return conector;
+      if (!primera) primera = conector;
     }
-    return null;
+    return primera;
   }
 
   /** DEBUG: coloca al protagonista en la celda de la costura para probar el cruce. */
@@ -1717,7 +1746,11 @@ class Game implements IGame {
     // los guests reciben el mapa serializado del host y usan el portal clásico.
     if (!this.esLadoAutoritativo()) return;
     if (!this.gestorMundo.nodoActivoId) return;
-    if (this.gestorMundo.conectores.size > 0) return;
+    if (this.gestorMundo.conectores.size > 0) {
+      // Mundo ya sembrado (reapertura): asegurar la cadena F4b si falta.
+      this.asegurarCadenaZonas();
+      return;
+    }
 
     // Decisión del modal "Housing encontrado": reutilizar la casa guardada o descartarla.
     let casaPrevia: NodoMundo | null = null;
@@ -1749,6 +1782,17 @@ class Game implements IGame {
       this.registrarEventoLog(
         'Mundo conectado: salida a zona y portal de casa personal registrados.',
       );
+      this.asegurarCadenaZonas(sembrado.nodoHijo);
+    }
+  }
+
+  /** F4b: completa la cadena de zonas east (zona-abierto-2..4) si falta. */
+  private asegurarCadenaZonas(zona1?: NodoMundo): void {
+    const inicio = zona1 ?? this.gestorMundo.mundo.get('zona-abierto-1');
+    if (!inicio) return;
+    const creadas = sembrarCadenaZonas(this.gestorMundo, inicio, 3, { filas: 40, columnas: 40 });
+    if (creadas.length > 0) {
+      this.registrarEventoLog(`Cadena de zonas: ${creadas.map((n) => n.id).join(', ')}.`);
     }
   }
 
@@ -2080,8 +2124,11 @@ class Game implements IGame {
     if (this.protagonista.clase === 'explorador') {
         persistence *= 1.5;
     }
+    const mundoStreaming = this.nodosStreaming(offsetMundo);
+    this.streamingActual = mundoStreaming.seleccion;
+    this.renderer.aplicarNiveles(mundoStreaming.seleccion.niveles, mundoStreaming.candidatos);
     this.renderer.dibujarMundo(
-      this.nodosRenderizables(offsetMundo),
+      mundoStreaming.entradas,
       offsetMundo,
       this.config,
       this.dropsSuelo,
@@ -2449,42 +2496,57 @@ class Game implements IGame {
     this.registrarEventoLog(`[net] enviarMapaAlInvitado a ${guestId}: ${jInfo ? ('dc=' + (jInfo.dc?.readyState ?? 'null')) : 'sin jInfo'} (remotos=${this.remotosActivos.size})`);
     if (!jInfo || !jInfo.dc || jInfo.dc.readyState !== "open") return;
 
-    const mapaCompacto = serializarMapa(this.mapaLaberinto, { v2: true });
     const enemigos = this.listaDeEnemigos.map(e => ({
         id: e.id, f: e.fila, c: e.columna, n: e.nombre, t: e.tipo, v: e.vidaActual, vm: e.vidaMaxima
     }));
 
-    const ambiente = this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon';
-    const activo = this.nodoActivo;
-    const transformActivo = this.gestorMundo.nodoActivoId
-        ? this.gestorMundo.transformAbsoluto(this.gestorMundo.nodoActivoId)
-        : { df: 0, dc: 0 };
-    const vecinos = this.nodosVecinosParaInvitado().map((nodo) => ({
-        nodoId: nodo.id,
-        tipo: nodo.tipo,
-        transform: this.gestorMundo.transformAbsoluto(nodo.id),
-        datos: serializarMapa(nodo.celdas, { v2: true }),
-    }));
-    const mensajeMapa: any = {
-        tipo: 'mapa',
-        datos: mapaCompacto,
-        dificultad: this.config.dificultad,
-        ambiente,
-        nodoActivoId: this.gestorMundo.nodoActivoId,
-        transformActivo,
-        tipoActivo: activo?.tipo ?? 'mazmorra',
-        continuo: activo?.tipo !== 'personal' && vecinos.length > 0,
-        vecinos,
-    };
-    let payloadMapa = JSON.stringify(mensajeMapa);
-    if (payloadMapa.length > 64 * 1024) {
-        // Presupuesto F3: si los vecinos hinchan el mensaje, degradar a mapa
-        // único + fundido (el invitado conserva el comportamiento anterior).
-        delete mensajeMapa.vecinos;
-        mensajeMapa.continuo = false;
-        payloadMapa = JSON.stringify(mensajeMapa);
+    // F4b.3: HTTP/manual sin persistencia → gen + deltas + costuras. Con
+    // Firebase (snapshot/history en Firestore) o payload excesivo → mapa completo F3.
+    let enviadoCompacto = false;
+    if (!this.persistenciaMundo) {
+        const compacto = this.construirMundoCompacto();
+        if (compacto) {
+            const payload = JSON.stringify(compacto);
+            if (payload.length <= 64 * 1024) {
+                jInfo.dc.send(payload);
+                enviadoCompacto = true;
+            }
+        }
     }
-    jInfo.dc.send(payloadMapa);
+    if (!enviadoCompacto) {
+        const mapaCompacto = serializarMapa(this.mapaLaberinto, { v2: true });
+        const ambiente = this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon';
+        const activo = this.nodoActivo;
+        const transformActivo = this.gestorMundo.nodoActivoId
+            ? this.gestorMundo.transformAbsoluto(this.gestorMundo.nodoActivoId)
+            : { df: 0, dc: 0 };
+        const vecinos = this.nodosVecinosParaInvitado().map((nodo) => ({
+            nodoId: nodo.id,
+            tipo: nodo.tipo,
+            transform: this.gestorMundo.transformAbsoluto(nodo.id),
+            datos: serializarMapa(nodo.celdas, { v2: true }),
+        }));
+        const mensajeMapa: any = {
+            tipo: 'mapa',
+            datos: mapaCompacto,
+            dificultad: this.config.dificultad,
+            ambiente,
+            nodoActivoId: this.gestorMundo.nodoActivoId,
+            transformActivo,
+            tipoActivo: activo?.tipo ?? 'mazmorra',
+            continuo: activo?.tipo !== 'personal' && vecinos.length > 0,
+            vecinos,
+        };
+        let payloadMapa = JSON.stringify(mensajeMapa);
+        if (payloadMapa.length > 64 * 1024) {
+            // Presupuesto F3: si los vecinos hinchan el mensaje, degradar a mapa
+            // único + fundido (el invitado conserva el comportamiento anterior).
+            delete mensajeMapa.vecinos;
+            mensajeMapa.continuo = false;
+            payloadMapa = JSON.stringify(mensajeMapa);
+        }
+        jInfo.dc.send(payloadMapa);
+    }
     jInfo.dc.send(JSON.stringify({ tipo: 'enemigos', lista: enemigos }));
 
     const objetos: any[] = [];
@@ -2555,6 +2617,48 @@ class Game implements IGame {
   }
 
   /** Reconstruye el mundo renderizable del invitado desde el mensaje `mapa`. */
+  /** F4b.3: materializa mundo compacto (gen + deltas + costuras / datos personal). */
+  private aplicarMundoRemoto(msg: any): { filas: number; columnas: number } {
+    const nodos: NodoMundo[] = [];
+    for (const n of msg.nodos ?? []) {
+      let celdas: Celda[][] = [];
+      let filas = Number(n.filas) || 0;
+      let columnas = Number(n.columnas) || 0;
+      if (typeof n.datos === 'string') {
+        const dims = deserializarMapa(celdas, n.datos);
+        filas = dims.filas;
+        columnas = dims.columnas;
+      } else if (n.gen) {
+        celdas = generarNodo(n.gen, filas, columnas);
+        const deltas = Array.isArray(n.deltas) ? [...n.deltas].sort((a: DeltaMundo, b: DeltaMundo) => a.tick - b.tick) : [];
+        for (const delta of deltas) aplicarDelta(celdas, delta);
+        for (const costura of n.costuras ?? []) abrirCeldaCostura(celdas, costura);
+      } else {
+        console.warn('mundo: nodo sin gen ni datos; se ignora.', n.id);
+        continue;
+      }
+      nodos.push({
+        id: n.id,
+        padreId: null,
+        transform: n.transform ?? { df: 0, dc: 0 },
+        filas,
+        columnas,
+        tipo: (n.tipo as NodoMundo['tipo']) ?? 'mazmorra',
+        gen: n.gen ?? { nombre: 'remoto', version: 1, seed: 0, params: {} },
+        celdas,
+        ownerId: n.ownerId ?? null,
+      });
+    }
+    if (nodos.length === 0) {
+      console.warn('mundo: mensaje sin nodos; se conserva el mundo actual.');
+      return this.dimsActivo();
+    }
+    const activo = nodos.find((n) => n.id === msg.nodoActivoId) ?? nodos[0];
+    this.gestorMundo.mundo = new Map(nodos.map((n) => [n.id, n]));
+    this.gestorMundo.nodoActivoId = activo.id;
+    return { filas: activo.filas, columnas: activo.columnas };
+  }
+
   private aplicarMapaRemoto(msg: any): { filas: number; columnas: number } {
     const celdasActivas: Celda[][] = [];
     const dims = deserializarMapa(celdasActivas, msg.datos);
@@ -2818,6 +2922,62 @@ class Game implements IGame {
     return this.tickMundo;
   }
 
+  /** F4b.3: registra un delta aplicado en el host para enviarlo al invitado. */
+  private registrarDeltaMundo(delta: DeltaMundo): void {
+    const lista = this.deltasMundo.get(delta.nodoId);
+    if (lista) lista.push(delta);
+    else this.deltasMundo.set(delta.nodoId, [delta]);
+  }
+
+  /** F4b.3: nodo remoto a partir del estado del host (mundo o casa). */
+  private construirNodoRemoto(nodo: NodoMundo, activoId: string): NodoRemoto {
+    const transform = this.gestorMundo.transformAbsoluto(nodo.id);
+    const base: NodoRemoto = {
+      id: nodo.id,
+      gen: nodo.gen,
+      filas: nodo.filas,
+      columnas: nodo.columnas,
+      tipo: nodo.tipo,
+      ownerId: nodo.ownerId,
+      transform,
+    };
+    // El activo se envía completo: su estado puede incluir celdas no
+    // reconstruibles por gen+deltas (semilla, objetos, debug). Los vecinos,
+    // que son el coste real del protocolo, van gen+deltas.
+    if (nodo.tipo === 'personal' || nodo.id === activoId) {
+      base.datos = serializarMapa(nodo.celdas, { v2: true });
+      return base;
+    }
+    const deltas = consolidarDeltasNodo(this.deltasMundo.get(nodo.id) ?? []);
+    if (deltas.length > 0) base.deltas = deltas;
+    const costuras = costurasDeNodo(this.gestorMundo.conectores.values(), nodo.id);
+    if (costuras.length > 0) base.costuras = costuras;
+    return base;
+  }
+
+  /** F4b.3: mensaje compacto activo + hasta 2 vecinos (HTTP/manual). */
+  private construirMundoCompacto(): any {
+    const activo = this.nodoActivo;
+    if (!activo) return null;
+    const nodos = [activo, ...this.nodosVecinosParaInvitado()];
+    const vistos = new Set<string>();
+    const remotos: NodoRemoto[] = [];
+    for (const nodo of nodos) {
+      if (vistos.has(nodo.id)) continue;
+      vistos.add(nodo.id);
+      remotos.push(this.construirNodoRemoto(nodo, activo.id));
+    }
+    return {
+      tipo: 'mundo',
+      version: 2,
+      nodoActivoId: activo.id,
+      ambiente: activo.tipo === 'personal' ? 'casa' : 'dungeon',
+      dificultad: this.config.dificultad,
+      continuo: activo.tipo !== 'personal' && remotos.length > 1,
+      nodos: remotos,
+    };
+  }
+
   private construirDelta(fila: number, columna: number, cambio: DeltaMundo['cambio'], autoria: string, tickAutor: number | null = null): DeltaMundo {
     const base: Omit<DeltaMundo, 'tick'> = {
       fmt: FMT_DELTA,
@@ -2847,6 +3007,7 @@ class Game implements IGame {
     );
     if (aplicado) {
       this.arbitroDeltas.registrar(delta);
+      if (this.esHost) this.registrarDeltaMundo(delta);
       this.programarGuardadoCasa(delta);
     }
     return aplicado;
@@ -4368,7 +4529,33 @@ class Game implements IGame {
                 this.registrarEventoLog('Invitado listo; enviando mundo.');
             }
             break;
+        case 'mundo': {
+            this.mundoRemotoCompacto = true;
+            this.ambienteRemoto = msg.ambiente === 'casa' ? 'casa' : 'dungeon';
+            const offsetPrevio = this.renderer.obtenerOffsetCamaraMundo(
+                this.worldDesdeCeldaActiva(this.protagonista.visualFila, this.protagonista.visualColumna),
+                this.config,
+            );
+            const nodoAnterior = this.gestorMundo.mundo.get(this.gestorMundo.nodoActivoId) ?? null;
+            const dims = this.aplicarMundoRemoto(msg);
+            this.config.NUMERO_FILAS = dims.filas;
+            this.config.NUMERO_COLUMNAS = dims.columnas;
+            if (msg.dificultad) this.config.dificultad = msg.dificultad;
+            this.ajustarDimensiones();
+            this.renderer?.invalidarCacheLaberinto();
+            if (msg.continuo && nodoAnterior && !this.gestorMundo.mundo.has(nodoAnterior.id)) {
+                this.gestorMundo.mundo.set(nodoAnterior.id, nodoAnterior);
+            }
+            if (msg.continuo) {
+                this.transicionCamara = { desde: offsetPrevio, inicio: performance.now(), duracion: 400 };
+            } else {
+                this.transicionCamara = null;
+            }
+            this.registrarEventoLog('Mundo compacto del host recibido.');
+            break;
+        }
         case 'mapa': {
+            this.mundoRemotoCompacto = false;
             this.ambienteRemoto = msg.ambiente === 'casa' ? 'casa' : 'dungeon';
             const offsetPrevio = this.renderer.obtenerOffsetCamaraMundo(
                 this.worldDesdeCeldaActiva(this.protagonista.visualFila, this.protagonista.visualColumna),

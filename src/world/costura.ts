@@ -1,3 +1,5 @@
+import { Celda } from './Celda';
+import { eliminarMurosEntre } from './generation';
 import type { ConectorMundo, NodoMundo } from './mundo';
 
 export type LadoCostura = 'norte' | 'sur' | 'este' | 'oeste';
@@ -167,4 +169,35 @@ export function nodosVisibles(
     if (corta) visibles.push(nodo.id);
   }
   return visibles;
+}
+
+const MURO_POR_LADO: Record<LadoCostura, keyof Celda['muros']> = {
+  norte: 'superior',
+  sur: 'inferior',
+  este: 'derecho',
+  oeste: 'izquierdo',
+};
+
+/**
+ * Abre una celda de costura en un nodo generado en el invitado: la hace
+ * transitable, quita el muro del lado de la costura y abre un paso hacia el
+ * interior (misma semántica que `GestorMundo.abrirCostura`).
+ */
+export function abrirCeldaCostura(
+  celdas: Celda[][],
+  costura: { lado: LadoCostura; fila: number; columna: number; interior: LadoCostura },
+): void {
+  const celda = celdas[costura.fila]?.[costura.columna];
+  if (!celda) return;
+  celda.esTransitable = true;
+  celda.muros[MURO_POR_LADO[costura.lado]] = false;
+
+  const direccion = direccionDeLado(costura.interior);
+  const fila = costura.fila + direccion.df;
+  const columna = costura.columna + direccion.dc;
+  const vecino = celdas[fila]?.[columna];
+  if (vecino) {
+    vecino.esTransitable = true;
+    eliminarMurosEntre(celda, vecino);
+  }
 }

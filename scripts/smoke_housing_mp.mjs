@@ -207,6 +207,9 @@ async function main() {
       'invitado recibe la casa 9×16',
     );
     console.log('  PASS invitado recibe el mapa de la casa 9×16 al cruzar el host');
+    const compactoCasa = await evaluar(cdp, invitado, `window.game.mundoRemotoCompacto === true`);
+    if (!compactoCasa) throw new Error('el invitado no recibió mundo compacto al entrar en la casa');
+    console.log('  PASS invitado recibe la casa por mundo compacto (personal con datos)');
 
     const hostCasa = await evaluar(cdp, host, contarDecor);
     const guestCasa = await evaluar(cdp, invitado, contarDecor);

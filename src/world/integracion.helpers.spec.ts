@@ -8,6 +8,7 @@ import {
   esLadoAutoritativo,
   planificarArranque,
   rehidratarNodoTrasCruce,
+  sembrarCadenaZonas,
   sembrarMundoBase,
   type NodoPersistidoLike,
   type PersistenciaMundoLike,
@@ -891,6 +892,75 @@ async function main(): Promise<void> {
     rehidratarNodoTrasCruce(gestorCruce, 'casa-L1', { gen: GEN_RAIZ, ownerId: null, deltas: [] }) === false,
     'I1: doc sin historia (sin deltas ni snapshot) no rehidrata',
   );
+
+
+  // F4b: cadena determinista de zonas (20×20 para el test)
+  const gestorCadena = new GestorMundo();
+  gestorCadena.crearMundoInicial(GEN_RAIZ, 20, 20);
+  const baseCadena = sembrarMundoBase({
+    gestor: gestorCadena,
+    housing: new HousingLocal('L1', new AlmacenTest()),
+    idLocal: 'L1',
+    filas: 20,
+    columnas: 20,
+  });
+  assert(baseCadena !== null, 'la base de la cadena se siembra');
+  if (baseCadena) {
+    const creadas = sembrarCadenaZonas(gestorCadena, baseCadena.nodoHijo, 3, { filas: 20, columnas: 20 });
+    assert(creadas.length === 3, 'sembrarCadenaZonas crea 3 zonas nuevas (2..4)');
+    assert(
+      creadas.map((n) => n.id).join(',') === 'zona-abierto-2,zona-abierto-3,zona-abierto-4',
+      'las zonas nuevas tienen ids consecutivos',
+    );
+    const z2 = gestorCadena.mundo.get('zona-abierto-2')!;
+    const z3 = gestorCadena.mundo.get('zona-abierto-3')!;
+    const z4 = gestorCadena.mundo.get('zona-abierto-4')!;
+    assert(
+      gestorCadena.transformAbsoluto(z2.id).dc === 40 &&
+        gestorCadena.transformAbsoluto(z3.id).dc === 60 &&
+        gestorCadena.transformAbsoluto(z4.id).dc === 80,
+      'la cadena coloca las zonas al este con dc creciente',
+    );
+    assert(
+      gestorCadena.transformAbsoluto(z2.id).df === 0 &&
+        gestorCadena.transformAbsoluto(z3.id).df === 0 &&
+        gestorCadena.transformAbsoluto(z4.id).df === 0,
+      'con las mismas dimensiones la cadena mantiene la fila',
+    );
+    assert(
+      gestorCadena.mundo.size === 6,
+      'la cadena deja root + zona1 + 3 zonas + casa en el gestor',
+    );
+    const ida2 = gestorCadena.conectores.get('conector-zona-abierto-2');
+    gestorCadena.activarNodo('zona-abierto-1');
+    assert(
+      !!ida2 && ida2.lado === 'este' && gestorCadena.conectorEn(ida2.filaO, ida2.columnaO) === ida2,
+      'el conector zona1→zona2 es una costura este registrada en su celda',
+    );
+    const vuelta2 = gestorCadena.conectores.get('conector-zona-abierto-2-vuelta');
+    assert(
+      !!vuelta2 && vuelta2.lado === 'oeste' && vuelta2.nodoDestinoId === 'zona-abierto-1',
+      'la cadena crea el espejo oeste zona2→zona1',
+    );
+    const inicioZ2 = z2.celdas.flat().find((c) => c.esTransitable);
+    assert(
+      !!inicioZ2 &&
+        !!ida2 &&
+        alcanzable(
+          z2.celdas,
+          { fila: inicioZ2.fila, columna: inicioZ2.columna },
+          { fila: ida2.filaD, columna: ida2.columnaD },
+        ),
+      'la llegada a zona2 es alcanzable desde su interior',
+    );
+    const conectoresAntes = gestorCadena.conectores.size;
+    const creadas2 = sembrarCadenaZonas(gestorCadena, baseCadena.nodoHijo, 3, { filas: 20, columnas: 20 });
+    assert(creadas2.length === 3, 'la cadena es idempotente en nodos');
+    assert(
+      gestorCadena.mundo.size === 6 && gestorCadena.conectores.size === conectoresAntes,
+      'la cadena no duplica nodos ni conectores al repetirse',
+    );
+  }
 
   console.log(`${ok}/${total} ok`);
 }

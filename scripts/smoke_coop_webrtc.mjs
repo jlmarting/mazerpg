@@ -301,10 +301,11 @@ async function main() {
     if (hostTras2.remotos.some((r) => r.dc !== 'open')) throw new Error(`algún dc cerrado: ${JSON.stringify(hostTras2.remotos)}`);
     console.log('  PASS guest2 entra; host mantiene dos remotos reales con dc abierto');
 
-    const guest1State = JSON.parse(await evaluar(cdp, guest1, `JSON.stringify({ motor: window.game.motorIniciado, sync: window.game.mundoSincronizado, mapa: window.game.mapaLaberinto.length, lobby: document.getElementById('lobby')?.style.display })`));
-    const guest2State = JSON.parse(await evaluar(cdp, guest2, `JSON.stringify({ motor: window.game.motorIniciado, sync: window.game.mundoSincronizado, mapa: window.game.mapaLaberinto.length, lobby: document.getElementById('lobby')?.style.display })`));
+    const guest1State = JSON.parse(await evaluar(cdp, guest1, `JSON.stringify({ motor: window.game.motorIniciado, sync: window.game.mundoSincronizado, compacto: window.game.mundoRemotoCompacto === true, mapa: window.game.mapaLaberinto.length, lobby: document.getElementById('lobby')?.style.display })`));
+    const guest2State = JSON.parse(await evaluar(cdp, guest2, `JSON.stringify({ motor: window.game.motorIniciado, sync: window.game.mundoSincronizado, compacto: window.game.mundoRemotoCompacto === true, mapa: window.game.mapaLaberinto.length, lobby: document.getElementById('lobby')?.style.display })`));
     for (const [nombre, st] of [['guest1', guest1State], ['guest2', guest2State]]) {
       if (!st.motor || !st.sync || st.mapa !== 80) throw new Error(`${nombre} no está dentro: ${JSON.stringify(st)}`);
+      if (!st.compacto) throw new Error(`${nombre} no recibió mundo compacto (F4b.3): ${JSON.stringify(st)}`);
       if (st.lobby !== 'none') throw new Error(`${nombre} sigue en el lobby: ${JSON.stringify(st)}`);
     }
     console.log('  PASS ambos invitados dentro (motor+sync+mapa 80×80, lobby oculto)');

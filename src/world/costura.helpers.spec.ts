@@ -1,6 +1,7 @@
 import { Celda } from './Celda';
 import type { ConectorMundo, NodoMundo } from './mundo';
 import {
+  abrirCeldaCostura,
   celdaDestinoEnCostura,
   colocarNodoDestino,
   inferirLadoConector,
@@ -226,7 +227,25 @@ function main(): void {
   assert(visibles.includes('a') && visibles.includes('b'), 'nodosVisibles incluye los nodos que cortan el viewport');
   assert(!visibles.includes('c') && !visibles.includes('d'), 'nodosVisibles excluye los nodos lejanos');
 
+
+  // --- abrirCeldaCostura ---
+  const celdasCostura: Celda[][] = [];
+  for (let f = 0; f < 3; f++) {
+    celdasCostura[f] = [];
+    for (let c = 0; c < 3; c++) celdasCostura[f][c] = new Celda(f, c);
+  }
+  abrirCeldaCostura(celdasCostura, { lado: 'este', fila: 1, columna: 2, interior: 'oeste' });
+  assert(celdasCostura[1][2].esTransitable, 'abrirCeldaCostura hace transitable el borde');
+  assert(celdasCostura[1][2].muros.derecho === false, 'abrirCeldaCostura quita el muro del lado de la costura');
+  assert(
+    celdasCostura[1][1].esTransitable && celdasCostura[1][2].muros.izquierdo === false,
+    'abrirCeldaCostura abre un paso hacia el interior',
+  );
+  abrirCeldaCostura(celdasCostura, { lado: 'este', fila: 99, columna: 99, interior: 'oeste' });
+  assert(true, 'abrirCeldaCostura fuera de rango no lanza');
+
   console.log(`${ok}/${total} ok`);
+
 }
 
 main();

@@ -235,7 +235,9 @@ async function main() {
       nodos: window.game.gestorMundo.mundo.size,
       filas: window.game.mapaLaberinto.length,
       columnas: window.game.mapaLaberinto[0]?.length ?? 0,
-      cacheRaiz: !!window.game.renderer.cacheNodos && window.game.renderer.cacheNodos.has('raiz'),
+      compacto: window.game.mundoRemotoCompacto === true,
+      raizEnMundo: window.game.gestorMundo.mundo.has('raiz'),
+      cacheRaiz: !!window.game.renderer.cacheNodos && (window.game.renderer.cacheNodos.has('raiz') || window.game.renderer.cacheNodos.has('raiz:lod')),
       cacheHijo: !!window.game.renderer.cacheNodos && window.game.renderer.cacheNodos.has('zona-abierto-1'),
       fundido: Number.isFinite(window.game.fundidoInicio)
     })`));
@@ -243,9 +245,10 @@ async function main() {
     if (guestState.nodos < 2) throw new Error(`invitado con ${guestState.nodos} nodos (esperaba activo+vecino)`);
     if (guestState.filas !== 80 || guestState.columnas !== 80) throw new Error(`mapa hijo inesperado ${guestState.filas}×${guestState.columnas}`);
     if (!guestState.cacheHijo) throw new Error('el invitado no tiene caché del nodo hijo');
-    if (!guestState.cacheRaiz) throw new Error('el invitado no conserva la raíz como vecino');
+    if (!guestState.compacto) throw new Error('el invitado no recibió mundo compacto (F4b.3)');
+    if (!guestState.raizEnMundo) throw new Error('el invitado no conserva la raíz en el mundo');
     if (guestState.fundido) throw new Error('el invitado usó fundido en el cruce continuo');
-    console.log(`  PASS invitado con mundo continuo (${guestState.nodos} nodos, caché raíz+hijo, sin fundido)`);
+    console.log(`  PASS invitado con mundo compacto (${guestState.nodos} nodos, raíz conservada, hijo cacheado, sin fundido)`);
 
     // F4a: interés adaptativo en MP (host + invitado = 2 jugadores).
     await SLEEP(1200);

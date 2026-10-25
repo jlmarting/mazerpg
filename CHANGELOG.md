@@ -77,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo desplegada en GitHub Pages (base relativa + workflow) (`2fb27b4`, `2eca656`)
 
 ### Changed
+- **Mundo continuo F3 + coop WebRTC multi-invitado**: costuras/render multi-nodo y cruce caminando, invitado MP continuo, coop manual multi-invitado con QR en 3 partes y UI por rol; bump `1.2.0 → 1.3.0`
 - **Escenario ampliado 60×60 → 80×80**: +78 % de superficie (3.600 → 6.400 celdas) y densidad de enemigos reescalada (40 → 70 base) para que la exploración pese; sin cambios de persistencia ni red (ronda 20261025a)
 - **Bump `1.1.2 → 1.2.0`** (menor): escenario ampliado 80×80 desplegado
 - **Controles uniformes**: se elimina el acordeón inferior y el selector AUTO/TÁCTIL/ACORDEÓN; el dock de acciones se usa en todos los dispositivos (móvil, tablet y PC), visible también en PC, en modo icono (sin texto) y con la misma disposición (`6423eea`, `9a19db1`)

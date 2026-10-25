@@ -30,9 +30,9 @@ const ESPERADAS: Record<IdAccion, string> = { whirlwind: '1', fireball: '2', fre
   }
 }
 
-// teclas reservadas incluye flechas, wasd, Enter, F9, Escape
+// teclas reservadas incluye flechas, wasd, Enter, F9, Escape, M (mapamundi)
 {
-  for (const tecla of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'Enter', 'F9', 'Escape']) {
+  for (const tecla of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'Enter', 'F9', 'Escape', 'm']) {
     assert(TECLAS_RESERVADAS.includes(tecla), `${tecla} está reservada`);
   }
 }

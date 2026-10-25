@@ -250,6 +250,22 @@ async function main() {
     if (guestState.fundido) throw new Error('el invitado usó fundido en el cruce continuo');
     console.log(`  PASS invitado con mundo compacto (${guestState.nodos} nodos, raíz conservada, hijo cacheado, sin fundido)`);
 
+    // Mapamundi del invitado: solo sus nodos conocidos (activo + vecino), sin pausa.
+    await evaluar(cdp, invitado, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }))`);
+    await esperar(cdp, invitado, `window.game.mapaAbierto === true`, 3000, 'mapa invitado abierto');
+    const mapaGuest = JSON.parse(await evaluar(cdp, invitado, `JSON.stringify({
+      overlay: document.getElementById('worldMapOverlay')?.style.display,
+      nodos: window.game.gestorMundo.mundo.size,
+      descubiertos: [...window.game.nodosDescubiertos],
+      activo: window.game.gestorMundo.nodoActivoId
+    })`));
+    if (mapaGuest.overlay !== 'flex') throw new Error('el overlay del mapa no se muestra en el invitado');
+    if (mapaGuest.nodos < 2) throw new Error(`el invitado tiene ${mapaGuest.nodos} nodos en el mapa (esperaba activo+vecino)`);
+    if (!mapaGuest.descubiertos.includes(mapaGuest.activo)) throw new Error('el nodo activo del invitado no figura descubierto');
+    console.log(`  PASS invitado abre el mapamundi con sus nodos conocidos (${mapaGuest.nodos} nodos, activo ${mapaGuest.activo})`);
+    await evaluar(cdp, invitado, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+    await esperar(cdp, invitado, `window.game.mapaAbierto === false`, 3000, 'mapa invitado cerrado');
+
     // F4a: interés adaptativo en MP (host + invitado = 2 jugadores).
     await SLEEP(1200);
     const interesHost = JSON.parse(await evaluar(cdp, host, `JSON.stringify(window.game.interesActual)`));
@@ -299,6 +315,78 @@ async function main() {
     if (guestVuelta.nodos < 2) throw new Error('el invitado perdió el vecino al volver');
     if (guestVuelta.fundido) throw new Error('el invitado usó fundido en la vuelta');
     console.log(`  PASS invitado vuelve a la raíz con mundo continuo (${guestVuelta.nodos} nodos, sin fundido)`);
+
+    // Regresión LA GUARDIA: el invitado invocado no pierde vida al chocar
+    // con el host, no queda tras un muro y el teleport no se desincroniza.
+    await evaluar(cdp, host, `window.game.listaDeEnemigos = []; window.game.protagonista.vidaActual = window.game.protagonista.vidaMaxima; window.game.protagonista.estaVivo = true`);
+    await evaluar(cdp, invitado, `window.game.listaDeEnemigos = []; window.game.protagonista.vidaActual = window.game.protagonista.vidaMaxima; window.game.protagonista.estaVivo = true`);
+    await SLEEP(500);
+    const hpAntes = JSON.parse(await evaluar(cdp, invitado, `JSON.stringify({ guest: window.game.protagonista.vidaActual, host: window.game.protagonista.vidaActual })`));
+    const hostHpAntes = await evaluar(cdp, host, `window.game.protagonista.vidaActual`);
+    await evaluar(cdp, host, `window.game.teletransportarAliados(window.game.protagonista, true)`);
+    await SLEEP(800);
+    const guardGuest = JSON.parse(await evaluar(cdp, invitado, `JSON.stringify((() => {
+      const g = window.game, p = g.protagonista;
+      const rem = [...g.remotosActivos.values()].find((v) => v.entidad);
+      const cel = g.mapaLaberinto[p.fila]?.[p.columna];
+      return { f: p.fila, c: p.columna, hp: p.vidaActual, maxHp: p.vidaMaxima, transitable: !!cel?.esTransitable, hostVisto: rem?.entidad ? { f: rem.entidad.fila, c: rem.entidad.columna } : null };
+    })())`));
+    const hostTrasGuard = JSON.parse(await evaluar(cdp, host, `JSON.stringify((() => { const p = window.game.protagonista; return { f: p.fila, c: p.columna, hp: p.vidaActual }; })())`));
+    if (!guardGuest.transitable) throw new Error(`la guardia dejó al invitado en una celda no transitable (${guardGuest.f},${guardGuest.c})`);
+    if (guardGuest.hp !== hpAntes.guest) throw new Error(`la guardia dañó al invitado: ${hpAntes.guest} → ${guardGuest.hp}`);
+    if (hostTrasGuard.hp !== hostHpAntes) throw new Error(`la guardia dañó al host: ${hostHpAntes} → ${hostTrasGuard.hp}`);
+    const cerca = Math.abs(guardGuest.f - hostTrasGuard.f) + Math.abs(guardGuest.c - hostTrasGuard.c);
+    if (cerca > 3) throw new Error(`el invitado quedó a distancia ${cerca} del host tras la guardia`);
+    console.log(`  PASS guardia coloca al invitado a distancia ${cerca} sin daño`);
+
+    // Empujar al host (si está adyacente) no debe restar vida.
+    const df = hostTrasGuard.f - guardGuest.f;
+    const dc = hostTrasGuard.c - guardGuest.c;
+    let dirHacia = null, dirLejos = null;
+    if (Math.abs(df) + Math.abs(dc) === 1) {
+      if (df === 1) { dirHacia = 'ArrowDown'; dirLejos = 'ArrowUp'; }
+      else if (df === -1) { dirHacia = 'ArrowUp'; dirLejos = 'ArrowDown'; }
+      else if (dc === 1) { dirHacia = 'ArrowRight'; dirLejos = 'ArrowLeft'; }
+      else { dirHacia = 'ArrowLeft'; dirLejos = 'ArrowRight'; }
+    }
+    if (dirHacia) {
+      for (let i = 0; i < 4; i++) {
+        await evaluar(cdp, invitado, `window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(dirHacia)} }))`);
+        await SLEEP(140);
+      }
+      const hpTrasChoque = await evaluar(cdp, invitado, `window.game.protagonista.vidaActual`);
+      if (hpTrasChoque !== hpAntes.guest) throw new Error(`chocar con el host restó vida: ${hpAntes.guest} → ${hpTrasChoque}`);
+      console.log('  PASS empujar al host no resta vida');
+      for (let i = 0; i < 3; i++) {
+        await evaluar(cdp, invitado, `window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(dirLejos)} }))`);
+        await SLEEP(140);
+      }
+    }
+    await SLEEP(500);
+    const syncHost = JSON.parse(await evaluar(cdp, invitado, `JSON.stringify((() => {
+      const g = window.game; const rem = [...g.remotosActivos.values()].find((v) => v.entidad);
+      return { f: rem?.entidad?.fila, c: rem?.entidad?.columna, hp: g.protagonista.vidaActual };
+    })())`));
+    const hostReal = JSON.parse(await evaluar(cdp, host, `JSON.stringify({ f: window.game.protagonista.fila, c: window.game.protagonista.columna, hp: window.game.protagonista.vidaActual })`));
+    if (syncHost.f !== hostReal.f || syncHost.c !== hostReal.c) throw new Error(`vista del host desincronizada: ${JSON.stringify({ syncHost, hostReal })}`);
+    if (syncHost.hp !== hpAntes.guest) throw new Error(`el invitado perdió vida tras moverse: ${hpAntes.guest} → ${syncHost.hp}`);
+    console.log('  PASS posición del host sincronizada en el invitado');
+
+    // El invitado invoca la guardia: solo pide, no mueve aliados en local.
+    const hpInvitadoAntes = await evaluar(cdp, invitado, `window.game.protagonista.vidaActual`);
+    await evaluar(cdp, invitado, `window.game.teletransportarAliados(window.game.protagonista, true)`);
+    await SLEEP(900);
+    const hostCerca = JSON.parse(await evaluar(cdp, host, `JSON.stringify({ f: window.game.protagonista.fila, c: window.game.protagonista.columna, hp: window.game.protagonista.vidaActual })`));
+    const guestLider = JSON.parse(await evaluar(cdp, invitado, `JSON.stringify((() => {
+      const g = window.game, p = g.protagonista; const rem = [...g.remotosActivos.values()].find((v) => v.entidad);
+      return { f: p.fila, c: p.columna, hp: p.vidaActual, hostVisto: rem?.entidad ? { f: rem.entidad.fila, c: rem.entidad.columna } : null };
+    })())`));
+    if (Math.abs(hostCerca.f - guestLider.f) + Math.abs(hostCerca.c - guestLider.c) > 3) throw new Error('el host no acudió a la guardia del invitado');
+    if (guestLider.hp !== hpInvitadoAntes) throw new Error('la guardia del invitado le restó vida');
+    if (!guestLider.hostVisto || guestLider.hostVisto.f !== hostCerca.f || guestLider.hostVisto.c !== hostCerca.c) {
+      throw new Error(`vista del host desincronizada tras guardia del invitado: ${JSON.stringify({ guestLider, hostCerca })}`);
+    }
+    console.log('  PASS guardia del invitado resuelta por el host sin desincronizar');
 
     console.log('SMOKE_COSTURA_MP_OK');
   } finally {

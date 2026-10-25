@@ -23,6 +23,7 @@ export const TECLAS_RESERVADAS: readonly string[] = [
   'd',
   'Enter',
   'F9',
+  'm',
   'Escape',
 ];
 

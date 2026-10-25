@@ -6,6 +6,7 @@ import { EnemigoNPC } from './entities/EnemigoNPC';
 import { Renderer } from './core/Renderer';
 import { UIManager } from './ui/UIManager';
 import { LobbyManager, type LobbyMode } from './ui/LobbyManager';
+import { MapamundiUI, type EntradaMapaUI } from './ui/MapamundiUI';
 import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
 import { NetworkManagerHttp } from './network/NetworkManagerHttp';
@@ -137,6 +138,11 @@ class Game implements IGame {
   public mundoRemotoCompacto: boolean = false;
   /** F4b.3: deltas de la sesión por nodo (host) para el invitado. */
   private deltasMundo: Map<string, DeltaMundo[]> = new Map();
+  /** Mapamundi: descubrimiento por jugador y overlay. */
+  public nodosDescubiertos: Set<string> = new Set();
+  public mapaAbierto: boolean = false;
+  private mapamundi: MapamundiUI | null = null;
+  private ultimoRefrescoMapa: number = 0;
   private fpsEma: number = 60;
   private fpsBajoMs: number = 0;
   private fpsAltoMs: number = 0;
@@ -173,6 +179,8 @@ class Game implements IGame {
     this.capturandoTecla = false;
     const canvas = document.getElementById('mazeCanvas') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas);
+    const worldMapCanvas = document.getElementById('worldMapCanvas') as HTMLCanvasElement | null;
+    if (worldMapCanvas) this.mapamundi = new MapamundiUI(worldMapCanvas);
     this.housing = new HousingLocal(this.idLocalActivo);
     this.inicializarAssets();
     this.setupEntity(this.protagonista);
@@ -338,6 +346,43 @@ class Game implements IGame {
       .filter((e) => seleccion.niveles.get(e.nodo.id) !== 'cold')
       .map((e) => ({ ...e, nivel: seleccion.niveles.get(e.nodo.id) ?? 'cold' }));
     return { entradas, candidatos, seleccion };
+  }
+
+  /** Mapamundi: marca un nodo como descubierto para este jugador. */
+  private marcarNodoDescubierto(nodoId: string): void {
+    if (nodoId) this.nodosDescubiertos.add(nodoId);
+  }
+
+  /** Estado actual para el overlay del mapamundi. */
+  private entradaMapa(): EntradaMapaUI {
+    const nodos = Array.from(this.gestorMundo.mundo.values()).map((nodo) => ({
+      ...nodo,
+      transform: this.gestorMundo.transformAbsoluto(nodo.id),
+    }));
+    return {
+      nodos,
+      descubiertos: this.nodosDescubiertos,
+      activoId: this.gestorMundo.nodoActivoId,
+      jugador: this.worldDesdeCeldaActiva(this.protagonista.fila, this.protagonista.columna),
+      casaActiva: this.nodoActivo?.tipo === 'personal',
+    };
+  }
+
+  toggleMapamundi(): void {
+    if (this.mapaAbierto) this.cerrarMapamundi();
+    else this.abrirMapamundi();
+  }
+
+  private abrirMapamundi(): void {
+    if (!this.motorIniciado || this.juegoTerminado || !this.mapamundi) return;
+    this.mapaAbierto = true;
+    this.ultimoRefrescoMapa = performance.now();
+    this.mapamundi.abrir(this.entradaMapa());
+  }
+
+  private cerrarMapamundi(): void {
+    this.mapaAbierto = false;
+    this.mapamundi?.cerrar();
   }
 
   initMap() {
@@ -553,6 +598,8 @@ class Game implements IGame {
     document.getElementById('btnRestartAction')?.addEventListener('click', () => window.location.reload());
     document.getElementById('btnTeleportHousing')?.addEventListener('click', () => this.teleportHousing());
     document.getElementById('btnTeleportCostura')?.addEventListener('click', () => this.teleportCosturaDebug());
+    document.getElementById('btnWorldMap')?.addEventListener('click', () => this.toggleMapamundi());
+    document.getElementById('btnCloseWorldMap')?.addEventListener('click', () => this.cerrarMapamundi());
     document.getElementById('btnEquipoAction')?.addEventListener('click', () => this.abrirEquipo());
     document.getElementById('btnBotinAction')?.addEventListener('click', () => this.soltarBotin(this.protagonista.fila, this.protagonista.columna));
 
@@ -582,6 +629,13 @@ class Game implements IGame {
       if (document.getElementById('chatModal')?.style.display === 'flex') return;
 
       const tecla = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+      // Mapamundi: con el overlay abierto se bloquea el input; M/Esc lo cierran.
+      if (this.mapaAbierto) {
+        if (e.key === 'Escape' || tecla === 'm') this.cerrarMapamundi();
+        return;
+      }
+
       const accion = accionParaTecla(this.keybinds, tecla);
 
       const panelEquipo = document.getElementById('equipoModal');
@@ -594,6 +648,11 @@ class Game implements IGame {
       if (panelEquipo?.style.display === 'flex') return;
 
       if (this.juegoTerminado) return;
+
+      if (tecla === 'm') {
+        this.abrirMapamundi();
+        return;
+      }
 
       let haMovido = false;
       if (e.key === 'ArrowUp' || tecla === 'w') haMovido = this.protagonista.intentarMover(-1, 0, this);
@@ -1617,6 +1676,7 @@ class Game implements IGame {
             this.generarEscenarioDinamicoDemo();
         }
     }
+    this.marcarNodoDescubierto(this.gestorMundo.nodoActivoId);
     this.ultimoFrameTime = performance.now();
     this.fpsBajoContador = 0;
     this.cicloDeJuego();
@@ -2093,6 +2153,10 @@ class Game implements IGame {
     this.actualizarInteres(ahora);
 
     this.actualizar();
+    if (this.mapaAbierto && this.mapamundi && ahora - this.ultimoRefrescoMapa >= 500) {
+      this.ultimoRefrescoMapa = ahora;
+      this.mapamundi.actualizar(this.entradaMapa());
+    }
     this.renderer.limpiar();
     const worldVisual = this.worldDesdeCeldaActiva(
       this.protagonista.visualFila,
@@ -3125,57 +3189,26 @@ class Game implements IGame {
         const sigFila = entidad.fila + df;
         const sigColumna = entidad.columna + dc;
 
-        // 1-3: SIM bajo burbuja — colisiones con jugadores (combate/HP), con
+        // 1-3: SIM bajo burbuja — colisiones con jugadores (solo bloqueo), con
         // enemigos y rehuir. Fuera de burbuja estas ramas no se simulan.
         if (enBurbuja) {
             // 1. Verificar colisión con otros jugadores
-            let jugadorChocadoId: string | null = null;
             let jugadorChocado: any = null;
 
             if (id !== this.idLocalActivo && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
-                jugadorChocadoId = this.idLocalActivo;
                 jugadorChocado = this.protagonista;
             } else {
                 this.remotosActivos.forEach((v: any, k: string) => {
                     if (k !== id && v.entidad && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
-                        jugadorChocadoId = k;
                         jugadorChocado = v.entidad;
                     }
                 });
             }
 
             if (jugadorChocado) {
-                const interactions = (entidad.consecutiveInteractions.get(jugadorChocadoId!) || 0) + 1;
-                if (interactions >= 2 && entidad.estaVivo && jugadorChocado.estaVivo) {
-                    entidad.consecutiveInteractions.set(jugadorChocadoId!, 0);
-                    if (entidad.vidaActual > 1) {
-                        entidad.vidaActual -= 1;
-                        jugadorChocado.vidaActual = Math.min(jugadorChocado.vidaMaxima, jugadorChocado.vidaActual + 1);
-                        this.registrarEventoLog(`${entidad.nombre} transfirió 1 HP a ${jugadorChocado.nombre}`);
-
-                        // Notificar a todos para efectos visuales (texto flotante)
-                        this.enviarMultiplayer({
-                            tipo: 'hp_transfer',
-                            fromId: id,
-                            toId: jugadorChocadoId,
-                            amount: 1
-                        });
-                        this.enviarMultiplayer({
-                            tipo: 'hp_loss',
-                            id: id,
-                            amount: 1
-                        });
-                    }
-                } else {
-                    entidad.consecutiveInteractions.set(jugadorChocadoId!, interactions);
-                    this.registrarEventoLog(`Interacción: ${entidad.nombre} -> ${jugadorChocado.nombre} (${interactions}/2)`);
-                }
+                // Los aliados bloquean el paso; nunca transfieren vida al chocar.
                 return;
             }
-
-            entidad.consecutiveInteractions.forEach((_v: number, k: string) => {
-                if (k !== jugadorChocadoId) entidad.consecutiveInteractions.set(k, 0);
-            });
 
             // 2. Verificar colisión con enemigos
             const enemigoEnCasilla = this.listaDeEnemigos.find(e => e.fila === sigFila && e.columna === sigColumna && e.estaVivo);
@@ -3349,66 +3382,113 @@ class Game implements IGame {
     });
   }
 
+  /**
+   * LA GUARDIA: reúne a los aliados alrededor del líder. Solo el host resuelve
+   * el teleport en MP; el invitado únicamente lo solicita. Los destinos se
+   * buscan con BFS por huecos abiertos (sin atravesar muros) y sin ocupar
+   * celdas de otros jugadores, para no amontonar ni desincronizar.
+   */
   teletransportarAliados(lider: any, esLocal: boolean) {
-    if (!this.esHost && this.mpActivo && esLocal) {
-        this.enviarMultiplayer({ tipo: 'request_guard_teleport' });
-    }
-
-    if (!this.esHost && !esLocal) {
-        // Ignorar si no somos el host y es un mensaje remoto (el host mandará force_teleport)
+    if (this.mpActivo && !this.esHost) {
+        if (esLocal) this.enviarMultiplayer({ tipo: 'request_guard_teleport' });
         return;
     }
+    if (!this.mapaLaberinto.length) return;
 
-    const posicionesLibres: {f: number, c: number}[] = [];
-    for (let df = -1; df <= 1; df++) {
-        for (let dc = -1; dc <= 1; dc++) {
-            if (df === 0 && dc === 0) continue;
-            const nf = lider.fila + df;
-            const nc = lider.columna + dc;
-            if (nf >= 0 && nf < this.mapaLaberinto.length && nc >= 0 && nc < (this.mapaLaberinto[nf]?.length ?? 0)) {
-                if (this.mapaLaberinto[nf][nc].esTransitable) {
-                    posicionesLibres.push({ f: nf, c: nc });
-                }
-            }
-        }
+    const clave = (f: number, c: number) => `${f},${c}`;
+    const posiciones = this.celdasGuardia(lider, 3);
+    const ocupadas = new Set<string>();
+    ocupadas.add(clave(lider.fila, lider.columna));
+    if (this.protagonista !== lider) {
+        ocupadas.add(clave(this.protagonista.fila, this.protagonista.columna));
     }
-
-    // Si no hay suficientes adyacentes, buscar un poco más allá
-    if (posicionesLibres.length < this.remotosActivos.size + 1) {
-         for (let r = 2; r <= 3; r++) {
-            for (let df = -r; df <= r; df++) {
-                for (let dc = -r; dc <= r; dc++) {
-                    const nf = lider.fila + df;
-                    const nc = lider.columna + dc;
-                    if (nf >= 0 && nf < this.mapaLaberinto.length && nc >= 0 && nc < (this.mapaLaberinto[nf]?.length ?? 0)) {
-                        if (this.mapaLaberinto[nf][nc].esTransitable && !posicionesLibres.some(p => p.f === nf && p.c === nc)) {
-                            posicionesLibres.push({ f: nf, c: nc });
-                        }
-                    }
-                }
-            }
-         }
-    }
-
-    let idx = 0;
+    const remotos: { id: string; entidad: any }[] = [];
     this.remotosActivos.forEach((j, id) => {
-        // No teletransportar al líder si es uno de los jugadores remotos
-        if (j.entidad && j.entidad !== lider && idx < posicionesLibres.length) {
-            const pos = posicionesLibres[idx++];
-            j.entidad.fila = pos.f;
-            j.entidad.columna = pos.c;
-            if (this.esHost) {
-                this.enviarMultiplayer({ tipo: 'force_teleport', id: id, f: pos.f, c: pos.c });
-            }
+        if (j.entidad) {
+            remotos.push({ id, entidad: j.entidad });
+            if (j.entidad !== lider) ocupadas.add(clave(j.entidad.fila, j.entidad.columna));
         }
     });
 
-    if (this.protagonista !== lider && idx < posicionesLibres.length) {
-         const pos = posicionesLibres[idx++];
-         this.protagonista.fila = pos.f;
-         this.protagonista.columna = pos.c;
-         this.registrarEventoLog("¡Llamada a la guardia! Has sido teletransportado.");
+    const elegir = (entidad: any): { f: number; c: number } | null => {
+        const propia = entidad ? clave(entidad.fila, entidad.columna) : null;
+        const pos = posiciones.find((p) => !ocupadas.has(clave(p.f, p.c)) || clave(p.f, p.c) === propia);
+        if (!pos) return null;
+        if (propia) ocupadas.delete(propia);
+        ocupadas.add(clave(pos.f, pos.c));
+        return pos;
+    };
+
+    const mover = (entidad: any, pos: { f: number; c: number }): void => {
+        entidad.fila = pos.f;
+        entidad.columna = pos.c;
+        entidad.visualFila = pos.f;
+        entidad.visualColumna = pos.c;
+        entidad.estaCaminando = false;
+        entidad.estadoActual = 'idle';
+    };
+
+    remotos.forEach(({ id, entidad }) => {
+        if (entidad === lider) return;
+        const pos = elegir(entidad);
+        if (!pos) return;
+        mover(entidad, pos);
+        // Descarta movimientos pendientes del aliado: no deben deshacer el salto.
+        this.colaAcciones = this.colaAcciones.filter((a) => a.id !== id);
+        this.enviarMultiplayer({ tipo: 'force_teleport', id, f: pos.f, c: pos.c, nodo: this.gestorMundo.nodoActivoId });
+    });
+
+    if (this.protagonista !== lider) {
+        const pos = elegir(this.protagonista);
+        if (pos) {
+            mover(this.protagonista, pos);
+            this.colaAcciones = this.colaAcciones.filter((a) => a.id !== this.idLocalActivo);
+            this.registrarEventoLog("¡Llamada a la guardia! Has sido teletransportado.");
+            this.enviarMultiplayer({
+                tipo: 'posicion',
+                f: pos.f, c: pos.c, cam: false,
+                id: this.idLocalActivo, nick: this.protagonista.nombre,
+                hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima,
+                oro: this.protagonista.inventario.oro ?? 0,
+                xp: this.protagonista.puntosExperiencia,
+                bajas: this.protagonista.bajas,
+            });
+        }
     }
+  }
+
+  /** Celdas transitables alcanzables desde el líder sin cruzar muros (BFS). */
+  private celdasGuardia(lider: any, maxDist: number): { f: number; c: number }[] {
+    const filas = this.mapaLaberinto.length;
+    if (!this.mapaLaberinto[lider.fila]?.[lider.columna]) return [];
+    const salida: { f: number; c: number }[] = [];
+    const vistas = new Set<string>([`${lider.fila},${lider.columna}`]);
+    const cola: { f: number; c: number; d: number }[] = [{ f: lider.fila, c: lider.columna, d: 0 }];
+    while (cola.length > 0) {
+        const actual = cola.shift()!;
+        if (actual.d >= maxDist) continue;
+        const celda = this.mapaLaberinto[actual.f]?.[actual.c];
+        if (!celda) continue;
+        const vecinos = [
+            { df: -1, dc: 0, muro: celda.muros.superior },
+            { df: 1, dc: 0, muro: celda.muros.inferior },
+            { df: 0, dc: -1, muro: celda.muros.izquierdo },
+            { df: 0, dc: 1, muro: celda.muros.derecho },
+        ];
+        for (const v of vecinos) {
+            if (v.muro) continue;
+            const nf = actual.f + v.df;
+            const nc = actual.c + v.dc;
+            const k = `${nf},${nc}`;
+            if (vistas.has(k)) continue;
+            if (nf < 0 || nf >= filas || nc < 0 || nc >= (this.mapaLaberinto[nf]?.length ?? 0)) continue;
+            if (!this.mapaLaberinto[nf][nc].esTransitable) continue;
+            vistas.add(k);
+            salida.push({ f: nf, c: nc });
+            cola.push({ f: nf, c: nc, d: actual.d + 1 });
+        }
+    }
+    return salida;
   }
 
   lanzarCongelar(emisor: any, esLocal: boolean) {
@@ -3967,6 +4047,7 @@ class Game implements IGame {
     const fotoEnemigos = this.fotografiarEnemigos();
 
     this.gestorMundo.activarNodo(destino.id);
+    this.marcarNodoDescubierto(destino.id);
     entidad.fila = target.fila;
     entidad.columna = target.columna;
     // Posición visual de mundo continua: el render la dibuja con el transform
@@ -4020,6 +4101,7 @@ class Game implements IGame {
         this.teleportarPortalClasico(entidad);
         return;
     }
+    this.marcarNodoDescubierto(this.gestorMundo.nodoActivoId);
     this.iniciarFundido();
     const fotoEnemigos = this.fotografiarEnemigos();
     entidad.fila = aparicion.fila;
@@ -4538,6 +4620,7 @@ class Game implements IGame {
             );
             const nodoAnterior = this.gestorMundo.mundo.get(this.gestorMundo.nodoActivoId) ?? null;
             const dims = this.aplicarMundoRemoto(msg);
+            this.marcarNodoDescubierto(this.gestorMundo.nodoActivoId);
             this.config.NUMERO_FILAS = dims.filas;
             this.config.NUMERO_COLUMNAS = dims.columnas;
             if (msg.dificultad) this.config.dificultad = msg.dificultad;
@@ -4563,6 +4646,7 @@ class Game implements IGame {
             );
             const nodoAnterior = this.gestorMundo.mundo.get(this.gestorMundo.nodoActivoId) ?? null;
             const dims = this.aplicarMapaRemoto(msg);
+            this.marcarNodoDescubierto(this.gestorMundo.nodoActivoId);
             this.config.NUMERO_FILAS = dims.filas;
             this.config.NUMERO_COLUMNAS = dims.columnas;
             if (msg.dificultad) this.config.dificultad = msg.dificultad;
@@ -4670,10 +4754,17 @@ class Game implements IGame {
             break;
         case 'force_teleport':
             if (msg.id === this.idLocalActivo) {
+                if (msg.nodo && msg.nodo !== this.gestorMundo.nodoActivoId) {
+                    this.registrarEventoLog("La guardia te llamó desde otro nodo; no se aplicó el salto.");
+                    break;
+                }
                 this.protagonista.fila = msg.f;
                 this.protagonista.columna = msg.c;
                 this.protagonista.visualFila = msg.f;
                 this.protagonista.visualColumna = msg.c;
+                this.protagonista.estaCaminando = false;
+                this.protagonista.estadoActual = 'idle';
+                this.colaAcciones = this.colaAcciones.filter((a) => a.id !== this.idLocalActivo);
                 this.registrarEventoLog("¡Has sido llamado a la guardia!");
             }
             break;
@@ -4709,20 +4800,6 @@ class Game implements IGame {
         case 'chat':
             this.ui.manejarMensajeChat(msg.nick || "Desconocido", msg.texto, false, this, idSujeto);
             if (this.esHost) this.enviarMultiplayer({ ...msg, id: idSujeto }, idEmisor);
-            break;
-        case 'hp_transfer':
-            if (msg.toId === this.idLocalActivo) {
-                this.protagonista.vidaActual = Math.min(this.protagonista.vidaMaxima, this.protagonista.vidaActual + msg.amount);
-                this.ui.crearTextoFlotanteEnCelda(this.protagonista.fila, this.protagonista.columna, `+${msg.amount} HP`, "#00ff00", this);
-                this.registrarEventoLog(`Has recibido vida de un compañero.`);
-            } else {
-                const target = this.remotosActivos.get(msg.toId);
-                if (target && target.entidad) {
-                    target.entidad.vidaActual = Math.min(target.entidad.vidaMaxima, target.entidad.vidaActual + msg.amount);
-                    this.ui.crearTextoFlotanteEnCelda(target.entidad.fila, target.entidad.columna, `+${msg.amount} HP`, "#00ff00", this);
-                }
-            }
-            if (this.esHost) this.enviarMultiplayer({ ...msg }, idEmisor);
             break;
         case 'hp_loss':
             if (msg.id === this.idLocalActivo) {

@@ -31,6 +31,7 @@
                 <button class="menu-btn">OPCIONES ▾</button>
                 <div class="dropdown-content">
                     <button id="btnDebug" class="menu-btn">DEBUG (F9)</button>
+                    <button id="btnWorldMap" class="menu-btn">MAPA (M)</button>
                     <button id="btnInvitarCoop" class="menu-btn" style="display: none;">INVITAR (WebRTC)</button>
                     <button id="btnLogPanel" class="menu-btn">VER CONEXIONES</button>
                     <button id="btnKeybindsPanel" class="menu-btn">ASIGNAR TECLAS</button>
@@ -412,6 +413,16 @@
                 <button id="btnHousingNueva" class="diff-btn facil">CREAR UNA NUEVA</button>
             </div>
         </div>
+    </div>
+
+    <div id="worldMapOverlay" style="display:none; position:fixed; inset:0; z-index:120; background:rgba(5,8,14,0.98); align-items:center; justify-content:center; flex-direction:column; gap:8px; padding:12px; box-sizing:border-box;">
+        <div style="display:flex; width:min(960px,96vw); align-items:center; justify-content:space-between; color:#e8f0ff; font-family:monospace;">
+            <strong>MAPA DEL MUNDO</strong>
+            <button id="btnCloseWorldMap" style="padding:6px 12px; background:#2a3a4e; color:#e8f0ff; border:1px solid #4a5a6e; cursor:pointer; font-family:monospace;">CERRAR</button>
+        </div>
+        <canvas id="worldMapCanvas" width="960" height="540" style="width:min(960px,96vw); max-height:74vh; background:#0b0f18; border:1px solid #2a3a4e; image-rendering:pixelated;"></canvas>
+        <div id="worldMapInfo" style="color:#b8c4d8; font-family:monospace; font-size:11px;"></div>
+        <div style="color:#7f8ea8; font-family:monospace; font-size:10px;">Nodo activo · Descubierto · ? Desconocido · 🏠 Casa</div>
     </div>
 
     <div id="qrModal" class="lobby-modal-overlay z-60">

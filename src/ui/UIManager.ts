@@ -73,8 +73,10 @@ export class UIManager {
 
       // Comandos especiales y Teletransporte de burbuja
       const msgNorm = texto.toLowerCase().trim();
-      if (msgNorm === "a mi la guardia") {
-        (game as any).teletransportarAliados(emisor, _esLocal);
+      // Comando de chat: solo lo ejecuta el cliente que lo escribe. En MP el
+      // invitado manda `request_guard_teleport` y el host lo resuelve una vez.
+      if (msgNorm === "a mi la guardia" && _esLocal) {
+        (game as any).teletransportarAliados(emisor, true);
       }
 
       // Lógica de burbuja

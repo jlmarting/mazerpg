@@ -12,6 +12,7 @@ export interface GameConfig {
     ALTO_UI_BOTTOM: number;
     RADIO_VISION: number;
     radioSim: number;
+    radioVis: number;
     TIEMPO_DESVANECIMIENTO_NIEBLA: number;
     CELDAS_VISIBLES_X: number;
     CELDAS_VISIBLES_Y: number;

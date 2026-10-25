@@ -36,6 +36,7 @@ import { NUMERO_FILAS, NUMERO_COLUMNAS, ENEMIGOS_BASE, TAMANO_CELDA,
     TIEMPO_DESVANECIMIENTO_NIEBLA
 } from './world/constants';
 import { dentroDeBurbuja, radioSimPorDefecto } from './world/burbuja';
+import { calcularRadiosInteres, RADIO_SIM_AUTORIDAD, type Dispositivo, type EstadoInteres } from './world/interes';
 import { PersistenciaMundo } from './world/PersistenciaMundo';
 import { HousingLocal } from './world/housing';
 import { EspejoLocal, type DocNodoLocal } from './world/espejoLocal';
@@ -71,6 +72,7 @@ class Game implements IGame {
     NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
     radioSim: radioSimPorDefecto(RADIO_VISION),
+    radioVis: RADIO_VISION,
     TIEMPO_DESVANECIMIENTO_NIEBLA,
     CELDAS_VISIBLES_X: 10,
     CELDAS_VISIBLES_Y: 10,
@@ -124,6 +126,12 @@ class Game implements IGame {
   private ultimoFrameTime: number = 0;
   private fpsBajoContador: number = 0;
   private readonly FPS_MINIMO: number = 15;
+  /** F4a: estado del interés adaptativo (expuesto para debug/smoke). */
+  public interesActual: EstadoInteres | null = null;
+  private fpsEma: number = 60;
+  private fpsBajoMs: number = 0;
+  private fpsAltoMs: number = 0;
+  private ultimaActualizacionInteres: number = 0;
   private readonly FPS_UMBRAL_SEGUNDOS: number = 3;
   private diagTimer: number | null = null;
   private diagFrameCount: number = 0;
@@ -1550,6 +1558,9 @@ class Game implements IGame {
     document.getElementById('topMenu')!.style.display = 'block';
     document.getElementById('actionsMenu')!.style.display = 'block';
     this.aplicarEsquemaUI();
+    // F4a: fijar los radios base (dispositivo/clase) antes de asustar monstruos
+    // y del primer render; el game loop los reajustará cada segundo.
+    this.actualizarInteres(performance.now());
 
     if (this.esLadoAutoritativo()) {
         if (!this.gestorMundo.nodoActivoId) {
@@ -1933,12 +1944,79 @@ class Game implements IGame {
     });
   }
 
+  /** F4a: detecta el dispositivo por viewport/pointer (la clase esquema-* ya no distingue móvil). */
+  private dispositivoActual(): Dispositivo {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'pc';
+    if (window.matchMedia('(max-width: 600px)').matches) return 'movil';
+    if (window.matchMedia('(max-width: 1024px)').matches || window.matchMedia('(pointer: coarse)').matches) return 'tablet';
+    return 'pc';
+  }
+
+  /** F4a: EMA de FPS y temporizadores para la histéresis del interés. */
+  private actualizarMetricasInteres(delta: number, fps: number): void {
+    if (!Number.isFinite(delta) || delta <= 0 || delta > 1000) {
+      this.fpsBajoMs = 0;
+      this.fpsAltoMs = 0;
+      return;
+    }
+    if (Number.isFinite(fps) && fps > 0) {
+      this.fpsEma = this.fpsEma * 0.9 + fps * 0.1;
+    }
+    if (fps < 30) {
+      this.fpsBajoMs += delta;
+      this.fpsAltoMs = 0;
+    } else if (fps >= 50) {
+      this.fpsAltoMs += delta;
+      this.fpsBajoMs = 0;
+    } else {
+      this.fpsBajoMs = 0;
+      this.fpsAltoMs = 0;
+    }
+  }
+
+  /** F4a: recalcula radioSim/radioVis como máximo una vez por segundo. */
+  private actualizarInteres(ahora: number): void {
+    if (ahora - this.ultimaActualizacionInteres < 1000) return;
+    this.ultimaActualizacionInteres = ahora;
+
+    const dispositivo = this.dispositivoActual();
+    const jugadores = 1 + this.remotosActivos.size;
+    const anterior = this.interesActual
+      ? { radioSim: this.interesActual.radioSim, radioVis: this.interesActual.radioVis }
+      : null;
+    const radios = calcularRadiosInteres({
+      dispositivo,
+      clase: this.protagonista.clase,
+      jugadores,
+      fps: this.fpsEma,
+      fpsBajoMs: this.fpsBajoMs,
+      fpsAltoMs: this.fpsAltoMs,
+      anterior,
+    });
+    const cambio = !anterior || radios.radioSim !== anterior.radioSim || radios.radioVis !== anterior.radioVis;
+    if (cambio) {
+      if (anterior) {
+        if (this.fpsBajoMs >= 2000 && (radios.radioSim < anterior.radioSim || radios.radioVis < anterior.radioVis)) {
+          this.fpsBajoMs = 0;
+        }
+        if (this.fpsAltoMs >= 5000 && (radios.radioSim > anterior.radioSim || radios.radioVis > anterior.radioVis)) {
+          this.fpsAltoMs = 0;
+        }
+        this.registrarEventoLog(`[interés] ${dispositivo} vis ${anterior.radioVis}→${radios.radioVis} sim ${anterior.radioSim}→${radios.radioSim} (fps ${this.fpsEma.toFixed(0)}, jugadores ${jugadores})`);
+      }
+      this.config.radioSim = radios.radioSim;
+      this.config.radioVis = radios.radioVis;
+    }
+    this.interesActual = { ...radios, dispositivo, fps: this.fpsEma, jugadores };
+  }
+
   cicloDeJuego() {
     this.diagFrameCount++;
     const ahora = performance.now();
     if (this.ultimoFrameTime > 0) {
       const delta = ahora - this.ultimoFrameTime;
       const fps = 1000 / delta;
+      this.actualizarMetricasInteres(delta, fps);
       
       if (this.config.vistaDebugActivada) {
         const fpsDisplay = document.getElementById('fpsDisplay');
@@ -1968,6 +2046,7 @@ class Game implements IGame {
       }
     }
     this.ultimoFrameTime = ahora;
+    this.actualizarInteres(ahora);
 
     this.actualizar();
     this.renderer.limpiar();
@@ -2315,10 +2394,7 @@ class Game implements IGame {
         this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
     }
 
-    let r = this.config.RADIO_VISION;
-    if (this.protagonista.clase === 'explorador') {
-        r *= 1.2;
-    }
+    const r = this.config.radioVis;
 
     this.marcarVisibilidadMundo(
       this.worldDesdeCeldaActiva(this.protagonista.fila, this.protagonista.columna),
@@ -2634,8 +2710,7 @@ class Game implements IGame {
     }
   }
 
-  enBurbujaSim(fila: number, columna: number): boolean {
-    const radio = this.config.radioSim;
+  enBurbujaSim(fila: number, columna: number, radio: number = this.config.radioSim): boolean {
     if (dentroDeBurbuja(fila, columna, this.protagonista.fila, this.protagonista.columna, radio)) {
         return true;
     }
@@ -2879,7 +2954,10 @@ class Game implements IGame {
     // vez por acción y se aplica por rama: las ediciones que producen delta del
     // mundo (cavar, recoger, crear comida) pasan en cualquier celda del nodo;
     // el resto de la lógica de entidades (movimiento, combate, hechizos) sigue guardada.
-    const enBurbuja = this.enBurbujaSim(entidad.fila, entidad.columna);
+    const radioInteres = this.esLadoAutoritativo() && entidad !== this.protagonista
+        ? Math.max(this.config.radioSim, RADIO_SIM_AUTORIDAD)
+        : this.config.radioSim;
+    const enBurbuja = this.enBurbujaSim(entidad.fila, entidad.columna, radioInteres);
 
     if (accion.tipo === 'mover') {
         const { df, dc } = accion;
@@ -3101,7 +3179,7 @@ class Game implements IGame {
   }
 
   asustarMonstruosCercanos(fila: number, columna: number) {
-    const r = this.config.RADIO_VISION;
+    const r = this.config.radioVis;
     this.listaDeEnemigos.forEach(e => {
         const dist = Math.sqrt(Math.pow(e.fila - fila, 2) + Math.pow(e.columna - columna, 2));
         if (dist <= r) {

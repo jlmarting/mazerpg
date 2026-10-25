@@ -309,6 +309,17 @@ async function main() {
     }
     console.log('  PASS ambos invitados dentro (motor+sync+mapa 80×80, lobby oculto)');
 
+    // F4a: con 3 jugadores el host recorta radioSim (cap 2) y respeta el invariante.
+    await SLEEP(1200);
+    const interes3 = JSON.parse(await evaluar(cdp, host, `JSON.stringify(window.game.interesActual)`));
+    if (!interes3) throw new Error('interés nulo en host con 3 jugadores');
+    if (interes3.jugadores !== 3) throw new Error(`jugadores=${interes3.jugadores} en host (esperado 3)`);
+    if (!(interes3.radioSim >= 1 && interes3.radioSim <= interes3.radioVis && interes3.radioVis <= 5)) {
+      throw new Error(`radios fuera de rango con 3 jugadores: ${JSON.stringify(interes3)}`);
+    }
+    if (interes3.radioSim > 2) throw new Error(`radioSim=${interes3.radioSim} con 3 jugadores (cap 2)`);
+    console.log('  PASS interés adaptativo con 3 jugadores (sim cap 2, radios válidos)');
+
     // Cerrar el panel manual del host y volver al juego.
     await evaluar(cdp, host, `document.getElementById('btnJugarManual')?.click()`);
     await SLEEP(300);

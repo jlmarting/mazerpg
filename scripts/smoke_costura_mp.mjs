@@ -247,6 +247,20 @@ async function main() {
     if (guestState.fundido) throw new Error('el invitado usó fundido en el cruce continuo');
     console.log(`  PASS invitado con mundo continuo (${guestState.nodos} nodos, caché raíz+hijo, sin fundido)`);
 
+    // F4a: interés adaptativo en MP (host + invitado = 2 jugadores).
+    await SLEEP(1200);
+    const interesHost = JSON.parse(await evaluar(cdp, host, `JSON.stringify(window.game.interesActual)`));
+    const interesGuest = JSON.parse(await evaluar(cdp, invitado, `JSON.stringify(window.game.interesActual)`));
+    const capsVis = { movil: 3, tablet: 4, pc: 5 };
+    for (const [quien, interes] of [['host', interesHost], ['invitado', interesGuest]]) {
+      if (!interes) throw new Error(`interés nulo en ${quien}`);
+      if (!(interes.radioSim >= 1 && interes.radioSim <= interes.radioVis && interes.radioVis <= (capsVis[interes.dispositivo] ?? 5))) {
+        throw new Error(`radios fuera de rango en ${quien}: ${JSON.stringify(interes)}`);
+      }
+      if (interes.jugadores !== 2) throw new Error(`jugadores=${interes.jugadores} en ${quien} (esperado 2)`);
+    }
+    console.log('  PASS interés adaptativo en MP (host+invitado, 2 jugadores, radios válidos)');
+
     // El invitado puede moverse tras/durante la transición.
     const dir = await evaluar(cdp, invitado, ELEGIR_DIR);
     if (dir === 'NINGUNA') {

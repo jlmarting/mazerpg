@@ -31,6 +31,7 @@
                 <button class="menu-btn">OPCIONES ▾</button>
                 <div class="dropdown-content">
                     <button id="btnDebug" class="menu-btn">DEBUG (F9)</button>
+                    <button id="btnInvitarCoop" class="menu-btn" style="display: none;">INVITAR (WebRTC)</button>
                     <button id="btnLogPanel" class="menu-btn">VER CONEXIONES</button>
                     <button id="btnKeybindsPanel" class="menu-btn">ASIGNAR TECLAS</button>
                     <button id="btnComerciar" class="menu-btn">COMERCIAR</button>
@@ -192,15 +193,23 @@
                 <h3>PASO 1: COMO ANFITRIÓN (HOST)</h3>
                 <div class="manual-btn-row">
                     <button id="btnGenOferta" class="manual-btn blue">GENERAR OFERTA</button>
+                    <button id="btnNuevaOferta" class="manual-btn blue" style="display: none;">NUEVA OFERTA (OTRO INVITADO)</button>
                     <button id="btnScanQRAnswer" class="manual-btn orange">ESCANEAR QR RESPUESTA</button>
                 </div>
-                <p class="manual-label">Copia este código o genera QR:</p>
-                <textarea id="manualOfferOut" class="manual-textarea readonly" readonly></textarea>
-                <button id="btnShowOfferQR" class="manual-qr-btn">VER QR OFERTA</button>
+                <p class="manual-label">Comparte la oferta (QR en 3 partes o copiar):</p>
+                <details class="manual-avanzado">
+                    <summary>VER TEXTO DE LA OFERTA (avanzado)</summary>
+                    <textarea id="manualOfferOut" class="manual-textarea readonly" readonly></textarea>
+                </details>
+                <p class="manual-label">Token oferta: <span id="manualOfferToken">—</span></p>
+                <button id="btnShowOfferQR" class="manual-qr-btn">VER QR OFERTA (3)</button>
+                <button id="btnCopyOffer" class="manual-qr-btn">COPIAR OFERTA</button>
 
                 <p class="manual-label">PASO 2: PEGA LA RESPUESTA DEL INVITADO:</p>
                 <textarea id="manualAnswerIn" class="manual-textarea editable"></textarea>
+                <p class="manual-label">Token respuesta: <span id="manualAnswerTokenHost">—</span></p>
                 <button id="btnProcesarResp" class="manual-connect-btn">CONECTAR</button>
+                <button id="btnJugarManual" class="manual-connect-btn">JUGAR / SEGUIR JUGANDO</button>
             </div>
 
             <div id="manualGuestSection" class="manual-panel guest">
@@ -210,11 +219,17 @@
                 </div>
                 <p class="manual-label">PASO 1: PEGA LA OFERTA DEL ANFITRIÓN:</p>
                 <textarea id="manualOfferIn" class="manual-textarea editable"></textarea>
+                <p class="manual-label">Token oferta: <span id="manualOfferTokenGuest">—</span></p>
                 <button id="btnProcesarOferta" class="manual-connect-btn">GENERAR RESPUESTA</button>
 
-                <p class="manual-label">PASO 2: COPIA TU RESPUESTA O GENERA QR:</p>
-                <textarea id="manualAnswerOut" class="manual-textarea readonly" readonly></textarea>
-                <button id="btnShowAnswerQR" class="manual-qr-btn">VER QR RESPUESTA</button>
+                <p class="manual-label">PASO 2: COMPARTE TU RESPUESTA (QR en 3 partes o copiar):</p>
+                <details class="manual-avanzado">
+                    <summary>VER TEXTO DE LA RESPUESTA (avanzado)</summary>
+                    <textarea id="manualAnswerOut" class="manual-textarea readonly" readonly></textarea>
+                </details>
+                <p class="manual-label">Token respuesta: <span id="manualAnswerToken">—</span></p>
+                <button id="btnShowAnswerQR" class="manual-qr-btn">VER QR RESPUESTA (3)</button>
+                <button id="btnCopyAnswer" class="manual-qr-btn">COPIAR RESPUESTA</button>
             </div>
 
             <button id="btnVolverLobbyManual" class="btn-back-lobby">VOLVER AL MENÚ</button>
@@ -403,6 +418,11 @@
         <div class="qr-modal-box">
             <img id="modalQRImage" src="" alt="QR Code">
             <p id="modalQRTitle"></p>
+            <p id="modalQRPart" style="color:#555;font-size:12px;font-weight:normal;"></p>
+            <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;">
+                <button id="btnQRPrev" class="manual-btn blue">◀ ANTERIOR</button>
+                <button id="btnQRNext" class="manual-btn blue">SIGUIENTE ▶</button>
+            </div>
             <button id="btnCloseQRModal" class="btn-close-qr">CERRAR</button>
         </div>
     </div>
@@ -433,6 +453,7 @@
             <button id="btnGuardAction" class="action-btn" title="A mí la guardia" style="display: none;">🎺 <span class="btn-text">LA GUARDIA</span><div class="cooldown-overlay"></div></button>
             <button id="btnRestartAction" class="action-btn" title="Reiniciar Partida" style="display: none;">🔄 <span class="btn-text">REINICIAR</span><div class="cooldown-overlay"></div></button>
             <button id="btnTeleportHousing" class="action-btn" title="Teletransporte a mi casa / al mapa" style="display: none;">🏠 <span class="btn-text">A MI CASA</span><div class="cooldown-overlay"></div></button>
+            <button id="btnTeleportCostura" class="action-btn" title="Teletransporte a la costura del nodo (debug)" style="display: none;">🧵 <span class="btn-text">COSTURA</span><div class="cooldown-overlay"></div></button>
             <button id="btnEquipoAction" class="action-btn" title="Equipo y mochila (E)">🎒 <span class="btn-text">EQUIPO</span><div class="cooldown-overlay"></div></button>
             <button id="btnBotinAction" class="action-btn" title="Botín de prueba (debug)" style="display: none;">🎁 <span class="btn-text">BOTÍN</span><div class="cooldown-overlay"></div></button>
         </div>

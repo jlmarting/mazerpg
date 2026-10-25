@@ -1,3 +1,4 @@
+import { dividirEnPartes } from '../core/qrPartes';
 export type LobbyMode = 'solo' | 'firebase' | 'http' | 'cooperativo';
 
 import type { AparienciaAvatar, ZonaAvatar, RanuraPieza } from '../core/avatarTintes';
@@ -24,6 +25,7 @@ export interface LobbyDelegate {
   onRerollStats(clase: string): void;
   onStartSolo(dificultad: string): void;
   onHostGame(modo: 'firebase' | 'http' | 'manual', dificultad: string): void;
+  onNewManualOffer(): void;
   onJoinGame(partidaId: string, modo: 'firebase' | 'http'): void;
   onResumeSession(): void;
   onSelectMode(modo: LobbyMode): void;
@@ -88,6 +90,10 @@ export class LobbyManager {
   private avatarGenero: 'm' | 'f' = 'm';
   /** Piezas elegidas en el modal (se confirman en saveCharacter). */
   private avatarPiezas: Record<RanuraPieza, string | null> = { pelo: null, torso: null, piernas: null, casco: null };
+  /** QR manual en 3 partes (el base64 es demasiado denso para un solo QR). */
+  private qrPartes: string[] = [];
+  private qrIndice = 0;
+  private qrTitulo = '';
 
   constructor(delegate: LobbyDelegate) {
     this.delegate = delegate;
@@ -180,9 +186,29 @@ export class LobbyManager {
     this.showModo();
   }
 
-  showManualMode(): void {
+  showManualMode(rol: 'host' | 'guest' = 'host'): void {
+    const lobby = document.getElementById('lobby');
+    if (lobby) lobby.style.display = 'flex';
     this.hideElement('lobbyInitial');
     this.showElement('lobbyManual', 'flex');
+    // Solo la sección del rol: el host no necesita las casillas del invitado
+    // (ni al revés); reduce la saturación del panel.
+    const hostSection = document.getElementById('manualHostSection');
+    const guestSection = document.getElementById('manualGuestSection');
+    if (hostSection) hostSection.style.display = rol === 'host' ? '' : 'none';
+    if (guestSection) guestSection.style.display = rol === 'guest' ? '' : 'none';
+  }
+
+  /** Cierra el panel manual del host y vuelve a la partida que corre detrás. */
+  cerrarPanelManual(): void {
+    const lobby = document.getElementById('lobby');
+    if (lobby) lobby.style.display = 'none';
+    const canvas = document.getElementById('mazeCanvas');
+    if (canvas) canvas.style.display = 'block';
+    const topMenu = document.getElementById('topMenu');
+    if (topMenu) topMenu.style.display = 'block';
+    const actionsMenu = document.getElementById('actionsMenu');
+    if (actionsMenu) actionsMenu.style.display = 'block';
   }
 
   showGameBrowser(): void {
@@ -613,21 +639,76 @@ export class LobbyManager {
     this.populateStatsDisplay();
   }
 
+  /**
+   * Muestra la información en 3 QR secuenciales. El base64 del SDP es
+   * demasiado denso para un solo QR legible; cada parte lleva cabecera
+   * `MZ3/i/n|` para reensamblarla en el otro lado.
+   */
   showQRManual(title: string, data: string): void {
     if (!data) { alert("No hay datos para generar QR"); return; }
-    const qrImage = document.getElementById('modalQRImage') as HTMLImageElement;
-    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data)}`;
-    document.getElementById('modalQRTitle')!.textContent = title;
+    this.qrTitulo = title;
+    this.qrPartes = dividirEnPartes(data);
+    this.qrIndice = 0;
+    this.actualizarQR();
     this.showElement('qrModal', 'flex');
+  }
+
+  private actualizarQR(): void {
+    const total = this.qrPartes.length;
+    if (total === 0) return;
+    const parte = this.qrPartes[this.qrIndice] ?? '';
+    const qrImage = document.getElementById('modalQRImage') as HTMLImageElement | null;
+    if (qrImage) {
+      qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&ecc=L&data=${encodeURIComponent(parte)}`;
+    }
+    const title = document.getElementById('modalQRTitle');
+    if (title) title.textContent = this.qrTitulo;
+    const label = document.getElementById('modalQRPart');
+    if (label) label.textContent = `PARTE ${this.qrIndice + 1}/${total} · escanea esta y pulsa SIGUIENTE`;
+    const prev = document.getElementById('btnQRPrev') as HTMLButtonElement | null;
+    const next = document.getElementById('btnQRNext') as HTMLButtonElement | null;
+    if (prev) prev.disabled = this.qrIndice === 0;
+    if (next) next.disabled = this.qrIndice >= total - 1;
+  }
+
+  private qrSiguiente(): void {
+    if (this.qrIndice < this.qrPartes.length - 1) {
+      this.qrIndice++;
+      this.actualizarQR();
+    }
+  }
+
+  private qrAnterior(): void {
+    if (this.qrIndice > 0) {
+      this.qrIndice--;
+      this.actualizarQR();
+    }
   }
 
   closeQRModal(): void {
     this.hideElement('qrModal');
+    this.qrPartes = [];
+    this.qrIndice = 0;
+    this.qrTitulo = '';
   }
 
   scanQRManual(targetId: string): void {
-    const data = prompt("Pega aquí el contenido del código QR:");
-    if (data) (document.getElementById(targetId) as HTMLTextAreaElement).value = data;
+    const partes: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const parte = prompt(`PARTE ${i}/3 — pega el contenido del QR ${i}:`);
+      if (!parte) break;
+      partes.push(parte.trim());
+    }
+    if (partes.length === 0) return;
+    const legacyUnico = partes.length === 1 && !partes[0].startsWith('MZ3/');
+    if (partes.length < 3 && !legacyUnico) {
+      alert('Faltan partes del QR. Repite la captura de las 3 partes (o pega el QR antiguo completo).');
+      return;
+    }
+    const ta = document.getElementById(targetId) as HTMLTextAreaElement | null;
+    if (!ta) return;
+    ta.value = partes.join('\n');
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   get manualOfferOut(): string {
@@ -778,10 +859,12 @@ export class LobbyManager {
     document.getElementById('btnCoopHost')?.addEventListener('click', () => {
       this.showDifficultyModal((diff) => {
         this.delegate.onHostGame('manual', diff);
-        this.showManualMode();
+        this.showManualMode('host');
       });
     });
-    document.getElementById('btnCoopGuest')?.addEventListener('click', () => this.showManualMode());
+    document.getElementById('btnCoopGuest')?.addEventListener('click', () => this.showManualMode('guest'));
+    document.getElementById('btnNuevaOferta')?.addEventListener('click', () => this.delegate.onNewManualOffer());
+    document.getElementById('btnJugarManual')?.addEventListener('click', () => this.cerrarPanelManual());
 
     document.querySelectorAll('.modo-card').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -838,6 +921,8 @@ export class LobbyManager {
       this.showQRManual('RESPUESTA', this.manualAnswerOut);
     });
     document.getElementById('btnCloseQRModal')?.addEventListener('click', () => this.closeQRModal());
+    document.getElementById('btnQRPrev')?.addEventListener('click', () => this.qrAnterior());
+    document.getElementById('btnQRNext')?.addEventListener('click', () => this.qrSiguiente());
     document.getElementById('btnScanQROffer')?.addEventListener('click', () => this.scanQRManual('manualOfferIn'));
     document.getElementById('btnScanQRAnswer')?.addEventListener('click', () => this.scanQRManual('manualAnswerIn'));
   }

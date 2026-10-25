@@ -5,6 +5,26 @@ import { AvatarCompositor } from './AvatarCompositor';
 import { aparienciaEfectiva } from './avatarTintes';
 import { carasHaciaSuelo, hashCelda, varianteSuelo } from '../world/autotile';
 
+interface CacheNodo {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  valido: boolean;
+  ambiente: 'dungeon' | 'casa';
+}
+
+interface NodoRender {
+  id: string;
+  celdas: Celda[][];
+  filas: number;
+  columnas: number;
+  tipo: string;
+}
+
+interface NodoRenderEntry {
+  nodo: NodoRender;
+  transform: { df: number; dc: number };
+}
+
 /**
  * Clase responsable de toda la lógica de renderizado del juego.
  * Centraliza el dibujo del laberinto, entidades, efectos y UI.
@@ -14,9 +34,7 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   public spriteManager: SpriteManager;
   public avatarCompositor: AvatarCompositor;
-  private mazeCache: HTMLCanvasElement | null = null;
-  private mazeCacheCtx: CanvasRenderingContext2D | null = null;
-  private mazeCacheValida: boolean = false;
+  private cacheNodos: Map<string, CacheNodo> = new Map();
   private portalesHousingInactivos: Set<string> = new Set();
   /** Portales de housing (todos: ida y vuelta) para dibujarlos como casita con pulso. */
   private portalesHousing: Set<string> = new Set();
@@ -86,15 +104,69 @@ export class Renderer {
   }
 
   /**
-   * Dibuja el suelo, muros y objetos estáticos del laberinto.
+   * Offset de cámara en coordenadas de **mundo**: centra la posición visual de
+   * mundo del protagonista en el viewport.
+   */
+  obtenerOffsetCamaraMundo(
+    worldVisual: { fila: number; columna: number },
+    config: GameConfig,
+  ): CameraOffset {
+    const { TAMANO_CELDA, ALTO_UI_TOP, ALTO_UI_BOTTOM } = config;
+    const mazeWidth = this.canvas.width;
+    const mazeHeight = this.canvas.height - ALTO_UI_TOP - ALTO_UI_BOTTOM;
+    const colOffset = worldVisual.columna - (mazeWidth / TAMANO_CELDA / 2) + 0.5;
+    const filaOffset = worldVisual.fila - (mazeHeight / TAMANO_CELDA / 2) + 0.5;
+    return { colOffset, filaOffset };
+  }
+
+  /**
+   * Dibuja todos los nodos visibles con cámara de mundo. El nodo activo aporta
+   * además drops y capas dinámicas; los vecinos se dibujan congelados.
+   */
+  dibujarMundo(
+    nodos: ReadonlyArray<NodoRenderEntry>,
+    offsetMundo: CameraOffset,
+    config: GameConfig,
+    drops?: { f: number; c: number; id: string }[],
+    nodoActivoId?: string,
+    persistenceOverride?: number,
+  ): void {
+    let offsetActivo: CameraOffset | null = null;
+    for (const entry of nodos) {
+      const offset = {
+        colOffset: offsetMundo.colOffset - entry.transform.dc,
+        filaOffset: offsetMundo.filaOffset - entry.transform.df,
+      };
+      this.cacheNodoDibujar(entry.nodo, offset, config);
+      this.dibujarPulsoHousing(entry.nodo.celdas, offset, config);
+      this.dibujarTesoros(entry.nodo.celdas, offset, config);
+      this.dibujarSalida(entry.nodo.celdas, offset, config);
+      this.dibujarNiebla(entry.nodo.celdas, offset, config, persistenceOverride);
+      if (entry.nodo.id === nodoActivoId) offsetActivo = offset;
+    }
+    if (offsetActivo) this.dibujarDrops(offsetActivo, config, drops);
+  }
+
+  /**
+   * Wrapper de compatibilidad para el editor (un solo mapa local).
    */
   dibujarLaberinto(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig, drops?: { f: number; c: number; id: string }[]) {
-    this.cacheMazeDibujar(mapaLaberinto, offset, config);
-
+    const nodo = this.nodoSintetico(mapaLaberinto);
+    this.cacheNodoDibujar(nodo, offset, config);
     this.dibujarPulsoHousing(mapaLaberinto, offset, config);
     this.dibujarDrops(offset, config, drops);
     this.dibujarTesoros(mapaLaberinto, offset, config);
     this.dibujarSalida(mapaLaberinto, offset, config);
+  }
+
+  private nodoSintetico(mapaLaberinto: Celda[][]): NodoRender {
+    return {
+      id: '__laberinto__',
+      celdas: mapaLaberinto,
+      filas: mapaLaberinto.length,
+      columnas: mapaLaberinto[0]?.length ?? 0,
+      tipo: 'mazmorra',
+    };
   }
 
   /** Portal de salida aleatorio (F4): pulso verde sobre la celda marcada. */
@@ -935,29 +1007,39 @@ export class Renderer {
 
   getCtx() { return this.ctx; }
 
-  inicializarCacheLaberinto(mapaLaberinto: Celda[][], config: GameConfig) {
-    const { TAMANO_CELDA, NUMERO_FILAS, NUMERO_COLUMNAS } = config;
-    const w = NUMERO_COLUMNAS * TAMANO_CELDA;
-    const h = NUMERO_FILAS * TAMANO_CELDA;
-    if (!this.mazeCache || this.mazeCache.width !== w || this.mazeCache.height !== h) {
-      this.mazeCache = document.createElement('canvas');
-      this.mazeCache.width = w;
-      this.mazeCache.height = h;
-      this.mazeCacheCtx = this.mazeCache.getContext('2d')!;
+  private inicializarCacheNodo(nodo: NodoRender, config: GameConfig): CacheNodo {
+    const { TAMANO_CELDA } = config;
+    const w = Math.max(1, nodo.columnas) * TAMANO_CELDA;
+    const h = Math.max(1, nodo.filas) * TAMANO_CELDA;
+    const ambiente: 'dungeon' | 'casa' =
+      nodo.id === '__laberinto__' ? this.ambiente : nodo.tipo === 'personal' ? 'casa' : 'dungeon';
+
+    let entry = this.cacheNodos.get(nodo.id);
+    if (!entry || entry.canvas.width !== w || entry.canvas.height !== h || entry.ambiente !== ambiente) {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      entry = { canvas, ctx: canvas.getContext('2d')!, valido: false, ambiente };
+      this.cacheNodos.set(nodo.id, entry);
     }
-    const ctx = this.mazeCacheCtx!;
+    if (entry.valido) return entry;
+
+    const anterior = this.ambiente;
+    this.ambiente = ambiente;
+    const ctx = entry.ctx;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);
 
-    // El nodo activo puede ser más pequeño que el mundo (p.ej. la casa contenida):
-    // iterar por las dimensiones reales del nodo para no leer celdas inexistentes.
-    const filasNodo = mapaLaberinto.length;
-    const columnasNodo = filasNodo > 0 ? mapaLaberinto[0].length : 0;
+    const mapaLaberinto = nodo.celdas;
+    const filasNodo = nodo.filas;
+    const columnasNodo = nodo.columnas;
 
     for (let fila = 0; fila < filasNodo; fila++) {
       const filaCeldas = mapaLaberinto[fila];
-      for (let columna = 0; columna < filaCeldas.length; columna++) {
+      if (!filaCeldas) continue;
+      for (let columna = 0; columna < columnasNodo; columna++) {
         const celda = filaCeldas[columna];
+        if (!celda) continue;
         const x = columna * TAMANO_CELDA;
         const y = fila * TAMANO_CELDA;
 
@@ -968,13 +1050,19 @@ export class Renderer {
 
         this.pintarSuelo(ctx, celda, fila, columna, x, y, TAMANO_CELDA);
 
-        // Sombra interior en los bordes que dan a muro: profundidad barata (en caché)
+        // Sombra interior en los bordes que dan a muro: profundidad barata (en caché).
+        // En una costura abierta (muro false) no se pinta, para que el nodo vecino
+        // se lea como continuación y no como borde de mapa.
         ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
         const banda = Math.max(3, Math.floor(TAMANO_CELDA * 0.12));
-        if (fila === 0 || !mapaLaberinto[fila - 1][columna].esTransitable || celda.muros.superior) ctx.fillRect(x, y, TAMANO_CELDA, banda);
-        if (fila === filasNodo - 1 || !mapaLaberinto[fila + 1][columna].esTransitable || celda.muros.inferior) ctx.fillRect(x, y + TAMANO_CELDA - banda, TAMANO_CELDA, banda);
-        if (columna === 0 || !mapaLaberinto[fila][columna - 1].esTransitable || celda.muros.izquierdo) ctx.fillRect(x, y, banda, TAMANO_CELDA);
-        if (columna === columnasNodo - 1 || !mapaLaberinto[fila][columna + 1].esTransitable || celda.muros.derecho) ctx.fillRect(x + TAMANO_CELDA - banda, y, banda, TAMANO_CELDA);
+        const sombraSuperior = celda.muros.superior || (fila > 0 && !mapaLaberinto[fila - 1][columna].esTransitable);
+        const sombraInferior = celda.muros.inferior || (fila < filasNodo - 1 && !mapaLaberinto[fila + 1][columna].esTransitable);
+        const sombraIzquierda = celda.muros.izquierdo || (columna > 0 && !mapaLaberinto[fila][columna - 1].esTransitable);
+        const sombraDerecha = celda.muros.derecho || (columna < columnasNodo - 1 && !mapaLaberinto[fila][columna + 1].esTransitable);
+        if (sombraSuperior) ctx.fillRect(x, y, TAMANO_CELDA, banda);
+        if (sombraInferior) ctx.fillRect(x, y + TAMANO_CELDA - banda, TAMANO_CELDA, banda);
+        if (sombraIzquierda) ctx.fillRect(x, y, banda, TAMANO_CELDA);
+        if (sombraDerecha) ctx.fillRect(x + TAMANO_CELDA - banda, y, banda, TAMANO_CELDA);
 
         if (celda.burbuja) {
           ctx.strokeStyle = '#87CEEB';
@@ -1026,7 +1114,13 @@ export class Renderer {
         }
       }
     }
-    this.mazeCacheValida = true;
+    entry.valido = true;
+    this.ambiente = anterior;
+    return entry;
+  }
+
+  inicializarCacheLaberinto(mapaLaberinto: Celda[][], config: GameConfig) {
+    this.inicializarCacheNodo(this.nodoSintetico(mapaLaberinto), config);
   }
 
   private pintarSuelo(ctx: CanvasRenderingContext2D, celda: Celda, fila: number, columna: number, x: number, y: number, tam: number) {
@@ -1184,8 +1278,13 @@ export class Renderer {
     }
   }
 
+  invalidarCacheNodo(nodoId: string): void {
+    const entry = this.cacheNodos.get(nodoId);
+    if (entry) entry.valido = false;
+  }
+
   invalidarCacheLaberinto() {
-    this.mazeCacheValida = false;
+    for (const entry of this.cacheNodos.values()) entry.valido = false;
   }
 
   setPortalesHousingInactivos(ids: ReadonlySet<string>): void {
@@ -1199,7 +1298,7 @@ export class Renderer {
       }
     }
     this.portalesHousingInactivos = new Set(ids);
-    if (cambia) this.mazeCacheValida = false;
+    if (cambia) this.invalidarCacheLaberinto();
   }
 
   /** Portales de housing (ida y vuelta): se dibujan como casita con pulso. */
@@ -1211,40 +1310,24 @@ export class Renderer {
       }
     }
     this.portalesHousing = new Set(ids);
-    if (cambia) this.mazeCacheValida = false;
+    if (cambia) this.invalidarCacheLaberinto();
   }
 
-  /** Cambia el tema de render (dungeon vs casa). Invalida la caché al cambiar. */
+  /** Cambia el tema de render (dungeon vs casa). Invalida las cachés al cambiar. */
   setAmbiente(ambiente: 'dungeon' | 'casa'): void {
     if (this.ambiente !== ambiente) {
       this.ambiente = ambiente;
-      this.mazeCacheValida = false;
+      this.invalidarCacheLaberinto();
     }
   }
 
-  private cacheMazeDibujar(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
-    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
-    const { colOffset, filaOffset } = offset;
-
-    if (!this.mazeCacheValida || !this.mazeCache) {
-      this.inicializarCacheLaberinto(mapaLaberinto, config);
-    }
-
-    const viewW = CELDAS_VISIBLES_X * TAMANO_CELDA;
-    const viewH = CELDAS_VISIBLES_Y * TAMANO_CELDA;
-    let srcX = colOffset * TAMANO_CELDA;
-    let srcY = filaOffset * TAMANO_CELDA;
-    let dx = 0;
-    let dy = ALTO_UI_TOP;
-
-    if (srcX < 0) { dx = -srcX; srcX = 0; }
-    if (srcY < 0) { dy = -srcY + ALTO_UI_TOP; srcY = 0; }
-
-    const srcW = Math.min(this.mazeCache!.width - srcX, viewW);
-    const srcH = Math.min(this.mazeCache!.height - srcY, viewH);
-
+  private cacheNodoDibujar(nodo: NodoRender, offset: CameraOffset, config: GameConfig) {
+    const { TAMANO_CELDA, ALTO_UI_TOP } = config;
+    const entry = this.inicializarCacheNodo(nodo, config);
+    const dx = -offset.colOffset * TAMANO_CELDA;
+    const dy = -offset.filaOffset * TAMANO_CELDA + ALTO_UI_TOP;
     this.ctx.imageSmoothingEnabled = false;
-    this.ctx.drawImage(this.mazeCache!, srcX, srcY, srcW, srcH, dx, dy, srcW, srcH);
+    this.ctx.drawImage(entry.canvas, dx, dy);
     this.ctx.imageSmoothingEnabled = true;
   }
 }

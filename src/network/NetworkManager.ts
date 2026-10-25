@@ -1,5 +1,6 @@
 import { IGame } from '../types';
 import { aparienciaEfectiva } from '../core/avatarTintes';
+import { extraerSdpManual } from './manualSdp';
 
 /**
  * Gestor de red para comunicaciones peer-to-peer (P2P) usando WebRTC.
@@ -20,12 +21,14 @@ import { aparienciaEfectiva } from '../core/avatarTintes';
 export interface RemotePlayer {
     /** Conexión peer-to-peer establecida con el jugador remoto */
     pc: RTCPeerConnection;
-    /** Canal de datos para envío/recepción de mensajes */
+    /** Canal de datos para envío y recepción de mensajes */
     dc: RTCDataChannel;
     /** Referencia a la entidad del jugador en el juego (se asigna después del handshake) */
     entidad: any;
     /** Funciones de desuscripción para limpiar listeners de Firebase cuando sea necesario */
     unsubscribes: (() => void)[];
+    /** Token opaco de la conexión manual (oferta/respuesta) */
+    token?: string;
 }
 
 export class NetworkManager {
@@ -43,6 +46,12 @@ export class NetworkManager {
     public activo: boolean = false;
     /** ID real del host (usado cuando el cliente es invitado) */
     public idRealDelHost: string | null = null;
+    /**
+     * Alias provisional→real para el coop manual: el host crea la conexión
+     * bajo un id `GUEST_*` y el DataChannel sigue emitiendo con ese id hasta
+     * que llega el handshake; este mapa enruta los mensajes al id real.
+     */
+    public aliasRemoto: Map<string, string> = new Map();
 
     constructor() {}
 
@@ -87,18 +96,23 @@ export class NetworkManager {
         canal.onmessage = (evento) => {
             try {
                 const mensaje = JSON.parse(evento.data);
-                game.procesarMensajeMultiplayer(mensaje, idEmisor);
+                // Coop manual: el DataChannel se creó con un id provisional
+                // (`GUEST_*`); el handshake lo migra y el alias enruta el resto.
+                const idResuelto = this.aliasRemoto.get(idEmisor) ?? idEmisor;
+                game.procesarMensajeMultiplayer(mensaje, idResuelto);
             } catch(e) {
                 console.error("Error al procesar mensaje P2P:", e);
             }
         };
 
         canal.addEventListener('close', () => {
-            game.registrarEventoLog(`Jugador desconectado (${idEmisor})`);
-            this.jugadoresRemotos.delete(idEmisor);
-            try { game.cancelarTruequesDe(idEmisor); } catch {}
+            const idResuelto = this.aliasRemoto.get(idEmisor) ?? idEmisor;
+            game.registrarEventoLog(`Jugador desconectado (${idResuelto})`);
+            this.jugadoresRemotos.delete(idResuelto);
+            this.aliasRemoto.delete(idEmisor);
+            try { game.cancelarTruequesDe(idResuelto); } catch {}
 
-            if (idEmisor === 'host' && !this.esHost) {
+            if ((idEmisor === 'host' || idResuelto === this.idRealDelHost) && !this.esHost) {
                 game.registrarEventoLog("El Host se ha desconectado. Iniciando elección de nuevo Host...");
                 game.iniciarEleccionHost();
             }
@@ -355,63 +369,121 @@ export class NetworkManager {
     // MÉTODOS PARA CONEXIÓN MANUAL (SIN FIREBASE)
 
     /**
-     * Crea una oferta WebRTC para conexión manual (sin Firebase).
-     * Útil para pruebas locales o conexiones directas LAN.
-     * @param game - Instancia del juego para configurar handlers de canal
-     * @returns Promesa que resuelve con la oferta codificada en base64
+     * Espera a que el ICE gathering termine y devuelve la descripción local
+     * codificada como base64 de `{ token, sdp }`. El handler de ICE se asigna
+     * antes de `setLocalDescription` (si se asigna después se pierden los
+     * primeros candidatos). El timeout evita bloquear el flujo si el gathering
+     * no llega a completarse.
      */
-    async crearOfertaManual(game: IGame): Promise<string> {
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-        const dc = pc.createDataChannel("mazeRPG");
-        const guestId = "GUEST_" + Math.random().toString(36).substr(2, 5);
-
-        const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [] };
-        this.jugadoresRemotos.set(guestId, info);
-        this.setupDataChannelHandlers(dc, guestId, game);
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
+    private esperarDescripcionLocal(pc: RTCPeerConnection, token: string | null): Promise<string> {
         return new Promise((resolve) => {
-            pc.onicecandidate = (e) => {
-                if (!e.candidate) {
-                    // Candidatos recolectados
-                    resolve(btoa(JSON.stringify(pc.localDescription)));
-                }
+            let resuelto = false;
+            const terminar = (): void => {
+                if (resuelto || !pc.localDescription) return;
+                resuelto = true;
+                resolve(btoa(JSON.stringify({ token, sdp: pc.localDescription })));
             };
-            // Timeout de seguridad por si tarda mucho
-            setTimeout(() => {
-                if (pc.localDescription) resolve(btoa(JSON.stringify(pc.localDescription)));
-            }, 2000);
+            pc.onicecandidate = (e) => {
+                if (!e.candidate) terminar();
+            };
+            pc.addEventListener('icecandidateerror', (e) => {
+                console.warn('ICE candidate error (manual):', e);
+            });
+            setTimeout(terminar, 4000);
         });
     }
 
     /**
-     * Procesa una respuesta WebRTC recibida manualmente (en base64).
-     * @param sdpB64 - Respuesta codificada en base64
+     * Crea una oferta WebRTC para conexión manual (sin Firebase).
+     * Devuelve base64 de `{ token, sdp }`; el token permite emparejar la
+     * respuesta con esta conexión cuando el host tiene varios invitados.
      */
-    async procesarRespuestaManual(sdpB64: string) {
+    async crearOfertaManual(game: IGame): Promise<string> {
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+        const dc = pc.createDataChannel("mazeRPG");
+        const token = Math.random().toString(36).slice(2, 10);
+        const guestId = `GUEST_${token}`;
+
+        const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [], token };
+        this.jugadoresRemotos.set(guestId, info);
+        this.setupDataChannelHandlers(dc, guestId, game);
+
+        const espera = this.esperarDescripcionLocal(pc, token);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        return espera;
+    }
+
+    /**
+     * Procesa una respuesta WebRTC recibida manualmente (base64 de
+     * `{ token, sdp }` o SDP plano legacy). Con token empareja la respuesta con
+     * su oferta; sin token cae al primer `GUEST_*` (compatibilidad 1:1).
+     */
+    async procesarRespuestaManual(sdpB64: string): Promise<{ ok: boolean; error?: string }> {
         try {
-            const answer = JSON.parse(atob(sdpB64));
-            const [, info] = Array.from(this.jugadoresRemotos.entries())[0]; // El primer invitado en manual
-            if (info && info.pc) {
-                await info.pc.setRemoteDescription(new RTCSessionDescription(answer));
+            const payload = extraerSdpManual(JSON.parse(atob(sdpB64)));
+            if (!payload) {
+                return { ok: false, error: 'El código pegado no es una respuesta válida. Pega la RESPUESTA completa del invitado (no la oferta).' };
             }
+            if (payload.sdp.type === 'offer') {
+                return { ok: false, error: 'Eso es una OFERTA, no una RESPUESTA. Pega la respuesta que generó el invitado.' };
+            }
+            if (payload.sdp.type !== 'answer') {
+                return { ok: false, error: `El código no es una respuesta WebRTC (type=${payload.sdp.type}).` };
+            }
+            const token = payload.token;
+            const entradas = Array.from(this.jugadoresRemotos.entries());
+            let entrada: [string, RemotePlayer] | undefined;
+            if (token) {
+                entrada = entradas.find(([, info]) => info.token === token);
+            }
+            if (!entrada) {
+                // Legacy 1:1: sin token, primera conexión manual pendiente.
+                entrada = entradas.find(([id]) => id.startsWith('GUEST_')) ?? entradas[0];
+            }
+            if (!entrada || !entrada[1].pc) {
+                return { ok: false, error: token
+                    ? `No hay una oferta pendiente con el token ${token}. Genera NUEVA OFERTA y pide la respuesta de esa oferta.`
+                    : 'No hay conexiones manuales pendientes. Genera una NUEVA OFERTA.' };
+            }
+            if (entrada[1].pc.remoteDescription) {
+                return { ok: false, error: token
+                    ? `El token ${token} ya está conectado. Genera NUEVA OFERTA para otro invitado y usa la respuesta nueva.`
+                    : 'Esa conexión ya está conectada. Genera NUEVA OFERTA para otro invitado.' };
+            }
+            await entrada[1].pc.setRemoteDescription(new RTCSessionDescription(payload.sdp as RTCSessionDescriptionInit));
+            return { ok: true };
         } catch (e) {
-            console.error("Error al procesar respuesta manual:", e);
-            alert("Error al procesar la respuesta. Código inválido.");
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error('Error al procesar respuesta manual:', e);
+            return { ok: false, error: `No se pudo procesar la respuesta: ${msg}` };
         }
     }
 
     /**
-     * Acepta una oferta WebRTC recibida manualmente y genera una respuesta.
-     * @param sdpB64 - Oferta codificada en base64
-     * @param game - Instancia del juego para configurar handlers de canal
-     * @returns Promesa que resuelve con la respuesta codificada en base64
+     * Acepta una oferta WebRTC recibida manualmente y genera la respuesta.
+     * Acepta base64 de `{ token, sdp }` o SDP plano legacy; la respuesta lleva
+     * el mismo token para que el host la empareje.
      */
     async aceptarOfertaManual(sdpB64: string, game: IGame): Promise<string> {
         const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
         const info: RemotePlayer = { pc, dc: null as any, entidad: null, unsubscribes: [] };
+
+        let payload;
+        try {
+            payload = extraerSdpManual(JSON.parse(atob(sdpB64)));
+        } catch {
+            throw new Error('Oferta manual inválida: no es base64/JSON. Revisa que hayas pegado la oferta completa.');
+        }
+        if (!payload) {
+            throw new Error('Oferta manual inválida: falta el SDP. Revisa que hayas pegado la oferta completa.');
+        }
+        if (payload.sdp.type !== 'offer') {
+            throw new Error(`El código no es una oferta WebRTC (type=${payload.sdp.type}).`);
+        }
+        const token = payload.token;
+        const sdp = payload.sdp;
+        info.token = token ?? undefined;
 
         pc.ondatachannel = (event) => {
             const dc = event.channel;
@@ -420,20 +492,10 @@ export class NetworkManager {
             this.setupDataChannelHandlers(dc, 'host', game);
         };
 
-        const offer = JSON.parse(atob(sdpB64));
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp as RTCSessionDescriptionInit));
+        const espera = this.esperarDescripcionLocal(pc, token);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-
-        return new Promise((resolve) => {
-            pc.onicecandidate = (e) => {
-                if (!e.candidate) {
-                    resolve(btoa(JSON.stringify(pc.localDescription)));
-                }
-            };
-            setTimeout(() => {
-                if (pc.localDescription) resolve(btoa(JSON.stringify(pc.localDescription)));
-            }, 2000);
-        });
+        return espera;
     }
 }

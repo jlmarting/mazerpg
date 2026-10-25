@@ -3,6 +3,13 @@ import { generarNodo } from './generadores';
 import { eliminarMurosEntre } from './generation';
 import { puedeEditarNodo } from './housing';
 import {
+  colocarNodoDestino,
+  direccionDeLado,
+  inferirLadoConector,
+  ladoOpuesto,
+  transformAbsoluto as transformAbsolutoCostura,
+} from './costura';
+import {
   aplicarDelta as aplicarDeltaEnCeldas,
   type ConectorMundo,
   type DeltaMundo,
@@ -127,20 +134,50 @@ export class GestorMundo {
 
     const aparicion = this.prepararAparicion(nodoDestino, conector.filaD, conector.columnaD);
 
-    this.nodoActivoId = nodoDestino.id;
+    this.activarNodo(nodoDestino.id);
     return { nodo: nodoDestino, fila: aparicion.fila, columna: aparicion.columna };
   }
 
-  registrarConector(conector: ConectorMundo): void {
-    this.conectores.set(conector.id, conector);
+  /** Fija el nodo activo sin teletransportar (cruce continuo). */
+  activarNodo(nodoId: string): NodoMundo {
+    const nodo = this.mundo.get(nodoId);
+    if (!nodo) {
+      throw new Error(`Nodo desconocido: ${nodoId}`);
+    }
+    this.nodoActivoId = nodoId;
+    return nodo;
+  }
 
+  /** Transform absoluto (raíz→nodo) sumando la cadena de padres. */
+  transformAbsoluto(nodoId: string): { df: number; dc: number } {
+    return transformAbsolutoCostura(this.mundo, nodoId);
+  }
+
+  registrarConector(conector: ConectorMundo): void {
     const nodoOrigen = this.mundo.get(conector.nodoOrigenId);
     if (!nodoOrigen) {
+      this.conectores.set(conector.id, conector);
       console.warn(
         `registrarConector: nodo origen ausente ${conector.nodoOrigenId}; el conector ${conector.id} queda sin celda.`,
       );
       return;
     }
+
+    const nodoDestino = this.mundo.get(conector.nodoDestinoId) ?? null;
+    const dimsDestino = nodoDestino
+      ? { filas: nodoDestino.filas, columnas: nodoDestino.columnas }
+      : { filas: nodoOrigen.filas, columnas: nodoOrigen.columnas };
+    const lado =
+      conector.lado === undefined
+        ? inferirLadoConector(
+            conector,
+            { filas: nodoOrigen.filas, columnas: nodoOrigen.columnas },
+            dimsDestino,
+          )
+        : conector.lado;
+    conector.lado = lado;
+    this.conectores.set(conector.id, conector);
+
     const celdas = nodoOrigen.celdas;
     if (
       conector.filaO >= 0 && conector.filaO < celdas.length &&
@@ -148,6 +185,123 @@ export class GestorMundo {
     ) {
       celdas[conector.filaO][conector.columnaO].conectorId = conector.id;
     }
+
+    if (lado && nodoDestino) {
+      this.colocarDestinoSiProcede(conector, nodoOrigen, nodoDestino);
+      if (conector.lado) {
+        this.abrirCostura(nodoOrigen, nodoDestino, conector);
+      }
+    }
+  }
+
+  /**
+   * Materializa (si falta) y devuelve el destino de un conector sin cambiar el
+   * nodo activo. Es la puerta del cruce continuo.
+   */
+  asegurarNodoDestino(conectorId: string): NodoMundo {
+    const conector = this.conectores.get(conectorId);
+    if (!conector) {
+      throw new Error(`Conector desconocido: ${conectorId}`);
+    }
+    const existente = this.mundo.get(conector.nodoDestinoId);
+    if (existente) return existente;
+    return this.materializarDestino(conector);
+  }
+
+  /**
+   * Re-registra los conectores persistidos como deltas al materializar un nodo.
+   * Idempotente por id; los `quitar` eliminan el conector de memoria.
+   */
+  reconstruirConectoresDesdeDeltas(nodoId: string, deltas: DeltaMundo[]): void {
+    for (const delta of deltas) {
+      if (delta.nodoId !== nodoId) continue;
+      const cambio = delta.cambio;
+      if (cambio.tipo !== 'conector') continue;
+      if (cambio.accion === 'quitar') {
+        this.conectores.delete(cambio.conector.id);
+        continue;
+      }
+      if (this.conectores.has(cambio.conector.id)) continue;
+      this.registrarConector(cambio.conector);
+    }
+  }
+
+  private colocarDestinoSiProcede(
+    conector: ConectorMundo,
+    origen: NodoMundo,
+    destino: NodoMundo,
+  ): void {
+    // Solo se coloca un hijo real del origen; el padre (conector de vuelta) y
+    // los nodos de otra rama conservan su transform.
+    if (destino.padreId !== origen.id) return;
+    const transform = colocarNodoDestino(
+      conector,
+      { filas: origen.filas, columnas: origen.columnas },
+      { filas: destino.filas, columnas: destino.columnas },
+    );
+    if (!transform) {
+      conector.lado = null;
+      return;
+    }
+    const yaColocado = destino.transform.df !== 0 || destino.transform.dc !== 0;
+    if (yaColocado) {
+      // Dos conectores continuos que reclaman el mismo hijo con posiciones
+      // distintas son incoherentes: se degrada a teletransporte en vez de
+      // recolocar el nodo y romper la costura ya existente.
+      if (destino.transform.df !== transform.df || destino.transform.dc !== transform.dc) {
+        conector.lado = null;
+      }
+      return;
+    }
+    destino.transform = transform;
+  }
+
+  private abrirCostura(origen: NodoMundo, destino: NodoMundo, conector: ConectorMundo): void {
+    const lado = conector.lado;
+    if (!lado) return;
+    const celdaO = origen.celdas[conector.filaO]?.[conector.columnaO];
+    const celdaD = destino.celdas[conector.filaD]?.[conector.columnaD];
+    if (!celdaO || !celdaD) return;
+
+    celdaO.esTransitable = true;
+    celdaD.esTransitable = true;
+
+    switch (lado) {
+      case 'este':
+        celdaO.muros.derecho = false;
+        celdaD.muros.izquierdo = false;
+        break;
+      case 'oeste':
+        celdaO.muros.izquierdo = false;
+        celdaD.muros.derecho = false;
+        break;
+      case 'sur':
+        celdaO.muros.inferior = false;
+        celdaD.muros.superior = false;
+        break;
+      case 'norte':
+        celdaO.muros.superior = false;
+        celdaD.muros.inferior = false;
+        break;
+    }
+
+    this.asegurarPasoInterior(celdaO, origen.celdas, ladoOpuesto(lado));
+    this.asegurarPasoInterior(celdaD, destino.celdas, lado);
+  }
+
+  private asegurarPasoInterior(
+    celda: Celda,
+    celdas: Celda[][],
+    lado: 'norte' | 'sur' | 'este' | 'oeste',
+  ): void {
+    const direccion = direccionDeLado(lado);
+    const fila = celda.fila + direccion.df;
+    const columna = celda.columna + direccion.dc;
+    const filaCeldas = celdas[fila];
+    const vecino = filaCeldas?.[columna];
+    if (!vecino) return;
+    vecino.esTransitable = true;
+    eliminarMurosEntre(celda, vecino);
   }
 
   registrarPortalPersonal(conector: ConectorMundo): void {
@@ -196,7 +350,24 @@ export class GestorMundo {
       celdas: generarNodo(gen, origen.filas, origen.columnas),
       ownerId: null,
     };
+
+    if (conector.lado) {
+      const transform = colocarNodoDestino(
+        conector,
+        { filas: origen.filas, columnas: origen.columnas },
+        { filas: nodo.filas, columnas: nodo.columnas },
+      );
+      if (transform) {
+        nodo.transform = transform;
+      } else {
+        conector.lado = null;
+      }
+    }
+
     this.mundo.set(nodo.id, nodo);
+    if (conector.lado) {
+      this.abrirCostura(origen, nodo, conector);
+    }
     return nodo;
   }
 

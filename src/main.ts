@@ -17,6 +17,7 @@ import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
 import { LLAVE_POR_COFRE, oroDeCofre, puedeAbrirCofre } from './core/tesoros';
+import { reensamblarPartes as reensamblarPartesQr } from './core/qrPartes';
 import { calcularPuntuacion, type ResultadoPartida } from './core/puntuacion';
 import { sanearEquipoGuardado } from './core/inventario';
 import { GestorTrueques, clavePar } from './core/gestorTrueques';
@@ -28,7 +29,7 @@ import { anadirLinea } from './ui/truequeModelo';
 import { ITEMS } from './config/items';
 import { elegirBotin, sortearOro } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
-import { GameConfig, IGame } from './types';
+import { GameConfig, IEntidadRPG, IGame } from './types';
 import { cargarKeybinds, guardarKeybinds, asignarTecla, accionParaTecla, KEYBINDS_DEFECTO, ACCIONES_VALIDAS, type IdAccion } from './ui/keybinds';
 import { NUMERO_FILAS, NUMERO_COLUMNAS, ENEMIGOS_BASE, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
@@ -41,6 +42,7 @@ import { EspejoLocal, type DocNodoLocal } from './world/espejoLocal';
 import { GestorMundo } from './world/GestorMundo';
 import { arrancarMundoGestor, aplicarDeltaConPersistencia, celdasCompatibilidad, rehidratarNodoTrasCruce, sembrarMundoBase, esLadoAutoritativo } from './world/integracion';
 import { ArbitroDeltas } from './world/ArbitroDeltas';
+import { celdaDestinoEnCostura, nodosVisibles } from './world/costura';
 import { conTickAutor, consolidarCeldasLWW, FMT_DELTA, leerSnapshotNodo, rehidratarHistoria, restaurarEnemigos, type ConectorMundo, type DeltaMundo, type EnemigoFoto, type GenSpec, type NodoMundo, type SnapshotNodo } from './world/mundo';
 
 declare global {
@@ -128,6 +130,8 @@ class Game implements IGame {
   private diagLastLog: number = 0;
   private fundidoInicio: number = Number.NEGATIVE_INFINITY;
   private readonly fundidoDuracion: number = 400;
+  /** Interpolación de cámara al cambiar de nodo en el invitado (F3.3). */
+  private transicionCamara: { desde: { colOffset: number; filaOffset: number }; inicio: number; duracion: number } | null = null;
   private tickMundo: number = 0;
   private mundoCargado: boolean = false;
   private readonly arbitroDeltas: ArbitroDeltas = new ArbitroDeltas();
@@ -226,6 +230,81 @@ class Game implements IGame {
 
   get nodoActivo(): NodoMundo | null {
     return this.gestorMundo.mundo.get(this.gestorMundo.nodoActivoId) ?? null;
+  }
+
+  /** Convierte una celda local del nodo activo a coordenadas de mundo. */
+  worldDesdeCeldaActiva(fila: number, columna: number): { fila: number; columna: number } {
+    if (!this.gestorMundo.nodoActivoId) return { fila, columna };
+    const t = this.gestorMundo.transformAbsoluto(this.gestorMundo.nodoActivoId);
+    return { fila: t.df + fila, columna: t.dc + columna };
+  }
+
+  /** Interpola la cámara hacia el objetivo vivo durante 400 ms (invitado). */
+  private aplicarTransicionCamara(objetivo: { colOffset: number; filaOffset: number }): {
+    colOffset: number;
+    filaOffset: number;
+  } {
+    const transicion = this.transicionCamara;
+    if (!transicion) return objetivo;
+    const t = Math.min(1, (performance.now() - transicion.inicio) / transicion.duracion);
+    const suave = t * t * (3 - 2 * t);
+    const offset = {
+      colOffset: transicion.desde.colOffset + (objetivo.colOffset - transicion.desde.colOffset) * suave,
+      filaOffset: transicion.desde.filaOffset + (objetivo.filaOffset - transicion.desde.filaOffset) * suave,
+    };
+    if (t >= 1) this.transicionCamara = null;
+    return offset;
+  }
+
+  /** Nodos visibles para el renderer (con transform absoluto). */
+  private nodosRenderizables(offsetMundo: { colOffset: number; filaOffset: number }): Array<{
+    nodo: NodoMundo;
+    transform: { df: number; dc: number };
+  }> {
+    if (this.gestorMundo.mundo.size === 0 || !this.gestorMundo.nodoActivoId) {
+      const nodo: NodoMundo = {
+        id: '__activo__',
+        padreId: null,
+        transform: { df: 0, dc: 0 },
+        filas: this.mapaLaberinto.length,
+        columnas: this.mapaLaberinto[0]?.length ?? 0,
+        tipo: this.ambienteRemoto === 'casa' ? 'personal' : 'mazmorra',
+        gen: { nombre: 'mazmorra', version: 1, seed: 0, params: {} },
+        celdas: this.mapaLaberinto,
+        ownerId: null,
+      };
+      return [{ nodo, transform: { df: 0, dc: 0 } }];
+    }
+
+    const activo = this.nodoActivo;
+    if (activo?.tipo === 'personal') {
+      return [{ nodo: activo, transform: this.gestorMundo.transformAbsoluto(activo.id) }];
+    }
+
+    const entries = Array.from(this.gestorMundo.mundo.values()).map((nodo) => ({
+      nodo,
+      transform: this.gestorMundo.transformAbsoluto(nodo.id),
+    }));
+    const candidatos = entries.filter((e) => {
+      if (e.nodo.id === this.gestorMundo.nodoActivoId) return true;
+      // Los portales (casa) y nodos sin colocar no se cosen al mundo.
+      if (e.nodo.tipo === 'personal') return false;
+      if (e.nodo.padreId === null) return true;
+      return e.transform.df !== 0 || e.transform.dc !== 0;
+    });
+    const ids = new Set(
+      nodosVisibles(
+        candidatos.map((e) => ({
+          id: e.nodo.id,
+          transform: e.transform,
+          filas: e.nodo.filas,
+          columnas: e.nodo.columnas,
+        })),
+        offsetMundo,
+        this.config,
+      ),
+    );
+    return candidatos.filter((e) => ids.has(e.nodo.id));
   }
 
   initMap() {
@@ -353,21 +432,82 @@ class Game implements IGame {
 
 
 
-    document.getElementById('btnProcesarResp')?.addEventListener('click', () => {
-        const sdp = (document.getElementById('manualAnswerIn') as HTMLTextAreaElement).value;
-        if (sdp) this.network.procesarRespuestaManual(sdp);
+    document.getElementById('btnProcesarResp')?.addEventListener('click', async () => {
+        const input = document.getElementById('manualAnswerIn') as HTMLTextAreaElement;
+        const sdp = this.reensamblarPartes(input.value);
+        if (!sdp) return;
+        input.value = sdp;
+        const tokenOferta = document.getElementById('manualOfferToken')?.textContent?.trim();
+        const tokenRespuesta = this.tokenDeSdp(sdp);
+        this.actualizarTokenManual('manualAnswerTokenHost', sdp);
+        if (tokenOferta && tokenOferta !== '—' && tokenRespuesta && tokenOferta !== tokenRespuesta) {
+            this.registrarEventoLog(`⚠ Token de respuesta (${tokenRespuesta}) ≠ oferta actual (${tokenOferta}); se usará el de la respuesta.`);
+        }
+        const resultado = await this.network.procesarRespuestaManual(sdp);
+        if (resultado.ok) {
+            input.value = '';
+            this.actualizarTokenManual('manualAnswerTokenHost', '');
+            this.registrarEventoLog('Respuesta manual procesada; esperando DataChannel...');
+        } else {
+            const msg = resultado.error ?? 'No se pudo procesar la respuesta.';
+            this.registrarEventoLog(`❌ ${msg}`);
+            alert(msg);
+        }
     });
 
     document.getElementById('btnProcesarOferta')?.addEventListener('click', async () => {
-        const offer = (document.getElementById('manualOfferIn') as HTMLTextAreaElement).value;
+        const ofertaInput = document.getElementById('manualOfferIn') as HTMLTextAreaElement;
+        const offer = this.reensamblarPartes(ofertaInput.value);
         if (offer) {
-            const answer = await this.network.aceptarOfertaManual(offer, this);
-            (document.getElementById('manualAnswerOut') as HTMLTextAreaElement).value = answer;
-            this.registrarEventoLog("Respuesta manual generada.");
-            this.esHost = false;
-            this.network.esHost = false;
+            try {
+                ofertaInput.value = offer;
+                const answer = await this.network.aceptarOfertaManual(offer, this);
+                (document.getElementById('manualAnswerOut') as HTMLTextAreaElement).value = answer;
+                this.actualizarTokenManual('manualOfferTokenGuest', offer);
+                this.actualizarTokenManual('manualAnswerToken', answer);
+                this.registrarEventoLog("Respuesta manual generada.");
+                this.esHost = false;
+                this.network.esHost = false;
+                this.modoMultijugador = 'manual';
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                this.registrarEventoLog(`❌ ${msg}`);
+                alert(msg);
+            }
         }
     });
+
+    document.getElementById('btnInvitarCoop')?.addEventListener('click', () => {
+        if (this.modoMultijugador !== 'manual' || !this.esHost) {
+            this.registrarEventoLog('Activa COOPERATIVO como host para invitar por WebRTC.');
+            return;
+        }
+        this.lobbyManager.showManualMode('host');
+        this.registrarEventoLog('Panel de invitación WebRTC abierto. Pulsa NUEVA OFERTA para otro invitado.');
+    });
+
+    document.getElementById('btnCopyOffer')?.addEventListener('click', () => {
+        this.copiarTexto((document.getElementById('manualOfferOut') as HTMLTextAreaElement).value);
+    });
+    document.getElementById('btnCopyAnswer')?.addEventListener('click', () => {
+        this.copiarTexto((document.getElementById('manualAnswerOut') as HTMLTextAreaElement).value);
+    });
+    const manualOfferIn = document.getElementById('manualOfferIn') as HTMLTextAreaElement | null;
+    if (manualOfferIn) {
+        manualOfferIn.addEventListener('input', () => {
+            const normalizado = this.reensamblarPartes(manualOfferIn.value);
+            if (normalizado !== manualOfferIn.value) manualOfferIn.value = normalizado;
+            this.actualizarTokenManual('manualOfferTokenGuest', manualOfferIn.value);
+        });
+    }
+    const manualAnswerIn = document.getElementById('manualAnswerIn') as HTMLTextAreaElement | null;
+    if (manualAnswerIn) {
+        manualAnswerIn.addEventListener('input', () => {
+            const normalizado = this.reensamblarPartes(manualAnswerIn.value);
+            if (normalizado !== manualAnswerIn.value) manualAnswerIn.value = normalizado;
+            this.actualizarTokenManual('manualAnswerTokenHost', manualAnswerIn.value);
+        });
+    }
 
     document.getElementById('btnFireball')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
     document.getElementById('btnFireballAction')?.addEventListener('click', () => this.lanzarBolaDeFuego(this.protagonista, true));
@@ -379,6 +519,7 @@ class Game implements IGame {
     document.getElementById('btnRadarAction')?.addEventListener('click', () => this.lanzarRadar(this.protagonista, true));
     document.getElementById('btnRestartAction')?.addEventListener('click', () => window.location.reload());
     document.getElementById('btnTeleportHousing')?.addEventListener('click', () => this.teleportHousing());
+    document.getElementById('btnTeleportCostura')?.addEventListener('click', () => this.teleportCosturaDebug());
     document.getElementById('btnEquipoAction')?.addEventListener('click', () => this.abrirEquipo());
     document.getElementById('btnBotinAction')?.addEventListener('click', () => this.soltarBotin(this.protagonista.fila, this.protagonista.columna));
 
@@ -549,6 +690,12 @@ class Game implements IGame {
       this.iniciarModoHttp();
     } else if (modo === 'cooperativo') {
       this.modoMultijugador = 'manual';
+      // El coop manual no usa signaling/HTTP: cerrar restos de una partida
+      // HTTP evita que `remotosActivos` resuelva contra el transporte viejo.
+      this.networkHttp?.desconectar();
+      this.networkHttp = null;
+      this.signaling?.desconectar();
+      this.signaling = null;
     } else if (modo === 'solo') {
       this.modoMultijugador = 'manual';
       this.signaling?.desconectar();
@@ -886,12 +1033,74 @@ class Game implements IGame {
   }
 
   async iniciarComoHostManual() {
-      const sdp = await this.network.crearOfertaManual(this);
-      (document.getElementById('manualOfferOut') as HTMLTextAreaElement).value = sdp;
-      this.registrarEventoLog(`Oferta manual generada (Dificultad: ${this.config.dificultad}).`);
       this.esHost = true;
       this.network.esHost = true;
-      this.iniciarMotorJuego();
+      this.modoMultijugador = 'manual';
+      await this.generarOfertaManual();
+      if (!this.motorIniciado) this.iniciarMotorJuego();
+      // El motor oculta el lobby; el panel manual debe seguir visible para
+      // copiar la oferta y conectar invitados (multi-invitado).
+      this.lobbyManager.showManualMode('host');
+      this.actualizarPanelAcciones();
+  }
+
+  /** Genera una oferta manual nueva sin reiniciar la partida (multi-invitado). */
+  async generarOfertaManual(): Promise<void> {
+      const sdp = await this.network.crearOfertaManual(this);
+      (document.getElementById('manualOfferOut') as HTMLTextAreaElement).value = sdp;
+      this.actualizarTokenManual('manualOfferToken', sdp);
+      const btnGen = document.getElementById('btnGenOferta');
+      if (btnGen) btnGen.style.display = 'none';
+      const btnNueva = document.getElementById('btnNuevaOferta');
+      if (btnNueva) btnNueva.style.display = '';
+      this.registrarEventoLog(`Oferta manual generada (Dificultad: ${this.config.dificultad}).`);
+  }
+
+  /** Entrada del botón NUEVA OFERTA del panel manual. */
+  onNewManualOffer(): void {
+      void this.generarOfertaManual();
+  }
+
+  /** Token opaco de una oferta/respuesta manual (base64 de `{token,sdp}`). */
+  private tokenDeSdp(sdpB64: string): string | null {
+      try {
+          const payload = JSON.parse(atob(sdpB64));
+          return typeof payload.token === 'string' ? payload.token : null;
+      } catch {
+          return null;
+      }
+  }
+
+  private actualizarTokenManual(id: string, sdpB64: string): void {
+      const span = document.getElementById(id);
+      if (!span) return;
+      const token = this.tokenDeSdp(sdpB64);
+      span.textContent = token ?? '—';
+  }
+
+  /** Reensambla las 3 partes `MZ3/i/n|` del QR; si no hay cabeceras, deja el texto tal cual. */
+  private reensamblarPartes(texto: string): string {
+      return reensamblarPartesQr(texto);
+  }
+
+  /** Copia texto al portapapeles con fallback para navegadores sin Clipboard API. */
+  private copiarTexto(valor: string): void {
+      if (!valor) return;
+      const fallback = (): void => {
+          const ta = document.createElement('textarea');
+          ta.value = valor;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } finally { ta.remove(); }
+      };
+      if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(valor)
+              .then(() => this.registrarEventoLog('Copiado al portapapeles.'))
+              .catch(() => { fallback(); this.registrarEventoLog('Copiado al portapapeles (fallback).'); });
+      } else {
+          fallback();
+          this.registrarEventoLog('Copiado al portapapeles (fallback).');
+      }
   }
 
   async unirseAPartidaFirestore(id: string) {
@@ -1106,6 +1315,8 @@ class Game implements IGame {
       const btnGuard = document.getElementById('btnGuardAction');
       const btnRestart = document.getElementById('btnRestartAction');
       const btnTeleportHousing = document.getElementById('btnTeleportHousing');
+      const btnTeleportCostura = document.getElementById('btnTeleportCostura');
+      const btnInvitarCoop = document.getElementById('btnInvitarCoop');
       const btnBotin = document.getElementById('btnBotinAction');
 
       if (btnWhirlwind) btnWhirlwind.style.display = this.protagonista.clase === 'guerrero' ? 'block' : 'none';
@@ -1124,6 +1335,52 @@ class Game implements IGame {
           ? '🏠 AL MAPA<div class="cooldown-overlay"></div>'
           : '🏠 A MI CASA<div class="cooldown-overlay"></div>';
       }
+      if (btnInvitarCoop) {
+        btnInvitarCoop.style.display = this.esHost && this.modoMultijugador === 'manual' ? 'block' : 'none';
+      }
+      if (btnTeleportCostura) {
+        const costura = this.costuraDelNodoActivo();
+        const visible = this.config.vistaDebugActivada && this.esLadoAutoritativo() && costura !== null;
+        btnTeleportCostura.style.display = visible ? 'block' : 'none';
+        btnTeleportCostura.innerHTML = costura
+          ? `🧵 ${costura.lado === 'este' ? '→' : costura.lado === 'oeste' ? '←' : costura.lado === 'sur' ? '↓' : '↑'}<div class="cooldown-overlay"></div>`
+          : '🧵 COSTURA<div class="cooldown-overlay"></div>';
+      }
+  }
+
+  /** Costura continua con origen en el nodo activo (para el botón DEBUG). */
+  private costuraDelNodoActivo(): ConectorMundo | null {
+    const activoId = this.gestorMundo.nodoActivoId;
+    if (!activoId) return null;
+    for (const conector of this.gestorMundo.conectores.values()) {
+      if (conector.lado && conector.nodoOrigenId === activoId) return conector;
+    }
+    return null;
+  }
+
+  /** DEBUG: coloca al protagonista en la celda de la costura para probar el cruce. */
+  teleportCosturaDebug(): void {
+    if (!this.esLadoAutoritativo()) {
+      this.registrarEventoLog('La costura solo se puede probar en host/solo.');
+      return;
+    }
+    const conector = this.costuraDelNodoActivo();
+    if (!conector) {
+      this.registrarEventoLog('No hay costura continua desde este nodo.');
+      return;
+    }
+    this.protagonista.fila = conector.filaO;
+    this.protagonista.columna = conector.columnaO;
+    this.protagonista.visualFila = conector.filaO;
+    this.protagonista.visualColumna = conector.columnaO;
+    const tecla = conector.lado === 'este'
+      ? '→ / D'
+      : conector.lado === 'oeste'
+        ? '← / A'
+        : conector.lado === 'sur'
+          ? '↓ / S'
+          : '↑ / W';
+    this.registrarEventoLog(`Costura ${conector.lado}: en (${conector.filaO},${conector.columnaO}). Pulsa ${tecla} para cruzar.`);
   }
 
   generarQR() {
@@ -1714,7 +1971,21 @@ class Game implements IGame {
 
     this.actualizar();
     this.renderer.limpiar();
-    const offset = this.renderer.obtenerOffsetCamara(this.protagonista, this.config);
+    const worldVisual = this.worldDesdeCeldaActiva(
+      this.protagonista.visualFila,
+      this.protagonista.visualColumna,
+    );
+    const offsetMundoObjetivo = this.renderer.obtenerOffsetCamaraMundo(worldVisual, this.config);
+    const offsetMundo = this.aplicarTransicionCamara(offsetMundoObjetivo);
+    const transformActivo = this.gestorMundo.nodoActivoId
+      ? this.gestorMundo.transformAbsoluto(this.gestorMundo.nodoActivoId)
+      : { df: 0, dc: 0 };
+    // Offset local del nodo activo: entidades, niebla y UI flotante siguen
+    // trabajando en coordenadas locales.
+    const offset = {
+      colOffset: offsetMundo.colOffset - transformActivo.dc,
+      filaOffset: offsetMundo.filaOffset - transformActivo.df,
+    };
 
     this.renderer.aplicarZoom(this.config);
     this.renderer.setPortalesHousingInactivos(this.portalesHousingInactivos());
@@ -1725,14 +1996,20 @@ class Game implements IGame {
       ? this.ambienteRemoto
       : (this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon');
     this.renderer.setAmbiente(ambiente);
-    this.renderer.dibujarLaberinto(this.mapaLaberinto, offset, this.config, this.dropsSuelo);
 
     let persistence = this.config.TIEMPO_DESVANECIMIENTO_NIEBLA;
     if (this.protagonista.clase === 'explorador') {
         persistence *= 1.5;
     }
-    this.renderer.dibujarNiebla(this.mapaLaberinto, offset, this.config, persistence);
-    this.renderer.dibujarViñeta(this.protagonista.visualColumna, this.protagonista.visualFila, offset, this.config);
+    this.renderer.dibujarMundo(
+      this.nodosRenderizables(offsetMundo),
+      offsetMundo,
+      this.config,
+      this.dropsSuelo,
+      this.gestorMundo.nodoActivoId || '__activo__',
+      persistence,
+    );
+    this.renderer.dibujarViñeta(worldVisual.columna, worldVisual.fila, offsetMundo, this.config);
 
     // Actualizar estados de animación antes de dibujar
     this.protagonista.actualizarEstado();
@@ -2034,8 +2311,6 @@ class Game implements IGame {
 
     if (this.juegoTerminado) return;
 
-    const ahora = Date.now();
-
     if (!this.mpActivo && !this.esHost) {
         this.listaDeEnemigos.forEach(e => (e as any).actualizarIA(this));
     }
@@ -2045,15 +2320,46 @@ class Game implements IGame {
         r *= 1.2;
     }
 
-    const dimsVista = this.dimsActivo();
-    for (let f = Math.max(0, this.protagonista.fila - Math.ceil(r)); f <= Math.min(dimsVista.filas - 1, this.protagonista.fila + Math.ceil(r)); f++) {
-        for (let c = Math.max(0, this.protagonista.columna - Math.ceil(r)); c <= Math.min(dimsVista.columnas - 1, this.protagonista.columna + Math.ceil(r)); c++) {
-            if (Math.sqrt(Math.pow(f - this.protagonista.fila, 2) + Math.pow(c - this.protagonista.columna, 2)) <= r) {
-                this.mapaLaberinto[f][c].ultimoAvistamiento = ahora;
-            }
+    this.marcarVisibilidadMundo(
+      this.worldDesdeCeldaActiva(this.protagonista.fila, this.protagonista.columna),
+      r,
+    );
+  }
+
+  /** Marca visibilidad de mundo en todos los nodos cargados (fallback local en invitado). */
+  private marcarVisibilidadMundo(world: { fila: number; columna: number }, radio: number): void {
+    const ahora = Date.now();
+    if (this.gestorMundo.mundo.size === 0 || !this.gestorMundo.nodoActivoId) {
+      const dims = this.dimsActivo();
+      for (let f = Math.max(0, this.protagonista.fila - Math.ceil(radio)); f <= Math.min(dims.filas - 1, this.protagonista.fila + Math.ceil(radio)); f++) {
+        for (let c = Math.max(0, this.protagonista.columna - Math.ceil(radio)); c <= Math.min(dims.columnas - 1, this.protagonista.columna + Math.ceil(radio)); c++) {
+          if (Math.hypot(f - this.protagonista.fila, c - this.protagonista.columna) <= radio) {
+            this.mapaLaberinto[f][c].ultimoAvistamiento = ahora;
+          }
         }
+      }
+      return;
     }
 
+    for (const nodo of this.gestorMundo.mundo.values()) {
+      const t = this.gestorMundo.transformAbsoluto(nodo.id);
+      const minF = Math.max(0, Math.floor(world.fila - radio - t.df));
+      const maxF = Math.min(nodo.filas - 1, Math.ceil(world.fila + radio - t.df));
+      const minC = Math.max(0, Math.floor(world.columna - radio - t.dc));
+      const maxC = Math.min(nodo.columnas - 1, Math.ceil(world.columna + radio - t.dc));
+      for (let f = minF; f <= maxF; f++) {
+        const fila = nodo.celdas[f];
+        if (!fila) continue;
+        for (let c = minC; c <= maxC; c++) {
+          const wf = t.df + f;
+          const wc = t.dc + c;
+          if (Math.hypot(wf - world.fila, wc - world.columna) <= radio) {
+            const celda = fila[c];
+            if (celda) celda.ultimoAvistamiento = ahora;
+          }
+        }
+      }
+    }
   }
 
   /** Reenvío del estado completo del nodo activo a TODOS los invitados conectados: mapa v2 (re-dimensiona la rejilla del invitado) + enemigos + objetos + spawn. El invitado debe conocer el nodo del host en cada cruce, no solo al join. */
@@ -2073,7 +2379,36 @@ class Game implements IGame {
     }));
 
     const ambiente = this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon';
-    jInfo.dc.send(JSON.stringify({ tipo: 'mapa', datos: mapaCompacto, dificultad: this.config.dificultad, ambiente }));
+    const activo = this.nodoActivo;
+    const transformActivo = this.gestorMundo.nodoActivoId
+        ? this.gestorMundo.transformAbsoluto(this.gestorMundo.nodoActivoId)
+        : { df: 0, dc: 0 };
+    const vecinos = this.nodosVecinosParaInvitado().map((nodo) => ({
+        nodoId: nodo.id,
+        tipo: nodo.tipo,
+        transform: this.gestorMundo.transformAbsoluto(nodo.id),
+        datos: serializarMapa(nodo.celdas, { v2: true }),
+    }));
+    const mensajeMapa: any = {
+        tipo: 'mapa',
+        datos: mapaCompacto,
+        dificultad: this.config.dificultad,
+        ambiente,
+        nodoActivoId: this.gestorMundo.nodoActivoId,
+        transformActivo,
+        tipoActivo: activo?.tipo ?? 'mazmorra',
+        continuo: activo?.tipo !== 'personal' && vecinos.length > 0,
+        vecinos,
+    };
+    let payloadMapa = JSON.stringify(mensajeMapa);
+    if (payloadMapa.length > 64 * 1024) {
+        // Presupuesto F3: si los vecinos hinchan el mensaje, degradar a mapa
+        // único + fundido (el invitado conserva el comportamiento anterior).
+        delete mensajeMapa.vecinos;
+        mensajeMapa.continuo = false;
+        payloadMapa = JSON.stringify(mensajeMapa);
+    }
+    jInfo.dc.send(payloadMapa);
     jInfo.dc.send(JSON.stringify({ tipo: 'enemigos', lista: enemigos }));
 
     const objetos: any[] = [];
@@ -2114,6 +2449,72 @@ class Game implements IGame {
         cam: false, nick: this.protagonista.nombre, id: this.idLocalActivo,
         hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima
     }));
+  }
+
+  /** Vecinos continuos que el invitado necesita para ver la costura (máx. 2). */
+  private nodosVecinosParaInvitado(): NodoMundo[] {
+    const activoId = this.gestorMundo.nodoActivoId;
+    const activo = this.gestorMundo.mundo.get(activoId);
+    if (!activo) return [];
+    const ids = new Set<string>();
+    const añadir = (id: string): void => {
+      if (id === activoId) return;
+      const nodo = this.gestorMundo.mundo.get(id);
+      if (!nodo || nodo.tipo === 'personal') return;
+      ids.add(id);
+    };
+    for (const conector of this.gestorMundo.conectores.values()) {
+      if (!conector.lado) continue;
+      if (conector.nodoOrigenId === activoId) añadir(conector.nodoDestinoId);
+      if (conector.nodoDestinoId === activoId) añadir(conector.nodoOrigenId);
+    }
+    if (activo.padreId) añadir(activo.padreId);
+    for (const nodo of this.gestorMundo.mundo.values()) {
+      if (nodo.padreId === activoId) añadir(nodo.id);
+    }
+    return Array.from(ids)
+      .slice(0, 2)
+      .map((id) => this.gestorMundo.mundo.get(id))
+      .filter((nodo): nodo is NodoMundo => !!nodo);
+  }
+
+  /** Reconstruye el mundo renderizable del invitado desde el mensaje `mapa`. */
+  private aplicarMapaRemoto(msg: any): { filas: number; columnas: number } {
+    const celdasActivas: Celda[][] = [];
+    const dims = deserializarMapa(celdasActivas, msg.datos);
+    const nodoActivo: NodoMundo = {
+      id: msg.nodoActivoId ?? 'remoto',
+      padreId: null,
+      transform: msg.transformActivo ?? { df: 0, dc: 0 },
+      filas: dims.filas,
+      columnas: dims.columnas,
+      tipo: (msg.tipoActivo as NodoMundo['tipo']) ?? (msg.ambiente === 'casa' ? 'personal' : 'mazmorra'),
+      gen: { nombre: 'remoto', version: 1, seed: 0, params: {} },
+      celdas: celdasActivas,
+      ownerId: null,
+    };
+
+    const mundo = new Map<string, NodoMundo>();
+    mundo.set(nodoActivo.id, nodoActivo);
+    for (const vecino of msg.vecinos ?? []) {
+      const celdas: Celda[][] = [];
+      const dimsVecino = deserializarMapa(celdas, vecino.datos);
+      mundo.set(vecino.nodoId, {
+        id: vecino.nodoId,
+        padreId: null,
+        transform: vecino.transform ?? { df: 0, dc: 0 },
+        filas: dimsVecino.filas,
+        columnas: dimsVecino.columnas,
+        tipo: (vecino.tipo as NodoMundo['tipo']) ?? 'mazmorra',
+        gen: { nombre: 'remoto', version: 1, seed: 0, params: {} },
+        celdas,
+        ownerId: null,
+      });
+    }
+
+    this.gestorMundo.mundo = mundo;
+    this.gestorMundo.nodoActivoId = nodoActivo.id;
+    return dims;
   }
 
   /** F4: fin en solitario o aviso de espera en MP al pisar la celda de salida. */
@@ -2555,7 +2956,13 @@ class Game implements IGame {
             }
         }
 
-        // 4. Límites del mapa
+        // 4. Costura continua: si el movimiento sale por un borde con costura,
+        // cambia de nodo sin teletransportar y conserva la posición de mundo.
+        if (this.esLadoAutoritativo() && entidad === this.protagonista && this.intentarCruzarCostura(entidad, df, dc)) {
+            return;
+        }
+
+        // 4b. Límites del mapa
         if (sigFila < 0 || sigFila >= this.mapaLaberinto.length || sigColumna < 0 || sigColumna >= (this.mapaLaberinto[sigFila]?.length ?? 0)) {
             console.warn(`resolverAccion: Intento de movimiento fuera de límites por ${entidad.nombre}`);
             return;
@@ -3285,10 +3692,83 @@ class Game implements IGame {
         ? this.gestorMundo.conectorEn(entidad.fila, entidad.columna)
         : null;
     if (conector) {
+        // Las costuras continuas no teletransportan: el cruce lo resuelve
+        // `intentarCruzarCostura` al moverse hacia fuera del borde.
+        if (conector.lado) return;
         this.atravesarConector(entidad, conector);
         return;
     }
     this.teleportarPortalClasico(entidad);
+  }
+
+  /**
+   * Cruce continuo: la entidad está en la celda de un conector con `lado` y se
+   * mueve hacia fuera. Devuelve true si el cruce se realizó.
+   */
+  private intentarCruzarCostura(entidad: IEntidadRPG, df: number, dc: number): boolean {
+    const activoId = this.gestorMundo.nodoActivoId;
+    if (!activoId) return false;
+    const conector = this.gestorMundo.conectorEn(entidad.fila, entidad.columna);
+    if (!conector || !conector.lado || conector.nodoOrigenId !== activoId) return false;
+
+    const tOrigen = this.gestorMundo.transformAbsoluto(activoId);
+    const destino = this.gestorMundo.asegurarNodoDestino(conector.id);
+    const tDestino = this.gestorMundo.transformAbsoluto(destino.id);
+    const target = celdaDestinoEnCostura(conector, tOrigen, tDestino, df, dc, {
+      filas: destino.filas,
+      columnas: destino.columnas,
+    });
+    if (!target) return false;
+    const celda = destino.celdas[target.fila]?.[target.columna];
+    if (!celda?.esTransitable) return false;
+
+    const nodoSalienteId = activoId;
+    const worldFila = tOrigen.df + entidad.visualFila;
+    const worldColumna = tOrigen.dc + entidad.visualColumna;
+    const fotoEnemigos = this.fotografiarEnemigos();
+
+    this.gestorMundo.activarNodo(destino.id);
+    entidad.fila = target.fila;
+    entidad.columna = target.columna;
+    // Posición visual de mundo continua: el render la dibuja con el transform
+    // del nuevo nodo, así que no hay salto de cámara.
+    entidad.visualFila = worldFila - tDestino.df;
+    entidad.visualColumna = worldColumna - tDestino.dc;
+    this.recogerDropsEn(target.fila, target.columna, entidad);
+    this.aplicarEfectosCruce(nodoSalienteId, fotoEnemigos, entidad);
+    this.registrarEventoLog(`${entidad.nombre} ha cruzado una costura.`);
+    return true;
+  }
+
+  /** Efectos compartidos por teletransporte y costura: enemigos, caché, red y UI. */
+  private aplicarEfectosCruce(
+    nodoSalienteId: string | null,
+    fotoEnemigos: EnemigoFoto[] | null,
+    entidad: any,
+  ): void {
+    this.invalidarPortalesHousing();
+    this.renderer.invalidarCacheLaberinto();
+    // Fase 2: los enemigos son por-nodo y persistentes. La foto se toma antes
+    // de cambiar de nodo (lista activa = nodo saliente).
+    if (this.listaDeEnemigos.length > 0) {
+        this.listaDeEnemigos = [];
+    }
+    if (nodoSalienteId) {
+        this.conmutarSnapshotEnemigos(nodoSalienteId, fotoEnemigos);
+        this.espejoEnemigosCasa(nodoSalienteId, fotoEnemigos);
+    }
+    if (entidad === this.protagonista) {
+        this.enviarMultiplayer({
+            tipo: 'posicion',
+            f: entidad.fila, c: entidad.columna, cam: false,
+            id: this.idLocalActivo, nick: this.protagonista.nombre,
+            hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima,
+            oro: this.protagonista.inventario.oro ?? 0,
+            xp: this.protagonista.puntosExperiencia,
+            bajas: this.protagonista.bajas,
+        });
+        this.actualizarPanelAcciones();
+    }
   }
 
   private atravesarConector(entidad: any, conector: ConectorMundo): void {
@@ -3302,37 +3782,15 @@ class Game implements IGame {
         return;
     }
     this.iniciarFundido();
-    this.invalidarPortalesHousing();
-    this.renderer.invalidarCacheLaberinto();
-    // Fase 2: los enemigos son por-nodo y persistentes. Antes de descartar la
-    // lista activa se fotografía el nodo saliente (solo host/Firebase) y, tras
-    // conmutar, el destino se restaura desde su snapshot de enemigos; si no hay
-    // foto, la siembra por gen queda como está.
     const fotoEnemigos = this.fotografiarEnemigos();
-    if (this.listaDeEnemigos.length > 0) {
-        this.listaDeEnemigos = [];
-    }
-    if (nodoSalienteId) {
-        this.conmutarSnapshotEnemigos(nodoSalienteId, fotoEnemigos);
-        this.espejoEnemigosCasa(nodoSalienteId, fotoEnemigos);
-    }
     entidad.fila = aparicion.fila;
     entidad.columna = aparicion.columna;
     entidad.visualFila = aparicion.fila;
     entidad.visualColumna = aparicion.columna;
     this.registrarEventoLog(`${entidad.nombre} ha atravesado un portal.`);
+    this.aplicarEfectosCruce(nodoSalienteId, fotoEnemigos, entidad);
     if (entidad === this.protagonista) {
         this.ui.crearTextoFlotanteEnCelda(aparicion.fila, aparicion.columna, "¡PORTAL!", "#0000ff", this);
-        this.enviarMultiplayer({
-            tipo: 'posicion',
-            f: aparicion.fila, c: aparicion.columna, cam: false,
-            id: this.idLocalActivo, nick: this.protagonista.nombre,
-            hp: this.protagonista.vidaActual, maxHp: this.protagonista.vidaMaxima,
-            oro: this.protagonista.inventario.oro ?? 0,
-            xp: this.protagonista.puntosExperiencia,
-            bajas: this.protagonista.bajas,
-        });
-        this.actualizarPanelAcciones();
     }
   }
 
@@ -3719,12 +4177,28 @@ class Game implements IGame {
         case 'handshake':
             this.registrarEventoLog(`[net] handshake de ${idEmisor} (esHost=${this.esHost})`);
             let realId = idSujeto;
+
+            // Coop manual: la conexión nació bajo `GUEST_*`; al llegar el
+            // handshake migramos la entrada al id real y enrutamos el alias
+            // para que los mensajes del DataChannel sigan encontrándola.
+            if (this.esHost && this.modoMultijugador === 'manual' && this.network && idEmisor !== realId) {
+                const provisional = this.network.jugadoresRemotos.get(idEmisor);
+                if (provisional) {
+                    this.network.jugadoresRemotos.delete(idEmisor);
+                    const existente = this.network.jugadoresRemotos.get(realId);
+                    if (existente?.entidad) provisional.entidad = existente.entidad;
+                    this.network.jugadoresRemotos.set(realId, provisional);
+                    this.network.aliasRemoto.set(idEmisor, realId);
+                }
+            }
+
             if (idEmisor === 'host' && !this.esHost) {
                 const hostInfo = this.remotosActivos.get('host');
                 if (hostInfo) {
                     this.remotosActivos.delete('host');
                     this.remotosActivos.set(realId, hostInfo);
                     this.network.idRealDelHost = realId;
+                    this.network.aliasRemoto.set('host', realId);
                 }
             }
 
@@ -3750,11 +4224,11 @@ class Game implements IGame {
 
             if (this.esHost) {
                 // Notificar a otros y responder al nuevo con nuestro handshake
-                this.enviarMultiplayer({ ...msg, id: idSujeto }, idEmisor);
+                this.enviarMultiplayer({ ...msg, id: idSujeto }, realId);
 
                 // Forzar envío de nuestro handshake al que acaba de llegar (por si su canal abrió después que el nuestro)
                 const hostStats = { fue: this.protagonista.fuerza, agi: this.protagonista.agilidad, int: this.protagonista.inteligencia };
-                const target = this.remotosActivos.get(idEmisor);
+                const target = this.remotosActivos.get(realId);
                 if (target && target.dc && target.dc.readyState === "open") {
                     target.dc.send(JSON.stringify({
                         tipo: 'handshake',
@@ -3816,16 +4290,32 @@ class Game implements IGame {
                 this.registrarEventoLog('Invitado listo; enviando mundo.');
             }
             break;
-        case 'mapa':
+        case 'mapa': {
             this.ambienteRemoto = msg.ambiente === 'casa' ? 'casa' : 'dungeon';
-            const dims = deserializarMapa(this.mapaLaberinto, msg.datos);
+            const offsetPrevio = this.renderer.obtenerOffsetCamaraMundo(
+                this.worldDesdeCeldaActiva(this.protagonista.visualFila, this.protagonista.visualColumna),
+                this.config,
+            );
+            const nodoAnterior = this.gestorMundo.mundo.get(this.gestorMundo.nodoActivoId) ?? null;
+            const dims = this.aplicarMapaRemoto(msg);
             this.config.NUMERO_FILAS = dims.filas;
             this.config.NUMERO_COLUMNAS = dims.columnas;
             if (msg.dificultad) this.config.dificultad = msg.dificultad;
             this.ajustarDimensiones();
             this.renderer?.invalidarCacheLaberinto();
-            this.registrarEventoLog('Mapa del host recibido.');
+            if (msg.continuo && nodoAnterior && !this.gestorMundo.mundo.has(nodoAnterior.id)) {
+                // Conservar el nodo anterior mientras corte el viewport para que
+                // la cámara interpolada muestre la costura.
+                this.gestorMundo.mundo.set(nodoAnterior.id, nodoAnterior);
+            }
+            if (msg.continuo) {
+                this.transicionCamara = { desde: offsetPrevio, inicio: performance.now(), duracion: 400 };
+            } else {
+                this.transicionCamara = null;
+            }
+            this.registrarEventoLog(msg.continuo ? 'Mapa continuo del host recibido.' : 'Mapa del host recibido.');
             break;
+        }
         case 'enemigos':
             // Defensa (post-aceptación): coordenadas de otro nodo (join o re-sync
             // en vuelo con la rejilla aún sin redimensionar) no se construyen; el

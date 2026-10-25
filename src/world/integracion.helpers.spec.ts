@@ -134,6 +134,40 @@ function mismosMundos(a: Celda[][], b: Celda[][]): boolean {
   return true;
 }
 
+function alcanzable(
+  celdas: Celda[][],
+  desde: { fila: number; columna: number },
+  hasta: { fila: number; columna: number },
+): boolean {
+  const clave = (f: number, c: number): string => `${f},${c}`;
+  const vistos = new Set<string>([clave(desde.fila, desde.columna)]);
+  const cola: Array<{ fila: number; columna: number }> = [desde];
+  while (cola.length > 0) {
+    const p = cola.shift()!;
+    if (p.fila === hasta.fila && p.columna === hasta.columna) return true;
+    const celda = celdas[p.fila]?.[p.columna];
+    if (!celda?.esTransitable) continue;
+    const pasos = [
+      { df: -1, dc: 0, muro: 'superior' as const, opuesto: 'inferior' as const },
+      { df: 1, dc: 0, muro: 'inferior' as const, opuesto: 'superior' as const },
+      { df: 0, dc: -1, muro: 'izquierdo' as const, opuesto: 'derecho' as const },
+      { df: 0, dc: 1, muro: 'derecho' as const, opuesto: 'izquierdo' as const },
+    ];
+    for (const paso of pasos) {
+      if (celda.muros[paso.muro]) continue;
+      const nf = p.fila + paso.df;
+      const nc = p.columna + paso.dc;
+      const vecino = celdas[nf]?.[nc];
+      if (!vecino?.esTransitable || vecino.muros[paso.opuesto]) continue;
+      const k = clave(nf, nc);
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      cola.push({ fila: nf, columna: nc });
+    }
+  }
+  return false;
+}
+
 async function main(): Promise<void> {
   // Gate autoritativo por modo activo (regresion: invitado HTTP no siembra)
   assert(
@@ -489,6 +523,53 @@ async function main(): Promise<void> {
       gestorSembrado.conectorEn(sembrado.conectorInter.filaO, sembrado.conectorInter.columnaO) ===
         sembrado.conectorInter,
       'conectorEn localiza el conector de zona desde su celda',
+    );
+    assert(
+      sembrado.conectorInter.lado === 'este' && sembrado.conectorInterVuelta.lado === 'oeste',
+      'los conectores de zona son costuras continuas este/oeste',
+    );
+    assert(
+      sembrado.nodoHijo.transform.df === 0 && sembrado.nodoHijo.transform.dc === 20,
+      'el hijo se coloca al este de la raíz (transform derivado, dc=columnas)',
+    );
+    assert(
+      JSON.stringify(gestorSembrado.transformAbsoluto(sembrado.nodoHijo.id)) ===
+        JSON.stringify({ df: 0, dc: 20 }),
+      'transformAbsoluto del hijo coincide con su colocación espacial',
+    );
+    assert(
+      raizSembrada.celdas[sembrado.conectorInter.filaO][sembrado.conectorInter.columnaO].esTransitable &&
+        raizSembrada.celdas[sembrado.conectorInter.filaO][sembrado.conectorInter.columnaO].muros.derecho === false,
+      'la celda de salida este de la raíz queda transitable y con el muro derecho abierto',
+    );
+    assert(
+      sembrado.nodoHijo.celdas[sembrado.conectorInter.filaD][sembrado.conectorInter.columnaD].esTransitable &&
+        sembrado.nodoHijo.celdas[sembrado.conectorInter.filaD][sembrado.conectorInter.columnaD].muros.izquierdo === false,
+      'la celda de llegada oeste del hijo queda transitable y con el muro izquierdo abierto',
+    );
+    assert(
+      sembrado.portalHousing.lado === null && sembrado.portalHousingVuelta.lado === null,
+      'el portal de housing sigue siendo teletransporte (lado null)',
+    );
+    const inicioRaiz = raizSembrada.celdas.flat().find((c) => c.esTransitable);
+    const inicioHijo = sembrado.nodoHijo.celdas.flat().find((c) => c.esTransitable);
+    assert(
+      !!inicioRaiz &&
+        alcanzable(
+          raizSembrada.celdas,
+          { fila: inicioRaiz.fila, columna: inicioRaiz.columna },
+          { fila: sembrado.conectorInter.filaO, columna: sembrado.conectorInter.columnaO },
+        ),
+      'la celda de la costura este es alcanzable caminando desde el interior de la raíz',
+    );
+    assert(
+      !!inicioHijo &&
+        alcanzable(
+          sembrado.nodoHijo.celdas,
+          { fila: inicioHijo.fila, columna: inicioHijo.columna },
+          { fila: sembrado.conectorInter.filaD, columna: sembrado.conectorInter.columnaD },
+        ),
+      'la celda de llegada oeste es alcanzable caminando desde el interior del hijo',
     );
 
     assert(

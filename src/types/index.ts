@@ -86,4 +86,6 @@ export interface IGame {
     obtenerEntidadPorNombre(nombre: string): IEntidadRPG | null;
     iniciarMotorJuego(): void;
     nodoActivo: NodoMundo | null;
+    /** Convierte una celda local del nodo activo a coordenadas de mundo. */
+    worldDesdeCeldaActiva(fila: number, columna: number): { fila: number; columna: number };
 }

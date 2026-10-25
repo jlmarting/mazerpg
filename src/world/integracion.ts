@@ -1,6 +1,7 @@
 import { Celda } from './Celda';
 import { GestorMundo, tipoDesdeNombre } from './GestorMundo';
 import { dimensionesPlanta, generarNodo } from './generadores';
+import { eliminarMurosEntre } from './generation';
 import { HousingLocal } from './housing';
 import {
   aplicarDelta,
@@ -131,6 +132,7 @@ function materializarNodo(
   };
   gestor.mundo.set(nodo.id, nodo);
   gestor.nodoActivoId = nodo.id;
+  gestor.reconstruirConectoresDesdeDeltas(nodo.id, persistido.deltas);
   return nodo;
 }
 
@@ -154,6 +156,7 @@ export function rehidratarNodoTrasCruce(
   const plegadas = leerSnapshotNodo(persistido.snapshot).celdas ?? [];
   if (plegadas.length === 0 && (persistido.deltas ?? []).length === 0) return false;
   rehidratarHistoria(nodo.celdas, persistido);
+  gestor.reconstruirConectoresDesdeDeltas(destinoId, persistido.deltas ?? []);
   return true;
 }
 
@@ -221,6 +224,97 @@ function celdaCentral(
   return mejor;
 }
 
+/** Celda transitable más cercana (Manhattan) a un objetivo, o null si no hay. */
+function celdaMasCercana(
+  puntos: Array<{ fila: number; columna: number }>,
+  fila: number,
+  columna: number,
+): { fila: number; columna: number } | null {
+  let mejor: { fila: number; columna: number } | null = null;
+  let mejorDist = Infinity;
+  for (const p of puntos) {
+    const d = Math.abs(p.fila - fila) + Math.abs(p.columna - columna);
+    if (d < mejorDist) {
+      mejorDist = d;
+      mejor = p;
+    }
+  }
+  return mejor;
+}
+
+/** Abre un camino en L (vertical y luego horizontal) entre dos celdas. */
+function abrirCamino(
+  celdas: Celda[][],
+  desde: { fila: number; columna: number },
+  hasta: { fila: number; columna: number },
+): void {
+  let f = desde.fila;
+  let c = desde.columna;
+  const marcar = (fila: number, columna: number): void => {
+    const celda = celdas[fila]?.[columna];
+    if (celda) celda.esTransitable = true;
+  };
+  marcar(f, c);
+  while (f !== hasta.fila) {
+    const nf = f + Math.sign(hasta.fila - f);
+    const a = celdas[f]?.[c];
+    const b = celdas[nf]?.[c];
+    if (!a || !b) break;
+    b.esTransitable = true;
+    eliminarMurosEntre(a, b);
+    f = nf;
+  }
+  while (c !== hasta.columna) {
+    const nc = c + Math.sign(hasta.columna - c);
+    const a = celdas[f]?.[c];
+    const b = celdas[f]?.[nc];
+    if (!a || !b) break;
+    b.esTransitable = true;
+    eliminarMurosEntre(a, b);
+    c = nc;
+  }
+  marcar(hasta.fila, hasta.columna);
+}
+
+/**
+ * Prepara una celda de borde para una costura y garantiza que sea alcanzable
+ * desde el interior: elige la celda transitable más cercana y abre un camino.
+ * `indiceObjetivo` es la fila (este/oeste) o columna (norte/sur) preferida.
+ */
+function prepararCeldaCostura(
+  celdas: Celda[][],
+  lado: 'norte' | 'sur' | 'este' | 'oeste',
+  indiceObjetivo: number,
+): { fila: number; columna: number } {
+  const filas = celdas.length;
+  const columnas = filas > 0 ? celdas[0].length : 0;
+  let objetivo: { fila: number; columna: number };
+  switch (lado) {
+    case 'este':
+      objetivo = { fila: Math.max(0, Math.min(filas - 1, indiceObjetivo)), columna: columnas - 1 };
+      break;
+    case 'oeste':
+      objetivo = { fila: Math.max(0, Math.min(filas - 1, indiceObjetivo)), columna: 0 };
+      break;
+    case 'sur':
+      objetivo = { fila: filas - 1, columna: Math.max(0, Math.min(columnas - 1, indiceObjetivo)) };
+      break;
+    case 'norte':
+      objetivo = { fila: 0, columna: Math.max(0, Math.min(columnas - 1, indiceObjetivo)) };
+      break;
+  }
+
+  const puntos = celdasTransitables(celdas);
+  if (puntos.length === 0) {
+    const celda = celdas[objetivo.fila]?.[objetivo.columna];
+    if (celda) celda.esTransitable = true;
+    return objetivo;
+  }
+  const desde = celdaMasCercana(puntos, objetivo.fila, objetivo.columna) ?? puntos[0];
+  abrirCamino(celdas, desde, objetivo);
+  return objetivo;
+}
+
 function hashCadena(texto: string): number {
   let hash = 2166136261;
   for (let i = 0; i < texto.length; i++) {
@@ -260,7 +354,16 @@ export function sembrarMundoBase(params: {
   if (origenTransitables.length === 0) return null;
   if (filas <= 0 || columnas <= 0) return null;
 
-  const celdaOrigen = origenTransitables[0];
+  // Costura al este: se elige la celda transitable más cercana al borde derecho,
+  // se talla un camino hasta el borde (para que sea alcanzable jugando) y se
+  // prepara la llegada en el borde izquierdo del hijo a la misma fila.
+  const cercanoEste = celdaMasCercana(
+    origenTransitables,
+    Math.floor(filas / 2),
+    columnas - 1,
+  ) ?? origenTransitables[0];
+  const celdaOrigen = prepararCeldaCostura(raiz.celdas, 'este', cercanoEste.fila);
+  const filaOrigen = celdaOrigen.fila;
 
   // El portal de casa no debe caer en la salida del mapa (esquinas / marcador META):
   // se elige la celda transitable más céntrica, distinta del origen del conector de zona.
@@ -289,8 +392,8 @@ export function sembrarMundoBase(params: {
     gestor.mundo.set(hijo.id, hijo);
   }
 
-  const destinoTransitables = celdasTransitables(hijo.celdas);
-  const celdaDestinoInter = destinoTransitables[0] ?? { fila: 0, columna: 0 };
+  const filaDestino = Math.max(0, Math.min(hijo.filas - 1, filaOrigen));
+  const celdaDestinoInter = prepararCeldaCostura(hijo.celdas, 'oeste', filaDestino);
 
   const conectorInter: ConectorMundo = {
     id: 'conector-zona-abierto-1',
@@ -302,9 +405,9 @@ export function sembrarMundoBase(params: {
     filaD: celdaDestinoInter.fila,
     columnaD: celdaDestinoInter.columna,
     housingOwnerId: null,
+    lado: 'este',
   };
   gestor.registrarConector(conectorInter);
-  raiz.celdas[celdaOrigen.fila][celdaOrigen.columna].esPortal = true;
 
   // Espejo de vuelta: desde la celda de llegada del hijo se regresa a la raíz.
   const conectorInterVuelta: ConectorMundo = {
@@ -317,8 +420,9 @@ export function sembrarMundoBase(params: {
     filaD: celdaOrigen.fila,
     columnaD: celdaOrigen.columna,
     housingOwnerId: null,
+    lado: 'oeste',
   };
-  gestor.registrarPortalPersonal(conectorInterVuelta);
+  gestor.registrarConector(conectorInterVuelta);
 
   const idCasa = `casa-${idLocal}`;
   let casa = gestor.mundo.get(idCasa) ?? null;
@@ -360,6 +464,7 @@ export function sembrarMundoBase(params: {
     raiz.id,
     celdaOrigenCasa,
   );
+  portalHousing.lado = null;
   gestor.registrarPortalPersonal(portalHousing);
 
   // Espejo de vuelta de la casa: pisando la celda de llegada se vuelve al mapa.
@@ -373,6 +478,7 @@ export function sembrarMundoBase(params: {
     filaD: celdaOrigenCasa.fila,
     columnaD: celdaOrigenCasa.columna,
     housingOwnerId: idLocal,
+    lado: null,
   };
   gestor.registrarPortalPersonal(portalHousingVuelta);
 

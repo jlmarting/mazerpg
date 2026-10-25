@@ -1,4 +1,5 @@
 import { Celda } from './Celda';
+import type { LadoCostura } from './costura';
 
 export const FMT_DELTA = 1;
 
@@ -31,6 +32,8 @@ export interface ConectorMundo {
   filaD: number;
   columnaD: number;
   housingOwnerId: string | null;
+  /** Costura espacial continua; null/ausente = teletransporte (portal/casa/legacy). */
+  lado?: LadoCostura | null;
 }
 
 export type DeltaCambio =

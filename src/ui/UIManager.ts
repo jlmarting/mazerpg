@@ -116,13 +116,14 @@ export class UIManager {
   }
 
   crearTextoFlotanteEnCelda(f: number, c: number, texto: string, color: string, game: IGame) {
-    const offset = game.renderer.obtenerOffsetCamara(game.protagonista, game.config);
+    const world = game.worldDesdeCeldaActiva(f, c);
+    const offset = game.renderer.obtenerOffsetCamaraMundo(world, game.config);
     const { colOffset, filaOffset } = offset;
-    if (f < filaOffset || f >= filaOffset + game.config.CELDAS_VISIBLES_Y ||
-        c < colOffset || c >= colOffset + game.config.CELDAS_VISIBLES_X) return;
+    if (world.fila < filaOffset || world.fila >= filaOffset + game.config.CELDAS_VISIBLES_Y ||
+        world.columna < colOffset || world.columna >= colOffset + game.config.CELDAS_VISIBLES_X) return;
 
-    const x = (c - colOffset) * game.config.TAMANO_CELDA + game.config.TAMANO_CELDA / 2;
-    const y = (f - filaOffset) * game.config.TAMANO_CELDA + game.config.ALTO_UI_TOP + game.config.TAMANO_CELDA / 2;
+    const x = (world.columna - colOffset) * game.config.TAMANO_CELDA + game.config.TAMANO_CELDA / 2;
+    const y = (world.fila - filaOffset) * game.config.TAMANO_CELDA + game.config.ALTO_UI_TOP + game.config.TAMANO_CELDA / 2;
     this.listaTextosFlotantes.push({ x, y, texto, color, vida: 60, opacidad: 1.0 });
   }
 

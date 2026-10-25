@@ -322,6 +322,61 @@ function main(): void {
     'el cavar del dueño se aplica en su nodo personal',
   );
 
+  // F3: reconstrucción de conectores desde deltas persistidos (idempotente)
+  const gestorRecon = new GestorMundo();
+  const raizRecon = gestorRecon.crearMundoInicial(
+    { nombre: 'mazmorra', version: 1, seed: 11, params: {} },
+    10,
+    10,
+  );
+  const destinoRecon = crearNodoTest('nodo-recon', raizRecon.id, 10, 10, true);
+  gestorRecon.mundo.set(destinoRecon.id, destinoRecon);
+  const conectorRecon = conectorBase({
+    id: 'con-recon',
+    tipo: 'salida',
+    nodoOrigenId: raizRecon.id,
+    filaO: 5,
+    columnaO: 9,
+    nodoDestinoId: destinoRecon.id,
+    filaD: 5,
+    columnaD: 0,
+  });
+  const deltaRecon: DeltaMundo = {
+    fmt: 1,
+    nodoId: raizRecon.id,
+    fila: 5,
+    columna: 9,
+    autoria: 'L1',
+    tick: 1,
+    cambio: { tipo: 'conector', accion: 'añadir', conector: conectorRecon },
+  };
+  gestorRecon.reconstruirConectoresDesdeDeltas(raizRecon.id, [deltaRecon]);
+  assert(
+    gestorRecon.conectores.has(conectorRecon.id) &&
+      gestorRecon.conectorEn(5, 9) === conectorRecon,
+    'reconstruirConectoresDesdeDeltas registra el conector y su celda',
+  );
+  assert(
+    conectorRecon.lado === 'este' && destinoRecon.transform.dc === 10,
+    'el conector persistido sin lado se infiere como costura y coloca el destino',
+  );
+  const conectoresAntes = gestorRecon.conectores.size;
+  gestorRecon.reconstruirConectoresDesdeDeltas(raizRecon.id, [deltaRecon]);
+  assert(
+    gestorRecon.conectores.size === conectoresAntes,
+    'reconstruirConectoresDesdeDeltas es idempotente por id',
+  );
+  const deltaQuitar: DeltaMundo = {
+    ...deltaRecon,
+    tick: 2,
+    cambio: { tipo: 'conector', accion: 'quitar', conector: conectorRecon },
+  };
+  gestorRecon.reconstruirConectoresDesdeDeltas(raizRecon.id, [deltaQuitar]);
+  assert(
+    !gestorRecon.conectores.has(conectorRecon.id),
+    'un delta quitar elimina el conector de la memoria del gestor',
+  );
+
   console.log(`${ok}/${total} ok`);
 }
 

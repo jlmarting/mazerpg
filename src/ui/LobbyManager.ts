@@ -772,7 +772,7 @@ export class LobbyManager {
       item.innerHTML = `
         <div class="game-list-info">
           <strong class="game-list-name">${p.nombre || p.id}</strong>
-          <span class="game-list-meta">Host: ${p.hostNick} | Jugadores: ${p.numJugadores}</span>
+          <span class="game-list-meta">[HOST] ${p.hostNick} | Jugadores: ${p.numJugadores}</span>
         </div>
         <button class="join-btn" data-id="${p.id}">UNIRSE</button>
       `;

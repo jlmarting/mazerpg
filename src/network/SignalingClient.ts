@@ -17,6 +17,8 @@ export interface PartidaInfo {
   numJugadores: number;
   creacion: number;
   ultimoHb?: number;
+  hostEpoch?: number;
+  lastSeen?: number;
 }
 
 export interface SignalPayload {
@@ -70,13 +72,27 @@ export class SignalingClient {
     return response.json();
   }
 
-  async crearPartida(_partidaId: string, hostId: string, hostNick: string, nombre?: string): Promise<{ id: string } | null> {
+  /** Como `fetchJson`, pero sin lanzar en 4xx: devuelve estado + cuerpo. */
+  private async fetchJsonRaw(url: string, options?: RequestInit): Promise<{ status: number; data: any }> {
+    const response = await fetch(`${this.serverUrl}${url}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.headers || {}),
+      },
+    });
+    let data: any = null;
+    try { data = await response.json(); } catch { /* cuerpo vacío o no JSON */ }
+    return { status: response.status, data };
+  }
+
+  async crearPartida(_partidaId: string, hostId: string, hostNick: string, nombre?: string, playerId?: string): Promise<{ id: string } | null> {
     if (!this.initialized) return null;
     
     try {
       const result = await this.fetchJson('/partidas', {
         method: 'POST',
-        body: JSON.stringify({ hostId, hostNick, nombre }),
+        body: JSON.stringify({ hostId, hostNick, nombre, playerId: playerId ?? hostId }),
       });
       
       this.idPartidaActual = result.id;
@@ -190,6 +206,129 @@ export class SignalingClient {
     console.log(`Limpiando signaling (no-op para HTTP): partida=${partidaId}, guest=${guestId}`);
   }
 
+  /** Foto de la sala: host, epoch, lease y presencia. Null si no está soportado. */
+  async leerEstado(partidaId: string): Promise<any | null> {
+    if (!this.initialized || !partidaId) return null;
+    try {
+      const { status, data } = await this.fetchJsonRaw(`/partidas/${partidaId}/estado`);
+      return status === 200 ? data : null;
+    } catch (e) {
+      console.warn('Error leyendo estado de sala:', e);
+      return null;
+    }
+  }
+
+  /** Registra o renueva la presencia de una conexión en la sala. */
+  async registrarJugador(partidaId: string, id: string, playerId: string, nick: string): Promise<boolean> {
+    if (!this.initialized) return false;
+    try {
+      const { status } = await this.fetchJsonRaw(`/partidas/${partidaId}/jugadores`, {
+        method: 'POST',
+        body: JSON.stringify({ id, playerId, nick }),
+      });
+      return status === 200;
+    } catch (e) {
+      console.warn('Error registrando jugador:', e);
+      return false;
+    }
+  }
+
+  async latirPresencia(partidaId: string, id: string, playerId: string, nick: string): Promise<boolean> {
+    return this.registrarJugador(partidaId, id, playerId, nick);
+  }
+
+  /** Renueva el lease del host solo si sigue siendo el host de ese epoch. */
+  async latirHost(partidaId: string, id: string, hostEpoch: number): Promise<boolean> {
+    if (!this.initialized) return false;
+    try {
+      const { status } = await this.fetchJsonRaw(`/partidas/${partidaId}/lease`, {
+        method: 'POST',
+        body: JSON.stringify({ id, hostEpoch }),
+      });
+      // Servidor antiguo sin lease: no degradar al host, simplemente no hay fencing.
+      if (status === 404) return true;
+      return status === 200;
+    } catch (e) {
+      console.warn('Error en lease de host:', e);
+      return false;
+    }
+  }
+
+  /** CAS de host: solo gana quien presenta el epoch vigente. */
+  async reclamarHost(
+    partidaId: string,
+    id: string,
+    nick: string,
+    playerId: string,
+    expectedEpoch: number,
+  ): Promise<{ ok: boolean; hostEpoch: number } | null> {
+    if (!this.initialized) return null;
+    try {
+      const { status, data } = await this.fetchJsonRaw(`/partidas/${partidaId}/host`, {
+        method: 'POST',
+        body: JSON.stringify({ id, nick, playerId, expectedEpoch }),
+      });
+      if (status !== 200) {
+        return { ok: false, hostEpoch: typeof data?.hostEpoch === 'number' ? data.hostEpoch : expectedEpoch };
+      }
+      return { ok: true, hostEpoch: data.hostEpoch };
+    } catch (e) {
+      console.warn('Error reclamando host:', e);
+      return null;
+    }
+  }
+
+  async salirJugador(partidaId: string, id: string): Promise<void> {
+    if (!this.initialized) return;
+    try {
+      await this.fetchJsonRaw(`/partidas/${partidaId}/jugadores/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Error eliminando presencia:', e);
+    }
+  }
+
+  async guardarMetadatos(partidaId: string, meta: Record<string, unknown>): Promise<boolean> {
+    if (!this.initialized) return false;
+    try {
+      const { status } = await this.fetchJsonRaw(`/partidas/${partidaId}/meta`, {
+        method: 'POST',
+        body: JSON.stringify(meta),
+      });
+      return status === 200;
+    } catch (e) {
+      console.warn('Error guardando metadatos:', e);
+      return false;
+    }
+  }
+
+  async leerMetadatos(partidaId: string): Promise<Record<string, unknown> | null> {
+    if (!this.initialized) return null;
+    try {
+      const { status, data } = await this.fetchJsonRaw(`/partidas/${partidaId}/meta`);
+      return status === 200 ? data : null;
+    } catch (e) {
+      console.warn('Error leyendo metadatos:', e);
+      return null;
+    }
+  }
+
+  /** Vacía el buzón de señales viejas antes de re-unirse al nuevo host. */
+  async descartarSenales(partidaId: string, peerId: string): Promise<void> {
+    if (!this.initialized) return;
+    try {
+      await this.fetchJson(`/signal/${partidaId}/${peerId}`);
+    } catch {
+      /* el buzón puede no existir */
+    }
+  }
+
+  /** Detiene polling y vacía callbacks (reconexión limpia sin tocar la sala). */
+  reiniciarSenales(): void {
+    this.detenerPolling();
+    this.onSignalCallbacks = [];
+    this.onPartidasCallbacks = [];
+  }
+
   setPartidaActual(partidaId: string | null): void {
     this.idPartidaActual = partidaId;
   }
@@ -265,9 +404,12 @@ export const SIGNALING_CONFIG_KEY = 'SIGNALING_SERVER_URL';
 export const SIGNALING_DEFAULT = 'http://localhost:8080';
 
 export function getSignalingUrl(): string {
-  // Siempre usar el hostname actual con puerto 8080
-  // Esto evita problemas con localhost cacheado
-  const url = window.location.protocol + '//' + window.location.hostname + ':8080';
+  // Permite fijar el servidor desde la página (dev, smokes, despliegues con
+  // signaling en otro puerto). Si no hay override, hostname actual :8080.
+  const configurada = (window as any).SIGNALING_SERVER_URL;
+  const url = typeof configurada === 'string' && configurada.trim()
+    ? configurada.trim()
+    : window.location.protocol + '//' + window.location.hostname + ':8080';
   console.log('Signal Server URL:', url);
   return url;
 }

@@ -48,24 +48,48 @@ export class FirebaseManager {
   }
 
   /** Crea la partida. Devuelve `true` solo si Firestore la aceptó. */
-  async crearPartida(idPartida: string, hostId: string, hostNick: string): Promise<boolean> {
+  async crearPartida(
+    idPartida: string,
+    hostId: string,
+    hostNick: string,
+    playerId?: string,
+  ): Promise<boolean> {
     if (!this.db) {
       this.reportar('crear partida', new Error('Firebase no configurado'));
       return false;
     }
     try {
+      const ahora = Date.now();
       await this.db.collection('partidas').doc(idPartida).set({
         hostId: hostId,
         hostNick: hostNick,
-        creacion: Date.now(),
+        hostEpoch: 1,
+        playerId: playerId ?? hostId,
+        creacion: ahora,
         numJugadores: 1,
         estado: 'activa',
-        lastSeen: Date.now()
+        lastSeen: ahora,
+        jugadores: {
+          [hostId]: { playerId: playerId ?? hostId, nick: hostNick, ultimaVez: ahora },
+        },
       });
       return true;
     } catch (e) {
       this.reportar('crear partida', e);
       return false;
+    }
+  }
+
+  /** Lee la foto de la sala (host, epoch, lease y presencia). */
+  async leerEstadoSala(idPartida: string): Promise<Record<string, unknown> | null> {
+    if (!this.db) return null;
+    try {
+      const doc = await this.db.collection('partidas').doc(idPartida).get();
+      if (!doc.exists) return null;
+      return (doc.data() ?? {}) as Record<string, unknown>;
+    } catch (e) {
+      this.reportar('leer estado de sala', e);
+      return null;
     }
   }
 

@@ -11,6 +11,16 @@ import { FirebaseManager } from './network/FirebaseManager';
 import { NetworkManager } from './network/NetworkManager';
 import { NetworkManagerHttp } from './network/NetworkManagerHttp';
 import { SignalingClient, crearSignalingClient, getSignalingUrl } from './network/SignalingClient';
+import { crearIdConexion, obtenerPlayerId } from './network/identidad';
+import { CoordinadorFirebase, CoordinadorHttp, type CoordinadorSala, type MetadatosPartida, type ProgresoJugador } from './network/coordinadorSala';
+import {
+  ESPERA_ELECCION_MS,
+  INTERVALO_LATIDO_HOST_MS,
+  INTERVALO_PRESENCIA_MS,
+  INTERVALO_VIGILANCIA_MS,
+  hostVivo,
+  resolverHost,
+} from './network/migracionHost';
 import { eliminarMurosEntre } from './world/generation';
 import { elegirCeldaLejos, elegirCeldaParaLlave } from './world/spawn';
 import { serializarMapa, deserializarMapa } from './world/serialization';
@@ -67,7 +77,11 @@ class Game implements IGame {
   public renderer: Renderer;
   public ui: UIManager = new UIManager();
   public firebase: FirebaseManager = new FirebaseManager();
-  public network: NetworkManager = new NetworkManager();
+  public network: NetworkManager;
+  /** Identidad estable de la persona (localStorage). */
+  public playerId: string;
+  /** Identidad de esta pestaña (sessionStorage); es el `idLocal` de red. */
+  public connId: string;
   public housing: HousingLocal;
   public signaling: SignalingClient | null = null;
   public networkHttp: NetworkManagerHttp | null = null;
@@ -94,6 +108,25 @@ class Game implements IGame {
   public esperaInfo: { total: number; esperando: number } | null = null;
   public inicioPartida: number = Date.now();
   private roster: Set<string> | null = null;
+  /** Roster por `playerId` (sobrevive a reconexiones con otro connId). */
+  private rosterJugadores: Set<string> | null = null;
+  /** Nick del host vigente (corona en lobby/HUD/tabla). */
+  public hostNick: string = '';
+  /** Epoch de host que este cliente considera vigente. */
+  public hostEpoch: number = 1;
+  /** Coordinador de sala (Firebase o HTTP). */
+  private coordinador: CoordinadorSala | null = null;
+  /** Id de conexión del host al que estamos unidos como invitados. */
+  private hostConocidoId: string | null = null;
+  private presenciaInterval: number | null = null;
+  private vigilanciaHostInterval: number | null = null;
+  private migracionEnCurso: boolean = false;
+  private reconectando: boolean = false;
+  /** Progreso conocido por playerId, para cerrar una tabla justa tras migrar. */
+  private progresoSala: Record<string, ProgresoJugador & { playerId: string }> = {};
+  private ultimoPublicadoMeta: number = 0;
+  /** Inicio de partida que debe sobrevivir a `iniciarMotorJuego` tras una migración. */
+  private inicioPartidaPreservado: number | null = null;
   private ultimoChequeoFin: number = 0;
   private ultimoProgreso: number = 0;
   /** Mapa de teclas por acción (predeterminado 1-6 / 'e', remapeable persistente). */
@@ -101,6 +134,8 @@ class Game implements IGame {
   /** true mientras el panel ASIGNAR TECLAS espera la siguiente pulsación. */
   public capturandoTecla: boolean = false;
   public mundoSincronizado: boolean = false;
+  /** true cuando el invitado ya recibió un mundo/mapa del host (puede promocionar). */
+  private mundoDelHostRecibido: boolean = false;
   public esHost: boolean = false;
   public motorIniciado: boolean = false;
   public colaDeMensajes: string[] = [];
@@ -174,6 +209,10 @@ class Game implements IGame {
     const badgeVersion = document.getElementById('lobbyVersion');
     if (badgeVersion) badgeVersion.textContent = `v${__VERSION__}`;
     console.log(`mazerpg v${__VERSION__}`);
+    // Identidad: playerId estable (persona) + connId de pestaña (red/buzón).
+    this.playerId = obtenerPlayerId(window.localStorage);
+    this.connId = crearIdConexion(this.playerId, window.sessionStorage);
+    this.network = new NetworkManager(this.connId, this.playerId);
     // Keybinds de usuario (mazerpg.ui.keybinds); JSON corrupto o ausente → defaults.
     this.keybinds = cargarKeybinds(() => localStorage.getItem('mazerpg.ui.keybinds'));
     this.capturandoTecla = false;
@@ -934,6 +973,9 @@ class Game implements IGame {
 
   empezarSolo() {
     this.mundoSincronizado = true;
+    this.progresoSala = {};
+    this.rosterJugadores = null;
+    this.mundoDelHostRecibido = false;
     this.guardarSesion('solo');
     this.ui.ocultarLobby();
     this.iniciarMotorJuego();
@@ -955,7 +997,7 @@ class Game implements IGame {
     this.signaling?.desconectar();
     this.networkHttp?.desconectar();
     this.signaling = crearSignalingClient();
-    this.networkHttp = new NetworkManagerHttp();
+    this.networkHttp = new NetworkManagerHttp(this.connId, this.playerId);
     this.networkHttp.setSignaling(this.signaling);
     this.iniciarAutoAdmision();
     const hc = document.getElementById('hostControls');
@@ -964,8 +1006,13 @@ class Game implements IGame {
   }
 
   async crearPartidaHttp() {
+    this.progresoSala = {};
+    this.rosterJugadores = null;
+    this.mundoDelHostRecibido = false;
     const nombrePartida = `Partida de ${this.protagonista.nombre}`;
-    const resultado = await this.signaling!.crearPartida('', this.networkHttp!.idLocal, this.protagonista.nombre, nombrePartida);
+    const resultado = await this.signaling!.crearPartida(
+      '', this.networkHttp!.idLocal, this.protagonista.nombre, nombrePartida, this.playerId,
+    );
     
     if (!resultado) {
         this.registrarEventoLog("Error: No se pudo crear la partida en el servidor HTTP.");
@@ -977,6 +1024,16 @@ class Game implements IGame {
     this.networkHttp!.idPartidaActual = partidaId;
     this.networkHttp!.esHost = true;
     this.networkHttp!.multiplayerActivo = true;
+    this.networkHttp!.hostEpoch = 1;
+    this.esHost = true;
+    this.hostEpoch = 1;
+    this.hostNick = this.protagonista.nombre;
+    this.hostConocidoId = this.connId;
+    this.crearCoordinadorHttp(partidaId);
+    await this.coordinador?.registrarJugador(this.connId, this.playerId, this.protagonista.nombre);
+    this.iniciarPresencia();
+    this.iniciarVigilanciaHost();
+    this.actualizarIndicadorHost();
     this.guardarSesion('host', partidaId);
 
     const roomDisp = document.getElementById('roomDisplay');
@@ -994,6 +1051,11 @@ class Game implements IGame {
   }
 
   async unirseAPartidaHttp(id: string) {
+    if (!this.motorIniciado) {
+      this.progresoSala = {};
+      this.rosterJugadores = null;
+      this.mundoDelHostRecibido = false;
+    }
     if (!this.signaling) {
       this.iniciarModoHttp();
     }
@@ -1002,6 +1064,19 @@ class Game implements IGame {
     this.networkHttp!.multiplayerActivo = true;
     this.guardarSesion('guest', id);
     this.esHost = false;
+    this.crearCoordinadorHttp(id);
+    const estado = await this.coordinador?.leerEstado();
+    if (estado) {
+      this.hostEpoch = estado.hostEpoch;
+      this.hostNick = estado.hostNick;
+      this.hostConocidoId = estado.hostId === this.connId ? null : estado.hostId;
+    } else {
+      this.hostConocidoId = null;
+    }
+    await this.coordinador?.registrarJugador(this.connId, this.playerId, this.protagonista.nombre);
+    this.iniciarPresencia();
+    this.iniciarVigilanciaHost();
+    this.actualizarIndicadorHost();
     
     const roomDisp = document.getElementById('roomDisplay');
     const roomIdVal = document.getElementById('roomIdVal');
@@ -1012,6 +1087,8 @@ class Game implements IGame {
     
     this.registrarEventoLog(`Registrando en la partida ${id}...`);
     
+    // Drena el buzón viejo ANTES de anunciarse, para no perder una oferta nueva.
+    await this.signaling!.descartarSenales(id, this.networkHttp!.idLocal);
     // Registrar guest en el servidor
     await this.signaling!.registrarGuest(id, this.networkHttp!.idLocal, this.protagonista.nombre);
     
@@ -1024,11 +1101,18 @@ class Game implements IGame {
 
   configurarIntervalosHostHttp() {
     this.detenerIntervalosHttp();
+    // El host necesita escuchar su buzón para recibir answer/ICE de los invitados,
+    // independientemente del check de auto-admisión.
+    if (this.signaling && this.networkHttp) {
+      this.signaling.iniciarPolling(this.networkHttp.idLocal);
+    }
     this.heartbeatInterval = window.setInterval(() => {
-        if (this.esHost && this.networkHttp?.idPartidaActual) {
-            this.signaling!.updateHeartbeat(this.networkHttp.idPartidaActual, this.networkHttp.jugadoresRemotos.size + 1);
-        }
-    }, 10000);
+        if (!this.esHost || !this.networkHttp?.idPartidaActual) return;
+        this.signaling!.updateHeartbeat(this.networkHttp.idPartidaActual, this.networkHttp.jugadoresRemotos.size + 1);
+        void this.coordinador?.latirHost(this.connId, this.hostEpoch).then((ok) => {
+            if (!ok && this.esHost) this.degradarHost('lease rechazado');
+        });
+    }, INTERVALO_LATIDO_HOST_MS);
 
     this.npcSyncInterval = window.setInterval(() => {
         if (this.esHost && this.networkHttp?.multiplayerActivo) {
@@ -1048,6 +1132,7 @@ class Game implements IGame {
                 }
             }
             this.networkHttp.enviarMensaje({ tipo: 'objetos', lista: objetos, is_update: true });
+            this.publicarMetadatosHost();
         }
     }, 5000);
   }
@@ -1068,16 +1153,29 @@ class Game implements IGame {
   }
 
   async crearPartidaFirestore() {
+    this.progresoSala = {};
+    this.rosterJugadores = null;
+    this.mundoDelHostRecibido = false;
     const id = generateSessionName();
     // Primero creamos; si Firebase falla (reglas/permisos), NO se crea sala ni se arranca.
-    const ok = await this.firebase.crearPartida(id, this.idLocalActivo, this.protagonista.nombre);
+    const ok = await this.firebase.crearPartida(id, this.idLocalActivo, this.protagonista.nombre, this.playerId);
     if (!ok) {
       this.ui.registrarLogConexion('No se pudo crear la partida en Firebase (reglas/permisos).');
       this.mostrarAvisoFirebase('⚠ No se pudo crear la partida en Firebase. Prueba el modo SERVIDOR LOCAL.');
       return;
     }
     this.network.idPartidaActual = id;
+    this.network.hostEpoch = 1;
     this.persistenciaMundo = this.firebase.crearPersistenciaMundo(id);
+    this.esHost = true;
+    this.hostEpoch = 1;
+    this.hostNick = this.protagonista.nombre;
+    this.hostConocidoId = this.connId;
+    this.crearCoordinadorFirebase(id);
+    await this.coordinador?.registrarJugador(this.connId, this.playerId, this.protagonista.nombre);
+    this.iniciarPresencia();
+    this.iniciarVigilanciaHost();
+    this.actualizarIndicadorHost();
     this.guardarSesion('host', id);
 
     const roomDisp = document.getElementById('roomDisplay');
@@ -1112,7 +1210,7 @@ class Game implements IGame {
     this.modoMultijugador = 'http';
     this.signaling?.desconectar();
     this.signaling = crearSignalingClient();
-    this.networkHttp = new NetworkManagerHttp();
+    this.networkHttp = new NetworkManagerHttp(this.connId, this.playerId);
     this.networkHttp.setSignaling(this.signaling);
   }
 
@@ -1195,7 +1293,84 @@ class Game implements IGame {
       }
   }
 
+  private crearCoordinadorFirebase(partidaId: string): void {
+    const db = this.firebase.getDb();
+    this.coordinador = db ? new CoordinadorFirebase(db, partidaId) : null;
+  }
+
+  private crearCoordinadorHttp(partidaId: string): void {
+    this.coordinador = this.signaling ? new CoordinadorHttp(this.signaling, partidaId) : null;
+  }
+
+  private iniciarPresencia(): void {
+    this.detenerPresencia();
+    if (!this.coordinador) return;
+    const latir = (): void => {
+      if (!this.coordinador || !this.mpActivo) return;
+      void this.coordinador.latirPresencia(this.connId, this.playerId, this.protagonista.nombre);
+    };
+    latir();
+    this.presenciaInterval = window.setInterval(latir, INTERVALO_PRESENCIA_MS);
+  }
+
+  private detenerPresencia(): void {
+    if (this.presenciaInterval !== null) {
+      window.clearInterval(this.presenciaInterval);
+      this.presenciaInterval = null;
+    }
+  }
+
+  private iniciarVigilanciaHost(): void {
+    this.detenerVigilanciaHost();
+    this.vigilanciaHostInterval = window.setInterval(() => { void this.vigilarHost(); }, INTERVALO_VIGILANCIA_MS);
+  }
+
+  private detenerVigilanciaHost(): void {
+    if (this.vigilanciaHostInterval !== null) {
+      window.clearInterval(this.vigilanciaHostInterval);
+      this.vigilanciaHostInterval = null;
+    }
+  }
+
+  private async vigilarHost(): Promise<void> {
+    if (!this.coordinador || !this.mpActivo || this.migracionEnCurso || this.reconectando) return;
+    const estado = await this.coordinador.leerEstado();
+    if (!estado) return;
+    this.hostEpoch = Math.max(this.hostEpoch, estado.hostEpoch);
+
+    if (estado.hostId === this.connId) {
+      if (!this.esHost) await this.recuperarRolHost(estado.hostEpoch);
+      return;
+    }
+
+    if (this.esHost) {
+      this.degradarHost('la sala eligió otro host');
+      return;
+    }
+
+    if (!hostVivo(estado, Date.now())) {
+      await this.ejecutarEleccionHost(false);
+      return;
+    }
+
+    if (this.hostConocidoId && estado.hostId !== this.hostConocidoId) {
+      await this.reconectarANuevoHost(estado.hostId);
+      return;
+    }
+
+    if (!this.hostConocidoId) {
+      this.hostConocidoId = estado.hostId;
+      this.hostNick = estado.hostNick || this.hostNick;
+      this.actualizarIndicadorHost();
+    }
+  }
+
   async unirseAPartidaFirestore(id: string) {
+    if (!this.motorIniciado) {
+      this.progresoSala = {};
+      this.rosterJugadores = null;
+      this.mundoDelHostRecibido = false;
+    }
     if (!this.firebase.isInitialized()) {
       this.ui.registrarLogConexion('Firebase no configurado: no se puede unir. Prueba el modo SERVIDOR LOCAL.');
       this.mostrarAvisoFirebase('⚠ Firebase no configurado. Usa el modo SERVIDOR LOCAL.');
@@ -1211,6 +1386,21 @@ class Game implements IGame {
     }
     this.esHost = false;
     this.network.esHost = false;
+    this.network.multiplayerActivo = true;
+    this.crearCoordinadorFirebase(id);
+    const estado = await this.coordinador?.leerEstado();
+    if (estado) {
+      this.hostEpoch = estado.hostEpoch;
+      this.network.hostEpoch = estado.hostEpoch;
+      this.hostNick = estado.hostNick;
+      this.hostConocidoId = estado.hostId === this.connId ? null : estado.hostId;
+    } else {
+      this.hostConocidoId = null;
+    }
+    await this.coordinador?.registrarJugador(this.connId, this.playerId, this.protagonista.nombre);
+    this.iniciarPresencia();
+    this.iniciarVigilanciaHost();
+    this.actualizarIndicadorHost();
     this.registrarEventoLog(`Uniéndote a la partida ${id}...`);
     this.network.setupWebRTCGuest(id, this);
     this.publicarFichaEnPartida();
@@ -1221,7 +1411,7 @@ class Game implements IGame {
         this.ui.registrarLogConexion("Buscando candidatos...");
         const snapshot = await this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual!).collection('conexiones').get();
         snapshot.forEach((doc: any) => {
-            if (doc.id !== this.idLocalActivo && !this.remotosActivos.has(doc.id)) {
+            if (doc.id !== this.idLocalActivo) {
                 this.network.setupWebRTCHost(doc.id, this);
             }
         });
@@ -1229,8 +1419,10 @@ class Game implements IGame {
         // Obtener lista de Guests esperando y conectar cada uno
         const guests = await this.signaling!.getGuests(this.networkHttp.idPartidaActual!);
         for (const guest of guests) {
-            if (!this.networkHttp.jugadoresRemotos.has(guest.guestId)) {
-                this.ui.registrarLogConexion(`Conectando con ${guest.nick}...`);
+            if (guest.guestId !== this.connId) {
+                if (!this.networkHttp.jugadoresRemotos.has(guest.guestId)) {
+                    this.ui.registrarLogConexion(`Conectando con ${guest.nick}...`);
+                }
                 await this.networkHttp.setupWebRTCHost(guest.guestId, this);
             }
         }
@@ -1259,58 +1451,432 @@ class Game implements IGame {
     }
   }
 
-  iniciarEleccionHost() {
-    const misJugadores = Array.from(this.remotosActivos.keys())
-        .filter(id => id !== 'host');
-    misJugadores.push(this.idLocalActivo);
-    misJugadores.sort();
+  private esperarMs(ms: number): Promise<void> {
+    return new Promise((resolver) => window.setTimeout(resolver, ms));
+  }
 
-    const candidatoId = misJugadores[0];
-    if (candidatoId === this.idLocalActivo) {
-        this.registrarEventoLog("Has sido elegido como nuevo Host.");
-        this.promocionarAHost();
-    } else {
-        this.registrarEventoLog(`Esperando que ${candidatoId} tome el control como Host...`);
-        this.esperarNuevoHost();
+  /**
+   * `hostCaidoPorCierre` = true cuando el cierre del DataChannel o el trigger
+   * del host ya demuestran que murió; no esperamos al lease para elegir.
+   */
+  public iniciarEleccionHost(hostCaidoPorCierre: boolean = true): void {
+    void this.ejecutarEleccionHost(hostCaidoPorCierre);
+  }
+
+  private async ejecutarEleccionHost(hostCaidoPorCierre: boolean = false): Promise<void> {
+    if (this.esHost || this.juegoTerminado || this.migracionEnCurso || this.reconectando) return;
+    this.migracionEnCurso = true;
+    try {
+      if (!this.coordinador) {
+        this.cerrarSinHost('sin coordinador de sala');
+        return;
+      }
+      let estado = await this.coordinador.leerEstado();
+      if (!estado) {
+        this.cerrarSinHost('sala no disponible');
+        return;
+      }
+      // Host cuyo canal acabamos de perder: solo ÉL se marca como caído. Si la
+      // sala ya eligió a otro (hostId distinto y vivo), se reconecta a él.
+      const hostMuertoId = this.hostConocidoId;
+      if (hostCaidoPorCierre
+        && estado.hostId !== this.connId
+        && (hostMuertoId === null || estado.hostId === hostMuertoId)) {
+        // El lease puede seguir fresco unos segundos: lo forzamos a 0 para no
+        // reconectar al host que acabamos de ver morir.
+        estado = { ...estado, lastSeen: 0 };
+      }
+      this.hostEpoch = Math.max(this.hostEpoch, estado.hostEpoch);
+      const decision = resolverHost(estado, this.connId, Date.now());
+      this.registrarEventoLog(`Migración de host: ${decision.accion}.`);
+
+      if (decision.accion === 'ninguna') {
+        await this.recuperarRolHost(estado.hostEpoch);
+        return;
+      }
+      if (decision.accion === 'reconectar' && decision.hostId) {
+        await this.reconectarANuevoHost(decision.hostId);
+        return;
+      }
+      if (decision.accion === 'cerrar') {
+        this.cerrarSinHost('sin jugadores con presencia');
+        return;
+      }
+      if (decision.accion === 'reclamar') {
+        this.registrarEventoLog('Reclamando el host con CAS...');
+        const res = await this.coordinador.reclamarHost(
+          this.connId, this.protagonista.nombre, this.playerId, estado.hostEpoch,
+        );
+        if (res?.ok) {
+          await this.promocionarAHost(res.epoch);
+          return;
+        }
+        const epochEsperado = res?.epoch ?? estado.hostEpoch;
+        await this.esperarNuevoHost(epochEsperado, hostMuertoId);
+        return;
+      }
+      await this.esperarNuevoHost(estado.hostEpoch, hostMuertoId);
+    } finally {
+      this.migracionEnCurso = false;
     }
   }
 
-  esperarNuevoHost() {
-    if (!this.network.idPartidaActual) return;
-    const unsub = this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual)
-        .onSnapshot((doc: any) => {
-            const data = doc.data();
-            if (data && data.hostId && data.hostId !== this.idLocalActivo && data.hostId !== 'L_placeholder') {
-                this.registrarEventoLog(`Nuevo Host detectado: ${data.hostNick}. Reconectando...`);
-                unsub();
-                this.unirseAPartidaFirestore(this.network.idPartidaActual!);
-            }
-        });
+  /**
+   * Espera a que la sala tenga un host que no sea el que murió. El epoch solo
+   * es pista: la reclamación puede ocurrir ANTES de nuestra primera lectura, así
+   * que la condición real es `hostId` vivo y distinto del host muerto.
+   */
+  private async esperarNuevoHost(epochEsperado: number, hostMuertoId: string | null): Promise<void> {
+    if (!this.coordinador) {
+      this.cerrarSinHost('sin coordinador de sala');
+      return;
+    }
+    const inicio = Date.now();
+    while (Date.now() - inicio < ESPERA_ELECCION_MS) {
+      await this.esperarMs(500);
+      const estado = await this.coordinador.leerEstado();
+      if (!estado) continue;
+      if (estado.hostId === this.connId) {
+        await this.recuperarRolHost(estado.hostEpoch);
+        return;
+      }
+      const hayNuevoHost = estado.hostId !== hostMuertoId
+        && estado.hostId !== ''
+        && (hostVivo(estado, Date.now()) || estado.hostEpoch > epochEsperado);
+      if (hayNuevoHost) {
+        await this.reconectarANuevoHost(estado.hostId);
+        return;
+      }
+    }
+    this.cerrarSinHost('la elección no convergió');
   }
 
-  async promocionarAHost() {
+  private async recuperarRolHost(epoch: number): Promise<void> {
+    if (this.esHost) return;
+    await this.promocionarAHost(epoch, true);
+  }
+
+  private async promocionarAHost(epoch: number = this.hostEpoch + 1, recuperado: boolean = false): Promise<void> {
+    const salaId = this.modoMultijugador === 'http'
+      ? this.networkHttp?.idPartidaActual ?? null
+      : this.network.idPartidaActual;
+    if (!salaId) {
+      this.cerrarSinHost('sin partida activa');
+      return;
+    }
+    // Un invitado sin mundo compartido no puede ser autoridad: cerrar limpio.
+    if (!this.esHost && !this.mundoDelHostRecibido && !recuperado) {
+      this.cerrarSinHost('sin mundo compartido');
+      return;
+    }
+
+    // El invitado solo tenía el canal con el host difunto: se desmonta antes de
+    // asumir autoridad para no arrastrar entidades/channels fantasma al roster.
+    this.migracionEnCurso = true;
+    this.reconectando = true;
+    if (this.modoMultijugador === 'http' && this.networkHttp) {
+      this.networkHttp.reconectando = true;
+      this.networkHttp.reiniciarPeers();
+    } else {
+      this.network.reconectando = true;
+      this.network.desconectarPeers();
+    }
+    window.setTimeout(() => {
+      if (this.networkHttp) this.networkHttp.reconectando = false;
+      this.network.reconectando = false;
+    }, 1500);
+
     this.esHost = true;
+    this.hostEpoch = epoch;
+    this.hostConocidoId = this.connId;
+    this.hostNick = this.protagonista.nombre;
     this.network.esHost = true;
+    this.network.hostEpoch = epoch;
+    this.network.multiplayerActivo = true;
+    if (this.networkHttp) {
+      this.networkHttp.esHost = true;
+      this.networkHttp.hostEpoch = epoch;
+      this.networkHttp.multiplayerActivo = true;
+    }
+    this.reconectando = false;
+    this.migracionEnCurso = false;
     const hc = document.getElementById('hostControls');
     if (hc) hc.style.display = 'flex';
-    if (this.network.idPartidaActual) {
-        await this.firebase.getDb()!.collection('partidas').doc(this.network.idPartidaActual).update({
-            hostId: this.idLocalActivo,
-            hostNick: this.protagonista.nombre
-        });
-        this.registrarEventoLog("Ahora eres el Host de la partida.");
-        this.configurarIntervalosHost();
-        this.iniciarAutoAdmision();
+
+    if (this.modoMultijugador === 'http') {
+      this.configurarIntervalosHostHttp();
+    } else {
+      this.persistenciaMundo ??= this.firebase.crearPersistenciaMundo(salaId);
+      this.configurarIntervalosHost();
     }
+    this.iniciarPresencia();
+    this.iniciarAutoAdmision();
+    this.iniciarVigilanciaHost();
+    await this.adoptarMetadatosHost();
+    this.publicarMetadatosHost(true);
+    if (!this.motorIniciado) this.iniciarMotorJuego();
+    this.guardarSesion('host', salaId);
+    this.actualizarIndicadorHost();
+    this.registrarEventoLog(recuperado ? 'Sincronizado como Host.' : 'Ahora eres el Host de la partida.');
+    await this.admitirCandidatos();
+    // Los supervivientes tardan un instante en re-registrarse como invitados.
+    for (const ms of [1000, 3000, 6000]) {
+      window.setTimeout(() => {
+        if (this.esHost) void this.admitirCandidatos();
+      }, ms);
+    }
+  }
+
+  private degradarHost(motivo: string): void {
+    if (!this.esHost) return;
+    this.esHost = false;
+    this.network.esHost = false;
+    if (this.networkHttp) this.networkHttp.esHost = false;
+    this.detenerIntervalosFirebase();
+    this.detenerIntervalosHttp();
+    this.detenerAutoAdmision();
+    const hc = document.getElementById('hostControls');
+    if (hc) hc.style.display = 'none';
+    this.registrarEventoLog(`Has dejado de ser Host (${motivo}).`);
+    this.actualizarIndicadorHost();
+  }
+
+  private async reconectarANuevoHost(hostId: string): Promise<void> {
+    if (this.esHost || this.reconectando) return;
+    if (this.hostConocidoId === hostId && this.mpActivo && this.remotosActivos.size > 0) return;
+    this.reconectando = true;
+    this.migracionEnCurso = true;
+    this.registrarEventoLog('Host perdido. Reconectando al nuevo Host...');
+
+    let salaId: string | null = null;
+    try {
+      if (this.modoMultijugador === 'http' && this.networkHttp) {
+        salaId = this.networkHttp.idPartidaActual;
+        this.networkHttp.reconectando = true;
+        this.networkHttp.reiniciarPeers();
+        this.networkHttp.esHost = false;
+        this.networkHttp.multiplayerActivo = true;
+        this.crearCoordinadorHttp(salaId!);
+        await this.signaling?.registrarGuest(salaId!, this.connId, this.protagonista.nombre);
+        await this.coordinador?.registrarJugador(this.connId, this.playerId, this.protagonista.nombre);
+        // Sin drenar: la primera oferta del nuevo host puede estar ya en el buzón.
+        // El filtro `hostEsperado` descarta ofertas del host difunto.
+        void this.networkHttp.setupWebRTCGuest(salaId!, this, hostId);
+      } else if (this.network.idPartidaActual) {
+        salaId = this.network.idPartidaActual;
+        this.network.reconectando = true;
+        this.network.desconectarPeers();
+        this.network.esHost = false;
+        this.network.multiplayerActivo = true;
+        this.crearCoordinadorFirebase(salaId);
+        await this.firebase.limpiarSignaling(salaId, this.connId);
+        await this.coordinador?.registrarJugador(this.connId, this.playerId, this.protagonista.nombre);
+        void this.network.setupWebRTCGuest(salaId, this);
+      }
+      this.hostConocidoId = hostId;
+      this.hostNick = '';
+      this.esHost = false;
+      if (salaId) this.guardarSesion('guest', salaId);
+      this.iniciarPresencia();
+      this.iniciarVigilanciaHost();
+      this.actualizarIndicadorHost();
+    } finally {
+      window.setTimeout(() => {
+        this.reconectando = false;
+        this.migracionEnCurso = false;
+        if (this.networkHttp) this.networkHttp.reconectando = false;
+        this.network.reconectando = false;
+      }, 5000);
+      let intentos = 0;
+      const reintentar = (): void => {
+        if (this.esHost || !this.mpActivo || this.remotosActivos.size > 0) return;
+        intentos++;
+        this.registrarEventoLog(`No llegó el canal con el nuevo Host; reintentando (${intentos}/5).`);
+        this.reconectando = false;
+        this.migracionEnCurso = false;
+        if (this.networkHttp) this.networkHttp.reconectando = false;
+        this.network.reconectando = false;
+        if (intentos >= 5) {
+          this.cerrarSinHost('sin canal con el nuevo host');
+          return;
+        }
+        void this.ejecutarEleccionHost(false);
+        window.setTimeout(reintentar, 8000);
+      };
+      window.setTimeout(reintentar, 8000);
+    }
+  }
+
+  private cerrarSinHost(motivo: string): void {
+    if (this.juegoTerminado) return;
+    this.registrarEventoLog(`No se pudo migrar el host (${motivo}). Cerrando con resultados parciales.`);
+    this.resultados = this.resultadosParciales();
+    this.esperaInfo = null;
+    this.juegoTerminado = true;
+    this.detenerIntervalosFirebase();
+    this.detenerIntervalosHttp();
+    this.detenerAutoAdmision();
+    this.detenerPresencia();
+    this.detenerVigilanciaHost();
+    this.mostrarAvisoFirebase('Partida finalizada: no se pudo migrar el host.');
+  }
+
+  private playerIdDeConexion(id: string): string {
+    if (id === this.idLocalActivo) return this.playerId;
+    const entidad = this.remotosActivos.get(id)?.entidad;
+    return entidad?.playerId || id;
+  }
+
+  private entidadDeJugador(playerId: string): any | null {
+    if (playerId === this.playerId) return this.protagonista;
+    for (const j of this.remotosActivos.values()) {
+      if (j.entidad?.playerId === playerId) return j.entidad;
+    }
+    return null;
+  }
+
+  private resultadoDeJugador(playerId: string): ResultadoPartida {
+    const e = this.entidadDeJugador(playerId);
+    if (e) {
+      const oro = e === this.protagonista
+        ? (this.protagonista.inventario.oro ?? 0)
+        : ((e as any).oro ?? 0);
+      return this.resultadoDeEntidad(e.nombre, oro, e.puntosExperiencia ?? 0, e.bajas ?? 0);
+    }
+    const p = this.progresoSala[playerId];
+    if (p) return this.resultadoDeEntidad(p.nick, p.oro, p.xp, p.bajas);
+    return this.resultadoDeEntidad(playerId, 0, 0, 0);
+  }
+
+  /**
+   * Resultado por conexión (no por playerId): dos pestañas del mismo navegador
+   * comparten `playerId` pero deben aparecer como jugadores distintos.
+   */
+  private resultadoDeConexion(id: string): ResultadoPartida {
+    const e = this.obtenerEntidadPorId(id);
+    if (e) {
+      const oro = e === this.protagonista
+        ? (this.protagonista.inventario.oro ?? 0)
+        : ((e as any).oro ?? 0);
+      return this.resultadoDeEntidad(e.nombre, oro, e.puntosExperiencia ?? 0, e.bajas ?? 0);
+    }
+    return this.resultadoDeJugador(this.playerIdDeConexion(id));
+  }
+
+  private resultadosParciales(): ResultadoPartida[] {
+    const resultados: ResultadoPartida[] = [];
+    const cubiertos = new Set<string>();
+
+    for (const id of this.roster ?? []) {
+      resultados.push(this.resultadoDeConexion(id));
+      cubiertos.add(this.playerIdDeConexion(id));
+    }
+    for (const [id] of this.remotosActivos) {
+      if (cubiertos.has(this.playerIdDeConexion(id))) continue;
+      resultados.push(this.resultadoDeConexion(id));
+      cubiertos.add(this.playerIdDeConexion(id));
+    }
+    if (!cubiertos.has(this.playerId)) {
+      resultados.push(this.resultadoDeConexion(this.idLocalActivo));
+      cubiertos.add(this.playerId);
+    }
+    for (const p of Object.values(this.progresoSala)) {
+      if (cubiertos.has(p.playerId)) continue;
+      resultados.push(this.resultadoDeJugador(p.playerId));
+      cubiertos.add(p.playerId);
+    }
+    return resultados.sort((a, b) => b.puntuacion - a.puntuacion);
+  }
+
+  private async adoptarMetadatosHost(): Promise<void> {
+    const meta = await this.coordinador?.leerMetadatos();
+    if (!meta) return;
+    if (typeof meta.inicioPartida === 'number' && meta.inicioPartida > 0) {
+      this.inicioPartida = meta.inicioPartida;
+      if (!this.motorIniciado) this.inicioPartidaPreservado = meta.inicioPartida;
+    }
+    if (typeof meta.dificultad === 'string') {
+      this.config.dificultad = meta.dificultad as GameConfig['dificultad'];
+    }
+    if (Array.isArray(meta.roster)) {
+      this.rosterJugadores = new Set(meta.roster);
+    }
+    if (meta.jugadores) {
+      for (const [pid, p] of Object.entries(meta.jugadores)) {
+        if (!p || typeof p !== 'object') continue;
+        this.progresoSala[pid] = {
+          playerId: pid,
+          nick: p.nick,
+          oro: p.oro ?? 0,
+          xp: p.xp ?? 0,
+          bajas: p.bajas ?? 0,
+        };
+      }
+    }
+  }
+
+  private publicarMetadatosHost(forzar: boolean = false): void {
+    if (!this.esHost || !this.coordinador) return;
+    const ahora = Date.now();
+    if (!forzar && ahora - this.ultimoPublicadoMeta < 4500) return;
+    this.ultimoPublicadoMeta = ahora;
+
+    const capturar = (playerId: string, e: any): void => {
+      if (!e) return;
+      const oro = e === this.protagonista
+        ? (this.protagonista.inventario.oro ?? 0)
+        : ((e as any).oro ?? 0);
+      this.progresoSala[playerId] = {
+        playerId,
+        nick: e.nombre ?? playerId,
+        oro,
+        xp: e.puntosExperiencia ?? 0,
+        bajas: e.bajas ?? 0,
+      };
+    };
+    capturar(this.playerId, this.protagonista);
+    this.remotosActivos.forEach((j, id) => {
+      if (j.entidad) capturar(j.entidad.playerId || id, j.entidad);
+    });
+
+    const jugadores: Record<string, ProgresoJugador> = {};
+    for (const p of Object.values(this.progresoSala)) {
+      jugadores[p.playerId] = { nick: p.nick, oro: p.oro, xp: p.xp, bajas: p.bajas };
+    }
+    const meta: MetadatosPartida = {
+      inicioPartida: this.inicioPartida,
+      dificultad: this.config.dificultad,
+      hostNick: this.protagonista.nombre,
+      hostEpoch: this.hostEpoch,
+      roster: this.rosterJugadores ? [...this.rosterJugadores] : null,
+      jugadores,
+    };
+    void this.coordinador.guardarMetadatos(meta);
+  }
+
+  /** Actualiza la corona/badge de host en la barra superior. */
+  public actualizarIndicadorHost(): void {
+    const badge = document.getElementById('hostBadge');
+    if (!badge) return;
+    if (!this.mpActivo) {
+      badge.style.display = 'none';
+      return;
+    }
+    badge.style.display = 'inline-flex';
+    badge.textContent = this.esHost
+      ? `HOST: tú (${this.protagonista.nombre})`
+      : `HOST: ${this.hostNick || '…'}`;
   }
 
   configurarIntervalosHost() {
     this.detenerIntervalosFirebase();
     this.firebaseHeartbeatInterval = window.setInterval(() => {
-        if (this.esHost && this.network.idPartidaActual) {
-            this.firebase.updateHeartbeat(this.network.idPartidaActual, this.remotosActivos.size + 1);
-        }
-    }, 10000);
+        if (!this.esHost || !this.network.idPartidaActual) return;
+        this.firebase.updateHeartbeat(this.network.idPartidaActual, this.remotosActivos.size + 1);
+        void this.coordinador?.latirHost(this.connId, this.hostEpoch).then((ok) => {
+            if (!ok && this.esHost) this.degradarHost('lease rechazado');
+        });
+    }, INTERVALO_LATIDO_HOST_MS);
 
     this.firebaseNpcSyncInterval = window.setInterval(() => {
         if (this.esHost && this.mpActivo) {
@@ -1332,6 +1898,7 @@ class Game implements IGame {
                 }
             }
             this.enviarMultiplayer({ tipo: 'objetos', lista: objetos, is_update: true });
+            this.publicarMetadatosHost();
         }
     }, 5000);
   }
@@ -1390,9 +1957,16 @@ class Game implements IGame {
         this.detenerMotorJuego();
         this.detenerIntervalosHttp();
         this.detenerIntervalosFirebase();
+        this.detenerAutoAdmision();
+        this.detenerPresencia();
+        this.detenerVigilanciaHost();
+        void this.coordinador?.salirJugador(this.connId);
+        this.network.desconectarPeers();
         if (this.networkHttp) this.networkHttp.desconectar();
         this.signaling?.desconectar();
         this.vaciarEspejoCasa();
+        // El ex-host vuelve como invitado: si reanuda, no crea una segunda autoridad.
+        if (this.esHost && this.mpActivo) this.marcarSesionComoInvitado();
         window.location.reload();
     }
   }
@@ -1515,6 +2089,8 @@ class Game implements IGame {
     localStorage.setItem('mazeRPG_lastSession', JSON.stringify({
         roomId,
         rol,
+        modo: this.modoMultijugador,
+        playerId: this.playerId,
         name: this.protagonista.nombre,
         class: this.protagonista.clase,
         color: this.protagonista.color,
@@ -1522,6 +2098,18 @@ class Game implements IGame {
         inventario: this.protagonista.exportarInventario(),
         diff: this.config.dificultad
     }));
+  }
+
+  /** Cambia el rol guardado a invitado antes de recargar (ex-host que abandona). */
+  private marcarSesionComoInvitado(): void {
+    const dataStr = localStorage.getItem('mazeRPG_lastSession');
+    if (!dataStr) return;
+    try {
+      const data = JSON.parse(dataStr);
+      if (!data?.roomId) return;
+      data.rol = 'guest';
+      localStorage.setItem('mazeRPG_lastSession', JSON.stringify(data));
+    } catch { /* sesión corrupta: no se toca */ }
   }
 
   /** Re-guarda la sesión actual (si existe) preservando rol/roomId — al cambiar equipo/mochila. */
@@ -1548,35 +2136,109 @@ class Game implements IGame {
     this.protagonista.personajeCreado = true;
     (document.getElementById('nickInput') as HTMLInputElement).value = this.protagonista.nombre;
 
+    const modo: 'firebase' | 'http' = data.modo === 'http' ? 'http' : 'firebase';
+    this.modoMultijugador = modo;
+    if (modo === 'http') this.iniciarModoHttp();
+
     if (data.rol === 'solo') {
         this.empezarSolo();
     } else if (data.rol === 'host' && data.roomId) {
-        this.esHost = true;
-        this.network.esHost = true;
-        this.network.idPartidaActual = data.roomId;
-        this.persistenciaMundo = this.firebase.crearPersistenciaMundo(data.roomId);
-        const hc = document.getElementById('hostControls');
-        if (hc) hc.style.display = 'flex';
-        this.iniciarAutoAdmision();
-
-        const roomDisp = document.getElementById('roomDisplay');
-        const roomIdVal = document.getElementById('roomIdVal');
-        if (roomDisp && roomIdVal) {
-            roomDisp.style.display = 'block';
-            roomIdVal.textContent = data.roomId;
-        }
-
-        this.configurarIntervalosHost();
-        this.ui.ocultarLobby();
-        await this.prepararMundo();
-        this.iniciarMotorJuego();
+        await this.reanudarComoHost(data.roomId, modo);
     } else if (data.rol === 'host') {
         // roomId inválido o vacío: caer a modo solo
         this.registrarEventoLog('Sesión host guardada sin roomId válido; iniciando en modo solo.');
         this.empezarSolo();
-    } else if (data.rol === 'guest') {
-        this.unirseAPartidaFirestore(data.roomId);
+    } else if (data.rol === 'guest' && data.roomId) {
+        if (modo === 'http') await this.unirseAPartidaHttp(data.roomId);
+        else await this.unirseAPartidaFirestore(data.roomId);
     }
+  }
+
+  /**
+   * Reanudación del ex-host: si otro host sigue vivo entra como invitado; si no
+   * hay host, intenta reclamar el CAS. Nunca crea una segunda autoridad.
+   */
+  private async reanudarComoHost(roomId: string, modo: 'firebase' | 'http'): Promise<void> {
+    let epoch = 1;
+    if (modo === 'http' && this.networkHttp) {
+      this.networkHttp.idPartidaActual = roomId;
+      this.crearCoordinadorHttp(roomId);
+    } else {
+      this.network.idPartidaActual = roomId;
+      this.crearCoordinadorFirebase(roomId);
+    }
+
+    const estado = await this.coordinador?.leerEstado();
+    if (estado) {
+      epoch = estado.hostEpoch;
+      if (estado.hostId !== this.connId) {
+        const esMiHostAnterior = !!estado.hostPlayerId && estado.hostPlayerId === this.playerId;
+        if (!esMiHostAnterior && hostVivo(estado, Date.now())) {
+          this.registrarEventoLog('La partida ya tiene Host; entrando como invitado.');
+          this.guardarSesion('guest', roomId);
+          if (modo === 'http') await this.unirseAPartidaHttp(roomId);
+          else await this.unirseAPartidaFirestore(roomId);
+          return;
+        }
+        const res = await this.coordinador?.reclamarHost(
+          this.connId, this.protagonista.nombre, this.playerId, estado.hostEpoch,
+        );
+        if (!res?.ok) {
+          this.registrarEventoLog('Otro jugador reclamó el host; entrando como invitado.');
+          this.guardarSesion('guest', roomId);
+          if (modo === 'http') await this.unirseAPartidaHttp(roomId);
+          else await this.unirseAPartidaFirestore(roomId);
+          return;
+        }
+        epoch = res.epoch;
+      }
+    } else {
+      this.registrarEventoLog('No hay estado de sala; reanudando como Host (compatibilidad).');
+    }
+
+    await this.resumirComoHost(roomId, modo, epoch);
+  }
+
+  private async resumirComoHost(roomId: string, modo: 'firebase' | 'http', epoch: number): Promise<void> {
+    this.esHost = true;
+    this.hostEpoch = epoch;
+    this.hostNick = this.protagonista.nombre;
+    this.hostConocidoId = this.connId;
+    this.network.esHost = true;
+    this.network.hostEpoch = epoch;
+    this.network.idPartidaActual = modo === 'firebase' ? roomId : this.network.idPartidaActual;
+
+    const hc = document.getElementById('hostControls');
+    if (hc) hc.style.display = 'flex';
+
+    if (modo === 'http' && this.networkHttp) {
+      this.networkHttp.esHost = true;
+      this.networkHttp.hostEpoch = epoch;
+      this.networkHttp.multiplayerActivo = true;
+      this.networkHttp.idPartidaActual = roomId;
+      this.configurarIntervalosHostHttp();
+    } else {
+      this.persistenciaMundo = this.firebase.crearPersistenciaMundo(roomId);
+      this.configurarIntervalosHost();
+    }
+
+    await this.adoptarMetadatosHost();
+    this.iniciarPresencia();
+    this.iniciarVigilanciaHost();
+    this.iniciarAutoAdmision();
+    this.actualizarIndicadorHost();
+    this.guardarSesion('host', roomId);
+
+    const roomDisp = document.getElementById('roomDisplay');
+    const roomIdVal = document.getElementById('roomIdVal');
+    if (roomDisp && roomIdVal) {
+        roomDisp.style.display = 'block';
+        roomIdVal.textContent = roomId;
+    }
+
+    this.ui.ocultarLobby();
+    await this.prepararMundo();
+    this.iniciarMotorJuego();
   }
 
   private iniciarDiagnostico() {
@@ -1632,7 +2294,12 @@ class Game implements IGame {
   iniciarMotorJuego() {
     if (this.motorIniciado) return;
     this.motorIniciado = true;
-    this.inicioPartida = Date.now();
+    if (this.inicioPartidaPreservado !== null) {
+      this.inicioPartida = this.inicioPartidaPreservado;
+      this.inicioPartidaPreservado = null;
+    } else {
+      this.inicioPartida = Date.now();
+    }
     this.resultados = [];
     this.esperaInfo = null;
     this.roster = null;
@@ -1646,6 +2313,7 @@ class Game implements IGame {
     document.getElementById('topMenu')!.style.display = 'block';
     document.getElementById('actionsMenu')!.style.display = 'block';
     this.aplicarEsquemaUI();
+    this.actualizarIndicadorHost();
     // F4a: fijar los radios base (dispositivo/clase) antes de asustar monstruos
     // y del primer render; el game loop los reajustará cada segundo.
     this.actualizarInteres(performance.now());
@@ -2799,15 +3467,6 @@ class Game implements IGame {
     );
   }
 
-  private resultadoDeId(id: string): ResultadoPartida {
-    const entidad = this.obtenerEntidadPorId(id);
-    if (!entidad) return this.resultadoDeEntidad(id, 0, 0, 0);
-    const oro = entidad === this.protagonista
-      ? (this.protagonista.inventario.oro ?? 0)
-      : ((entidad as any).oro ?? 0);
-    return this.resultadoDeEntidad(entidad.nombre, oro, entidad.puntosExperiencia, entidad.bajas);
-  }
-
   private estaEnCeldaSalida(id: string): boolean {
     const e = this.obtenerEntidadPorId(id);
     return !!e && !!this.mapaLaberinto[e.fila]?.[e.columna]?.esSalida;
@@ -2823,7 +3482,9 @@ class Game implements IGame {
     const todos = [this.idLocalActivo, ...this.remotosActivos.keys()];
     if (!this.roster && todos.some((id) => this.estaEnCeldaSalida(id))) {
       this.roster = new Set(todos);
+      this.rosterJugadores = new Set(todos.map((id) => this.playerIdDeConexion(id)));
       this.registrarEventoLog(`Roster congelado: ${this.roster.size} jugador(es).`);
+      this.publicarMetadatosHost(true);
     }
     if (!this.roster) return;
 
@@ -2841,10 +3502,26 @@ class Game implements IGame {
 
   private finPartida(): void {
     if (!this.roster) return;
-    const resultados = [...this.roster]
-      .map((id) => this.resultadoDeId(id))
-      .sort((a, b) => b.puntuacion - a.puntuacion);
-    this.resultados = resultados;
+    const resultados: ResultadoPartida[] = [];
+    const cubiertos = new Set<string>();
+
+    // Jugadores vivos por conexión (dos pestañas del mismo navegador no se funden).
+    for (const id of this.roster) {
+      resultados.push(this.resultadoDeConexion(id));
+      cubiertos.add(this.playerIdDeConexion(id));
+    }
+    // Roster/progreso persistido: solo los que ya no tienen conexión viva.
+    for (const pid of this.rosterJugadores ?? []) {
+      if (cubiertos.has(pid)) continue;
+      resultados.push(this.resultadoDeJugador(pid));
+      cubiertos.add(pid);
+    }
+    for (const p of Object.values(this.progresoSala)) {
+      if (cubiertos.has(p.playerId)) continue;
+      resultados.push(this.resultadoDeJugador(p.playerId));
+      cubiertos.add(p.playerId);
+    }
+    this.resultados = resultados.sort((a, b) => b.puntuacion - a.puntuacion);
     this.esperaInfo = null;
     this.juegoTerminado = true;
     this.enviarMultiplayer({ tipo: 'fin_partida', resultados });
@@ -4513,7 +5190,12 @@ class Game implements IGame {
                 }
             }
 
-            if (idEmisor === 'host' && !this.esHost) {
+            const esHandshakeDelHost = !this.esHost && (
+                (this.hostConocidoId !== null && realId === this.hostConocidoId) ||
+                (this.hostConocidoId === null && idEmisor === 'host' && !this.remotosActivos.has(realId))
+            );
+
+            if (esHandshakeDelHost) {
                 const hostInfo = this.remotosActivos.get('host');
                 if (hostInfo) {
                     this.remotosActivos.delete('host');
@@ -4521,6 +5203,14 @@ class Game implements IGame {
                     this.network.idRealDelHost = realId;
                     this.network.aliasRemoto.set('host', realId);
                 }
+                this.hostConocidoId = realId;
+                this.hostNick = msg.nick || this.hostNick;
+                if (typeof msg.hostEpoch === 'number') {
+                    this.hostEpoch = msg.hostEpoch;
+                    this.network.hostEpoch = msg.hostEpoch;
+                    if (this.networkHttp) this.networkHttp.hostEpoch = msg.hostEpoch;
+                }
+                this.actualizarIndicadorHost();
             }
 
             if (!this.remotosActivos.has(realId)) {
@@ -4542,6 +5232,8 @@ class Game implements IGame {
                 }
                 this.setupEntity(jInfo.entidad);
             }
+            (jInfo.entidad as any).playerId = msg.playerId || (jInfo.entidad as any).playerId || realId;
+            (jInfo.entidad as any).esHost = esHandshakeDelHost || (jInfo.entidad as any).esHost === true;
 
             if (this.esHost) {
                 // Notificar a otros y responder al nuevo con nuestro handshake
@@ -4555,6 +5247,9 @@ class Game implements IGame {
                         tipo: 'handshake',
                         nick: this.protagonista.nombre,
                         id: this.idLocalActivo,
+                        playerId: this.playerId,
+                        hostEpoch: this.hostEpoch,
+                        esHost: true,
                         clase: this.protagonista.clase,
                         stats: hostStats,
                         apariencia: aparienciaEfectiva(this.protagonista.clase, this.protagonista.apariencia)
@@ -4562,7 +5257,10 @@ class Game implements IGame {
                 }
             } else {
                 const stats = { fue: this.protagonista.fuerza, agi: this.protagonista.agilidad, int: this.protagonista.inteligencia };
-                this.enviarMultiplayer({ tipo: 'handshake_ack', nick: this.protagonista.nombre, id: this.idLocalActivo, stats });
+                this.enviarMultiplayer({
+                    tipo: 'handshake_ack', nick: this.protagonista.nombre,
+                    id: this.idLocalActivo, playerId: this.playerId, hostEpoch: this.hostEpoch, stats,
+                });
                 this.registrarEventoLog('[net] respondido handshake_ack');
             }
             break;
@@ -4599,6 +5297,7 @@ class Game implements IGame {
                 const jInfoAck = this.remotosActivos.get(idSujeto);
                 if (jInfoAck && jInfoAck.entidad) {
                     jInfoAck.entidad.nombre = msg.nick;
+                    (jInfoAck.entidad as any).playerId = msg.playerId || (jInfoAck.entidad as any).playerId || idSujeto;
                     if (msg.stats) {
                         jInfoAck.entidad.fuerza = msg.stats.fue;
                         jInfoAck.entidad.agilidad = msg.stats.agi;
@@ -4610,6 +5309,7 @@ class Game implements IGame {
                 this.enviarMapaAlInvitado(idSujeto);
                 this.registrarEventoLog('Invitado listo; enviando mundo.');
             }
+            this.actualizarIndicadorHost();
             break;
         case 'mundo': {
             this.mundoRemotoCompacto = true;
@@ -4626,6 +5326,7 @@ class Game implements IGame {
             if (msg.dificultad) this.config.dificultad = msg.dificultad;
             this.ajustarDimensiones();
             this.renderer?.invalidarCacheLaberinto();
+            this.mundoDelHostRecibido = true;
             if (msg.continuo && nodoAnterior && !this.gestorMundo.mundo.has(nodoAnterior.id)) {
                 this.gestorMundo.mundo.set(nodoAnterior.id, nodoAnterior);
             }
@@ -4652,6 +5353,7 @@ class Game implements IGame {
             if (msg.dificultad) this.config.dificultad = msg.dificultad;
             this.ajustarDimensiones();
             this.renderer?.invalidarCacheLaberinto();
+            this.mundoDelHostRecibido = true;
             if (msg.continuo && nodoAnterior && !this.gestorMundo.mundo.has(nodoAnterior.id)) {
                 // Conservar el nodo anterior mientras corte el viewport para que
                 // la cámara interpolada muestre la costura.
@@ -4837,6 +5539,14 @@ class Game implements IGame {
                 (jProg.entidad as any).oro = msg.oro;
                 jProg.entidad.puntosExperiencia = msg.xp;
                 jProg.entidad.bajas = msg.bajas;
+                const pid = (jProg.entidad as any).playerId || idSujeto;
+                this.progresoSala[pid] = {
+                    playerId: pid,
+                    nick: jProg.entidad.nombre,
+                    oro: msg.oro ?? 0,
+                    xp: msg.xp ?? 0,
+                    bajas: msg.bajas ?? 0,
+                };
             }
             break;
         }

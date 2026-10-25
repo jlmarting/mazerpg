@@ -29,11 +29,17 @@ export interface RemotePlayer {
     unsubscribes: (() => void)[];
     /** Token opaco de la conexión manual (oferta/respuesta) */
     token?: string;
+    /** Marca de creación para distinguir conexiones en curso de las atascadas. */
+    creadoEn?: number;
 }
 
 export class NetworkManager {
-    /** ID único generado para este cliente (prefijo "L" + caracteres aleatorios) */
-    public idLocal: string = "L" + Math.random().toString(36).substr(2, 9);
+    /** ID de conexión de este cliente (connId estable de la pestaña). */
+    public idLocal: string;
+    /** Identidad lógica estable del jugador (viaja en el handshake). */
+    public playerId: string;
+    /** Epoch de host que este cliente cree vigente (viaja en el handshake). */
+    public hostEpoch: number = 1;
     /** Indica si el modo multijugador está activo */
     public multiplayerActivo: boolean = false;
     /** Verdadero si este cliente actúa como host de la partida */
@@ -44,6 +50,8 @@ export class NetworkManager {
     public jugadoresRemotos: Map<string, RemotePlayer> = new Map();
     /** Indica si hay al menos un canal de datos abierto */
     public activo: boolean = false;
+    /** true mientras una reconexión planificada está desmontando/montando peers. */
+    public reconectando: boolean = false;
     /** ID real del host (usado cuando el cliente es invitado) */
     public idRealDelHost: string | null = null;
     /**
@@ -53,7 +61,10 @@ export class NetworkManager {
      */
     public aliasRemoto: Map<string, string> = new Map();
 
-    constructor() {}
+    constructor(idLocal?: string, playerId?: string) {
+        this.idLocal = idLocal ?? ("L" + Math.random().toString(36).substr(2, 9));
+        this.playerId = playerId ?? this.idLocal;
+    }
 
     /**
      * Envía un mensaje JSON a todos los jugadores remotos conectados.
@@ -79,14 +90,20 @@ export class NetworkManager {
      * @param game - Instancia del juego que manejará la lógica de mensajes multijugador
      */
     setupDataChannelHandlers(canal: RTCDataChannel, idEmisor: string, game: IGame) {
+        let estuvoAbierto = false;
         canal.addEventListener('open', () => {
+            estuvoAbierto = true;
             this.activo = true;
             this.multiplayerActivo = true;
             const nick = (document.getElementById('nickInput') as HTMLInputElement).value || "Héroe";
             const clase = game.protagonista.clase;
             const stats = { fue: game.protagonista.fuerza, agi: game.protagonista.agilidad, int: game.protagonista.inteligencia };
             const apariencia = aparienciaEfectiva(game.protagonista.clase || 'guerrero', game.protagonista.apariencia);
-            this.enviarMensaje({ tipo: 'handshake', nick, id: this.idLocal, clase, stats, apariencia });
+            this.enviarMensaje({
+                tipo: 'handshake', nick, id: this.idLocal,
+                playerId: this.playerId, hostEpoch: this.hostEpoch,
+                clase, stats, apariencia,
+            });
 
             if (this.esHost) {
                 game.registrarEventoLog(`Jugador conectado (${idEmisor})`);
@@ -107,17 +124,27 @@ export class NetworkManager {
 
         canal.addEventListener('close', () => {
             const idResuelto = this.aliasRemoto.get(idEmisor) ?? idEmisor;
+            const actual = this.jugadoresRemotos.get(idResuelto);
+            // Cierre de un canal viejo (reemplazado por un reintento): no debe
+            // borrar la entrada nueva ni disparar una elección de host.
+            if (actual && actual.dc && actual.dc !== canal) return;
             game.registrarEventoLog(`Jugador desconectado (${idResuelto})`);
             this.jugadoresRemotos.delete(idResuelto);
             this.aliasRemoto.delete(idEmisor);
             try { game.cancelarTruequesDe(idResuelto); } catch {}
+            if (estuvoAbierto && this.esHost && this.idPartidaActual) {
+                void game.firebase.limpiarSignaling(this.idPartidaActual, idResuelto);
+            }
 
-            if ((idEmisor === 'host' || idResuelto === this.idRealDelHost) && !this.esHost) {
+            const eraElHost = (idEmisor === 'host' || idResuelto === this.idRealDelHost);
+            if (eraElHost) this.idRealDelHost = null;
+
+            if (eraElHost && !this.esHost) {
                 game.registrarEventoLog("El Host se ha desconectado. Iniciando elección de nuevo Host...");
                 game.iniciarEleccionHost();
             }
 
-            if (this.jugadoresRemotos.size === 0) {
+            if (this.jugadoresRemotos.size === 0 && !this.esHost && !this.reconectando) {
                 this.activo = false;
                 this.multiplayerActivo = false;
             }
@@ -142,16 +169,21 @@ export class NetworkManager {
         if (!guestId) return;
         if (this.jugadoresRemotos.has(guestId)) {
             const existing = this.jugadoresRemotos.get(guestId)!;
-            if (existing.pc && (existing.pc.connectionState === 'connected' || existing.pc.connectionState === 'connecting')) {
-                return;
-            }
+            const conectado = existing.pc?.connectionState === 'connected' || existing.dc?.readyState === 'open';
+            const enCurso = existing.pc?.connectionState === 'connecting' || existing.pc?.connectionState === 'new';
+            const edad = Date.now() - (existing.creadoEn ?? 0);
+            if (conectado || (enCurso && edad < 8000)) return;
+            existing.unsubscribes.forEach((unsub) => { try { unsub(); } catch { /* noop */ } });
+            try { existing.dc?.close(); } catch { /* noop */ }
+            try { existing.pc?.close(); } catch { /* noop */ }
+            this.jugadoresRemotos.delete(guestId);
         }
 
         game.ui.registrarLogConexion(`Iniciando PeerConnection para Invitado: ${guestId}`);
         const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
         const dc = pc.createDataChannel("mazeRPG");
         const iceBuffer: any[] = [];
-        const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [] };
+        const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [], creadoEn: Date.now() };
         this.jugadoresRemotos.set(guestId, info);
         this.setupDataChannelHandlers(dc, guestId, game);
 
@@ -244,6 +276,20 @@ export class NetworkManager {
         info.unsubscribes.push(unsubAnswer, unsubIce);
     }
 
+    /** Desmonta peers y mapas sin tocar la partida ni la sesión (reconexión). */
+    desconectarPeers(): void {
+        this.jugadoresRemotos.forEach((j) => {
+            j.unsubscribes.forEach((unsub) => { try { unsub(); } catch { /* noop */ } });
+            try { j.dc?.close(); } catch { /* noop */ }
+            try { j.pc?.close(); } catch { /* noop */ }
+        });
+        this.jugadoresRemotos.clear();
+        this.aliasRemoto.clear();
+        this.idRealDelHost = null;
+        this.activo = false;
+        this.multiplayerActivo = false;
+    }
+
     /**
      * Configura la conexión WebRTC actuando como invitado uniéndose a una partida existente.
      * El invitado se conecta como cliente al host mediante señales en Firebase.
@@ -260,6 +306,8 @@ export class NetworkManager {
      */
     async setupWebRTCGuest(partidaId: string, game: IGame) {
         this.idPartidaActual = partidaId;
+        // Reunión: el doc de conexión pudo quedar con una oferta/answer viejos.
+        try { await game.firebase.limpiarSignaling(partidaId, this.idLocal); } catch { /* noop */ }
         const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
         const iceBuffer: any[] = [];
         const info: RemotePlayer = { pc, dc: null as any, entidad: null, unsubscribes: [] };

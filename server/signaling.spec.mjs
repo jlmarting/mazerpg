@@ -113,6 +113,92 @@ async function main() {
       );
     }
 
+    // 4b. Migración de host: estado, presencia, CAS, lease y metadatos
+    {
+      const creada = await json(
+        await fetch(`${base}/partidas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostId: 'P1', hostNick: 'Uno', nombre: 'Sala migrable' }),
+        }),
+      );
+      const pid = creada.id;
+
+      const estado0 = await json(await fetch(`${base}/partidas/${pid}/estado`));
+      ok(estado0.hostId === 'P1', 'GET estado expone el host inicial');
+      ok(estado0.hostEpoch === 1, 'la sala nace con hostEpoch 1');
+      ok(estado0.lastSeen === reloj, 'lastSeen inicial = reloj de creación');
+      ok(estado0.jugadores && typeof estado0.jugadores === 'object', 'estado expone jugadores como objeto');
+
+      const reg = await fetch(`${base}/partidas/${pid}/jugadores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'P2', playerId: 'P2', nick: 'Dos' }),
+      });
+      ok(reg.status === 200, `POST jugadores → 200 (recibido ${reg.status})`);
+      const estado1 = await json(await fetch(`${base}/partidas/${pid}/estado`));
+      ok(estado1.jugadores.P2?.playerId === 'P2', 'estado incluye la presencia registrada');
+      ok(estado1.jugadores.P2?.ultimaVez === reloj, 'la presencia lleva ultimaVez');
+
+      const claim1 = await fetch(`${base}/partidas/${pid}/host`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'P2', nick: 'Dos', expectedEpoch: 1 }),
+      });
+      const claim1Data = await json(claim1);
+      ok(claim1.status === 200, `CAS de host con epoch vigente → 200 (recibido ${claim1.status})`);
+      ok(claim1Data.ok === true && claim1Data.hostEpoch === 2, 'el ganador del CAS recibe epoch+1');
+
+      const claim2 = await fetch(`${base}/partidas/${pid}/host`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'P3', nick: 'Tres', expectedEpoch: 1 }),
+      });
+      const claim2Data = await json(claim2);
+      ok(claim2.status === 409, `CAS con epoch viejo → 409 (recibido ${claim2.status})`);
+      ok(claim2Data.ok === false && claim2Data.hostEpoch === 2, 'el perdedor recibe el epoch vigente');
+
+      const leaseOk = await fetch(`${base}/partidas/${pid}/lease`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'P2', hostEpoch: 2 }),
+      });
+      ok(leaseOk.status === 200, `lease del host vigente → 200 (recibido ${leaseOk.status})`);
+
+      const leaseMal = await fetch(`${base}/partidas/${pid}/lease`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'P2', hostEpoch: 1 }),
+      });
+      ok(leaseMal.status === 409, `lease con epoch viejo → 409 (recibido ${leaseMal.status})`);
+
+      const estado2 = await json(await fetch(`${base}/partidas/${pid}/estado`));
+      ok(estado2.hostId === 'P2' && estado2.hostEpoch === 2, 'estado refleja al host ganador');
+      ok(estado2.lastSeen === reloj, 'el lease actualiza lastSeen');
+
+      const meta = {
+        inicioPartida: reloj - 5000,
+        dificultad: 'dificil',
+        roster: ['P2'],
+        jugadores: { P2: { nick: 'Dos', oro: 10, xp: 20, bajas: 1 } },
+      };
+      const metaPost = await fetch(`${base}/partidas/${pid}/meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(meta),
+      });
+      ok(metaPost.status === 200, `POST meta → 200 (recibido ${metaPost.status})`);
+      const metaGet = await json(await fetch(`${base}/partidas/${pid}/meta`));
+      ok(metaGet.inicioPartida === meta.inicioPartida, 'GET meta conserva inicioPartida');
+      ok(metaGet.roster?.[0] === 'P2', 'GET meta conserva el roster');
+      ok(metaGet.jugadores?.P2?.oro === 10, 'GET meta conserva el progreso');
+
+      const del = await fetch(`${base}/partidas/${pid}/jugadores/P2`, { method: 'DELETE' });
+      ok(del.status === 200, `DELETE jugador → 200 (recibido ${del.status})`);
+      const estado3 = await json(await fetch(`${base}/partidas/${pid}/estado`));
+      ok(!estado3.jugadores.P2, 'DELETE jugadores/:id elimina la presencia');
+    }
+
     // 5. 404 en partida inexistente y en ruta desconocida
     {
       const signalMal = await fetch(`${base}/signal/inexistente/peerA`, {

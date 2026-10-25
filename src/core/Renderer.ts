@@ -450,7 +450,8 @@ export class Renderer {
       this.ctx.fillStyle = entidad.estaVivo ? (entidad.color || '#fff') : '#555';
       this.ctx.font = 'bold 10px monospace';
       this.ctx.textAlign = 'center';
-      this.ctx.fillText(entidad.nombre, x, y - escala);
+      const nombre = (entidad as any).esHost ? `[HOST] ${entidad.nombre}` : entidad.nombre;
+      this.ctx.fillText(nombre, x, y - escala);
       this.ctx.restore();
   }
 
@@ -710,6 +711,15 @@ export class Renderer {
     );
     this.ctx.textAlign = 'left';
 
+    if (game.mpActivo && game.hostNick) {
+      this.ctx.save();
+      this.ctx.fillStyle = '#ffd700';
+      this.ctx.font = 'bold 11px monospace';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(`HOST: ${game.esHost ? 'tú' : game.hostNick}`, this.canvas.width / 2, 20);
+      this.ctx.restore();
+    }
+
     let enemigoVisible = game.obtenerEnemigoAMostrar();
     if (enemigoVisible) {
       this.ctx.textAlign = 'right';
@@ -773,7 +783,8 @@ export class Renderer {
         this.ctx.font = '12px monospace';
         resultados.forEach((r: any, idx: number) => {
           const y = ALTO_UI_TOP + 115 + idx * 20;
-          const valores = [r.nombre, String(r.oro), String(r.xp), String(r.bajas), `${r.segundos}s`, String(r.puntuacion)];
+          const nombre = r.nombre === game.hostNick ? `[HOST] ${r.nombre}` : r.nombre;
+          const valores = [nombre, String(r.oro), String(r.xp), String(r.bajas), `${r.segundos}s`, String(r.puntuacion)];
           valores.forEach((v, i) => this.ctx.fillText(v, this.canvas.width * columnas[i], y));
         });
       } else {

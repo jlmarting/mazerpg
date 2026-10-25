@@ -67,16 +67,30 @@ export function crearServidor({ ahora = Date.now } = {}) {
 
       if (seg[0] === 'partidas') {
         if (seg.length === 1 && req.method === 'POST') {
-          const { hostId, hostNick, nombre } = await leerCuerpo(req);
+          const { hostId, hostNick, nombre, playerId } = await leerCuerpo(req);
           const id = Math.random().toString(36).slice(2, 8);
+          const creacion = ahora();
+          const jugadores = new Map();
+          if (hostId) {
+            jugadores.set(hostId, {
+              playerId: typeof playerId === 'string' && playerId ? playerId : hostId,
+              nick: hostNick ?? hostId,
+              ultimaVez: creacion,
+            });
+          }
           partidas.set(id, {
             id,
             hostId,
             hostNick,
             nombre,
+            playerId: typeof playerId === 'string' && playerId ? playerId : hostId,
+            hostEpoch: 1,
             numJugadores: 1,
-            creacion: ahora(),
+            creacion,
+            ultimoHb: creacion,
             guests: new Map(),
+            jugadores,
+            meta: {},
           });
           responderJson(res, 200, { id });
           return;
@@ -92,6 +106,8 @@ export function crearServidor({ ahora = Date.now } = {}) {
             numJugadores: p.numJugadores,
             creacion: p.creacion,
             ultimoHb: p.ultimoHb,
+            hostEpoch: p.hostEpoch,
+            lastSeen: p.ultimoHb ?? p.creacion,
           }));
           responderJson(res, 200, { partidas: lista });
           return;
@@ -100,6 +116,98 @@ export function crearServidor({ ahora = Date.now } = {}) {
         const partida = seg.length >= 2 ? partidas.get(seg[1]) : null;
         if (!partida) {
           responderJson(res, 404, { error: 'Partida no encontrada' });
+          return;
+        }
+
+        if (seg.length === 3 && seg[2] === 'estado' && req.method === 'GET') {
+          responderJson(res, 200, {
+            hostId: partida.hostId,
+            hostNick: partida.hostNick,
+            playerId: partida.playerId,
+            hostEpoch: partida.hostEpoch ?? 1,
+            lastSeen: partida.ultimoHb ?? partida.creacion,
+            jugadores: Object.fromEntries(partida.jugadores ?? new Map()),
+          });
+          return;
+        }
+
+        if (seg.length === 3 && seg[2] === 'host' && req.method === 'POST') {
+          const { id, nick, playerId, expectedEpoch } = await leerCuerpo(req);
+          const actual = partida.hostEpoch ?? 1;
+          if (typeof expectedEpoch !== 'number' || expectedEpoch !== actual) {
+            responderJson(res, 409, { ok: false, hostEpoch: actual });
+            return;
+          }
+          const nuevoEpoch = actual + 1;
+          partida.hostId = id;
+          partida.hostNick = nick ?? id;
+          partida.playerId = typeof playerId === 'string' && playerId ? playerId : id;
+          partida.hostEpoch = nuevoEpoch;
+          partida.ultimoHb = ahora();
+          partida.jugadores ??= new Map();
+          partida.jugadores.set(id, {
+            playerId: typeof playerId === 'string' && playerId ? playerId : id,
+            nick: nick ?? id,
+            ultimaVez: ahora(),
+          });
+          responderJson(res, 200, { ok: true, hostEpoch: nuevoEpoch });
+          return;
+        }
+
+        if (seg.length === 3 && seg[2] === 'lease' && req.method === 'POST') {
+          const { id, hostEpoch } = await leerCuerpo(req);
+          const actual = partida.hostEpoch ?? 1;
+          if (partida.hostId !== id || hostEpoch !== actual) {
+            responderJson(res, 409, { ok: false, hostEpoch: actual });
+            return;
+          }
+          partida.ultimoHb = ahora();
+          partida.jugadores ??= new Map();
+          const presencia = partida.jugadores.get(id);
+          if (presencia) presencia.ultimaVez = ahora();
+          responderJson(res, 200, { ok: true, hostEpoch: actual });
+          return;
+        }
+
+        if (seg.length === 3 && seg[2] === 'meta') {
+          if (req.method === 'POST') {
+            const cuerpo = await leerCuerpo(req);
+            partida.meta = { ...(partida.meta ?? {}), ...cuerpo };
+            responderJson(res, 200, { ok: true });
+            return;
+          }
+          if (req.method === 'GET') {
+            responderJson(res, 200, partida.meta ?? {});
+            return;
+          }
+        }
+
+        if (seg.length === 3 && seg[2] === 'jugadores') {
+          partida.jugadores ??= new Map();
+          if (req.method === 'POST') {
+            const { id, playerId, nick } = await leerCuerpo(req);
+            if (!id) {
+              responderJson(res, 400, { error: 'Falta id' });
+              return;
+            }
+            partida.jugadores.set(id, {
+              playerId: typeof playerId === 'string' && playerId ? playerId : id,
+              nick: nick ?? id,
+              ultimaVez: ahora(),
+            });
+            responderJson(res, 200, { ok: true });
+            return;
+          }
+          if (req.method === 'GET') {
+            responderJson(res, 200, { jugadores: Object.fromEntries(partida.jugadores) });
+            return;
+          }
+        }
+
+        if (seg.length === 4 && seg[2] === 'jugadores' && req.method === 'DELETE') {
+          partida.jugadores ??= new Map();
+          partida.jugadores.delete(seg[3]);
+          responderJson(res, 200, { ok: true });
           return;
         }
 

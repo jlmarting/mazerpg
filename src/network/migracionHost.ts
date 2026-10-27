@@ -19,9 +19,11 @@ export interface EstadoSala {
   hostEpoch: number;
   lastSeen: number;
   jugadores: Record<string, JugadorSala>;
+  /** La foto vino de la caché local (Firestore offline); no decide elecciones. */
+  desdeCache?: boolean;
 }
 
-export const LEASE_HOST_MS = 25_000;
+export const LEASE_HOST_MS = 60_000;
 export const PRESENCIA_JUGADOR_MS = 30_000;
 export const INTERVALO_LATIDO_HOST_MS = 5_000;
 export const INTERVALO_PRESENCIA_MS = 10_000;

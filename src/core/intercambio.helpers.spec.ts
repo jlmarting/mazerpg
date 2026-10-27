@@ -87,6 +87,7 @@ function estadoParte(bulto: string[], inventario: Record<string, number>, fuerza
   assert(!validarDisposicion(cesta, ['espada_corta'], { pocion_vida: 2 }), 'pila de pociones insuficiente');
   assert(validarDisposicion(cesta, ['espada_corta'], { pocion_vida: 3 }), 'exactamente lo pedido basta');
   assert(validarDisposicion([], ['espada_corta'], {}), 'cesta vacía siempre válida');
+  assert(!validarDisposicion([{ id: 'mapa', cantidad: 1 }], [], { mapa: 1 }), 'el mapa no se puede ofrecer en trueque');
 }
 
 // aplicarIntercambio: caso feliz, entradas intactas

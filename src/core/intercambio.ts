@@ -55,6 +55,7 @@ export function validarDisposicion(
   for (const { id, cantidad } of cesta) {
     const item = cat[id];
     if (!item) return false;
+    if (item.comerciable === false) return false;
     if (item.tipo === 'equipo') {
       const copias = bulto.filter((x) => x === id).length;
       if (copias < cantidad) return false;

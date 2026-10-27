@@ -1,4 +1,12 @@
 export type TipoCofre = 'hierro' | 'acero' | 'titanio';
+
+/** Probabilidad de que un cofre incluya una pócima de resurrección (F5). */
+export const PROBABILIDAD_POCIMA_RESURRECCION = 0.08;
+
+/** Sortea si el cofre suelta la pócima; `rng` inyectable para tests. */
+export function cofreSueltaPocimaResurreccion(rng: () => number = Math.random): boolean {
+  return rng() < PROBABILIDAD_POCIMA_RESURRECCION;
+}
 export type TipoLlave = TipoCofre;
 
 export const ORO_POR_COFRE: Record<TipoCofre, number> = {

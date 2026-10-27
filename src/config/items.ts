@@ -18,7 +18,7 @@ export type RanuraEquipo =
   | 'escudo'
   | 'accesorio';
 
-export type TipoItem = 'equipo' | 'consumible' | 'material';
+export type TipoItem = 'equipo' | 'consumible' | 'material' | 'herramienta';
 
 export interface Bonos {
   fuerza?: number;
@@ -44,6 +44,10 @@ export interface ItemDef {
   curacion?: number;
   /** Variante de pieza del avatar que muestra este item equipado (puente visual). */
   pieza?: string;
+  /** Acción de una herramienta al usarla desde la mochila. */
+  accion?: 'abrir_mapa';
+  /** Si es false, no se puede ofrecer en trueque (herramientas permanentes). */
+  comerciable?: boolean;
   descripcion?: string;
 }
 
@@ -99,6 +103,10 @@ export const ITEMS: Record<string, ItemDef> = {
     id: 'comida', nombre: 'Comida', tipo: 'consumible', peso: 0.5, apilable: true,
     curacion: 15, descripcion: 'Recogida del suelo; restaura 15 de vida al consumirla.',
   },
+  pocima_resurreccion: {
+    id: 'pocima_resurreccion', nombre: 'Pócima de resurrección', tipo: 'consumible', peso: 0.3, apilable: true,
+    descripcion: 'Devuelve la vida a un fantasma adyacente a su cuerpo (50 % de vida).',
+  },
   flecha: {
     id: 'flecha', nombre: 'Flecha', tipo: 'material', peso: 0.1, apilable: true,
     descripcion: 'Munición para arcos.',
@@ -118,5 +126,12 @@ export const ITEMS: Record<string, ItemDef> = {
   llave_titanio: {
     id: 'llave_titanio', nombre: 'Llave de titanio', tipo: 'material', peso: 0.05, apilable: true,
     descripcion: 'Abre el cofre de titanio.',
+  },
+
+  // --- Herramientas (permanentes, no se consumen) ---
+  mapa: {
+    id: 'mapa', nombre: 'Mapa', tipo: 'herramienta', peso: 0, apilable: false,
+    accion: 'abrir_mapa', comerciable: false,
+    descripcion: 'Abre el mapa del mundo. No se gasta.',
   },
 };

@@ -84,7 +84,7 @@ export class TruequeUI {
     const stocks = new Map<string, number>();
     for (const id of bulto) stocks.set(id, (stocks.get(id) ?? 0) + 1);
     for (const [id, n] of Object.entries(inventario)) {
-      if (n > 0) stocks.set(id, (stocks.get(id) ?? 0) + n);
+      if (n > 0 && ITEMS[id]?.comerciable !== false) stocks.set(id, (stocks.get(id) ?? 0) + n);
     }
     if (stocks.size === 0) {
       contenedor.appendChild(this.plano('(inventario vacío)'));

@@ -1,6 +1,7 @@
 import { IGame } from '../types';
 import { aparienciaEfectiva } from '../core/avatarTintes';
 import { extraerSdpManual } from './manualSdp';
+import { diagMpActivo, diagMpContar } from './diagnosticoMp';
 
 /**
  * Gestor de red para comunicaciones peer-to-peer (P2P) usando WebRTC.
@@ -113,6 +114,12 @@ export class NetworkManager {
         canal.onmessage = (evento) => {
             try {
                 const mensaje = JSON.parse(evento.data);
+                if (diagMpActivo()) {
+                    diagMpContar(`rec:${mensaje?.tipo ?? '?'}`, 1);
+                    if (mensaje?.tipo === 'snapshot') {
+                        diagMpContar('bytesSnapshotRec', typeof evento.data === 'string' ? evento.data.length : 0);
+                    }
+                }
                 // Coop manual: el DataChannel se creó con un id provisional
                 // (`GUEST_*`); el handshake lo migra y el alias enruta el resto.
                 const idResuelto = this.aliasRemoto.get(idEmisor) ?? idEmisor;

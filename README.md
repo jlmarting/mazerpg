@@ -148,6 +148,17 @@ El build genera dos páginas en `dist/`:
 2. Una vez establecida la conexión WebRTC, todo el estado del juego (posiciones, ataques, eventos) fluye directamente entre peers mediante **RTCDataChannel**.
 3. El **host** mantiene la autoridad: sincroniza el mapa, los enemigos y valida el estado de la partida.
 
+### Diagnóstico multijugador
+
+Añade `?diagmp=1` a la URL (`http://localhost:5173/?diagmp=1`) para activar trazas `[DIAG-MP]` con JSON de una línea:
+
+- resumen por segundo: rol, peers, epoch, cola de acciones, `bufferedAmount` máximo, mensajes enviados/recibidos por tipo, snapshots/s y bytes/s;
+- lease: `lease-firebase`/`lease-http` con `ok`, y `lease-rechazado`/`lease-error` con id, epoch y código;
+- elección/migración: `host-caido` (edad del lease), `democion-host`, `nuevo-host`, `degradar-host`;
+- movimiento: `snap-back` con distancia local↔host cuando el invitado se corrige.
+
+Sin el flag no se imprime ni se acumula nada. Pensado para pegar el log en un análisis o compararlo entre host e invitado.
+
 ## Scripts disponibles
 
 | Script | Descripción |

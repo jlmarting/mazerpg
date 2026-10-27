@@ -44,6 +44,8 @@ export interface LobbyDelegate {
   equiparItem(id: string): void;
   desequiparRanura(ranura: RanuraEquipo): void;
   usarItem(id: string): void;
+  /** Cierra la mochila y abre el mapamundi. */
+  abrirMapaDesdeMochila(): void;
 }
 
 /** Vista del dominio de equipo que consume el panel. */
@@ -403,11 +405,22 @@ export class LobbyManager {
       const it = ITEMS[id];
       if (!it) continue;
       const fila = document.createElement('div');
-      fila.className = 'equipo-mochila-row';
+      fila.className = 'equipo-objeto-card';
       const txt = document.createElement('span');
-      txt.textContent = `${it.nombre} ×${n}  ·  ${(it.peso * n).toFixed(1)} kg`;
+      txt.className = 'equipo-objeto-nombre';
+      txt.textContent = `${it.nombre} ×${n}`;
+      const peso = document.createElement('span');
+      peso.className = 'equipo-objeto-peso';
+      peso.textContent = `${(it.peso * n).toFixed(1)} kg`;
       fila.appendChild(txt);
-      if (it.tipo === 'consumible') {
+      fila.appendChild(peso);
+      if (it.accion === 'abrir_mapa') {
+        const btn = document.createElement('button');
+        btn.className = 'equipo-mochila-btn';
+        btn.textContent = 'VER MAPA';
+        btn.addEventListener('click', () => this.delegate.abrirMapaDesdeMochila());
+        fila.appendChild(btn);
+      } else if (it.tipo === 'consumible') {
         const btn = document.createElement('button');
         btn.className = 'equipo-mochila-btn';
         btn.textContent = 'CONSUMIR';

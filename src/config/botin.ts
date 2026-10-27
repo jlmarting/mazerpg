@@ -11,7 +11,7 @@ export interface EntradaBotin {
 }
 
 export const TABLA_BOTIN: EntradaBotin[] = [
-  { id: 'flecha', peso: 40, cantidad: [2, 5] },
+  { id: 'flecha', peso: 38, cantidad: [2, 5] },
   { id: 'pocion_vida', peso: 25 },
   { id: 'daga', peso: 10 },
   { id: 'casco_hierro', peso: 8 },
@@ -19,6 +19,7 @@ export const TABLA_BOTIN: EntradaBotin[] = [
   { id: 'botas_veloces', peso: 4 },
   { id: 'escudo_madera', peso: 3 },
   { id: 'espada_corta', peso: 2 },
+  { id: 'pocima_resurreccion', peso: 2 },
   { id: 'anillo_fuerza', peso: 1 },
 ];
 

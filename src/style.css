@@ -1494,11 +1494,23 @@ body.esquema-acordeon-movil .action-btn .btn-text { display: none; }
 }
 
 /* Panel de equipo y mochila (piloto inventario v1) */
+.equipo-modal-box {
+    width: min(960px, 96vw);
+    max-width: min(960px, 96vw);
+    max-height: 90dvh;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
 #equipoPreview { margin-bottom: 8px; }
 .equipo-stats { text-align: center; font-family: monospace; font-size: 11px; color: #e9d8a6; margin-bottom: 8px; }
 
 /* Old-school: muñeco (ranuras) + bulto (arrastrar y soltar) */
-.equipo-layout { display: flex; gap: 12px; align-items: flex-start; }
+.equipo-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.35fr);
+    gap: 12px;
+    align-items: start;
+}
 .equipo-doll {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -1536,9 +1548,42 @@ body.esquema-acordeon-movil .action-btn .btn-text { display: none; }
     border-radius: 3px; font-family: monospace; font-size: 9px; cursor: grab; user-select: none;
 }
 .equipo-chip:active { cursor: grabbing; }
-.equipo-objetos { display: flex; flex-direction: column; gap: 3px; }
+.equipo-objetos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px;
+    align-content: start;
+    max-height: min(42vh, 420px);
+    overflow-y: auto;
+    padding-right: 3px;
+}
+.equipo-objeto-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 7px;
+    border: 1px solid #6b5320;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.35);
+    font-family: monospace;
+    font-size: 10px;
+    color: #ccc;
+}
+.equipo-objeto-nombre { color: #e9d8a6; }
+.equipo-objeto-peso { color: #8f7d50; font-size: 9px; }
 .equipo-mochila-row { display: flex; align-items: center; justify-content: space-between; font-family: monospace; font-size: 10px; color: #ccc; margin-bottom: 3px; }
 .equipo-mochila-btn {
+    align-self: flex-start;
     padding: 3px 8px; background: #3a2f22; color: #e9d8a6; border: 1px solid #6b5320;
     border-radius: 3px; cursor: pointer; font-family: monospace; font-size: 10px;
+}
+
+@media (max-width: 720px) {
+    .equipo-modal-box { width: 96vw; max-height: 92dvh; padding: 16px; }
+    .equipo-layout { grid-template-columns: 1fr; }
+    .equipo-objetos { max-height: 34dvh; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+}
+
+@media (max-width: 480px) {
+    .equipo-objetos { grid-template-columns: 1fr; }
 }

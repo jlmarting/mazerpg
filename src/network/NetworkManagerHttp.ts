@@ -1,6 +1,7 @@
 import { IGame } from '../types';
 import { aparienciaEfectiva } from '../core/avatarTintes';
 import { SignalingClient, SignalPayload } from './SignalingClient';
+import { diagMpActivo, diagMpContar } from './diagnosticoMp';
 
 export interface RemotePlayer {
     pc: RTCPeerConnection;
@@ -79,6 +80,12 @@ export class NetworkManagerHttp {
         canal.onmessage = (evento) => {
             try {
                 const mensaje = JSON.parse(evento.data);
+                if (diagMpActivo()) {
+                    diagMpContar(`rec:${mensaje?.tipo ?? '?'}`, 1);
+                    if (mensaje?.tipo === 'snapshot') {
+                        diagMpContar('bytesSnapshotRec', typeof evento.data === 'string' ? evento.data.length : 0);
+                    }
+                }
                 game.procesarMensajeMultiplayer(mensaje, idEmisor);
             } catch(e) {
                 console.error("Error al procesar mensaje P2P:", e);

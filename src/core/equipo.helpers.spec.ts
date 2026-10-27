@@ -30,7 +30,7 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(ids.length >= 8, 'el catálogo piloto trae piezas suficientes');
   for (const [id, it] of Object.entries(ITEMS)) {
     assert(it.id === id, `id coherente con la clave (${id})`);
-    assert(['equipo', 'consumible', 'material'].includes(it.tipo), `tipo válido (${id})`);
+    assert(['equipo', 'consumible', 'material', 'herramienta'].includes(it.tipo), `tipo válido (${id})`);
     assert(it.peso >= 0, `peso no negativo (${id})`);
     assert(typeof it.apilable === 'boolean', `apilable definido (${id})`);
     if (it.tipo === 'equipo') assert(!!it.ranura, `equipo con ranura (${id})`);
@@ -143,6 +143,11 @@ function assert(condicion: boolean, mensaje: string): void {
   assert(san.flecha === 3, 'material válido se conserva');
   assert(san.pocion_vida === undefined, 'cantidad 0 se descarta');
   assert(san.basura === undefined && san.espada_corta === undefined, 'desconocidos y equipo fuera del inventario');
+
+  const conMapa = sanearInventario({ mapa: 1, flecha: 3 }, ITEMS);
+  assert(conMapa.mapa === 1 && conMapa.flecha === 3, 'la herramienta mapa se conserva en la mochila');
+  assert(Math.abs(pesoTotal(equipoVacio(), { mapa: 1 }, ITEMS)) < 1e-9, 'el mapa no suma peso');
+  assert(!destinoValido('mapa', 'cabeza', ITEMS), 'el mapa no va a una ranura de equipo');
 
   const tras = consumir(inv, 'pocion_vida', 2);
   assert(tras.pocion_vida === undefined && tras.flecha === 10, 'consumir agota y borra la pila');

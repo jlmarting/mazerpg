@@ -1,5 +1,6 @@
 import type { EstadoSala, JugadorSala } from './migracionHost';
 import type { SignalingClient } from './SignalingClient';
+import { diagMp, diagMpContar } from './diagnosticoMp';
 
 export interface ProgresoJugador {
   nick: string;
@@ -85,8 +86,21 @@ export class CoordinadorFirebase implements CoordinadorSala {
     try {
       const snap = await this.ref().get();
       if (!snap.exists) return null;
-      return normalizarEstado(snap.data() ?? {});
+      const datos = snap.data() ?? {};
+      const estado = normalizarEstado(datos);
+      estado.desdeCache = snap.metadata?.fromCache === true;
+      if (estado.desdeCache) diagMpContar('lecturasCache');
+      if (!estado.hostId) {
+        diagMp('leer-estado-sin-host', {
+          desdeCache: estado.desdeCache,
+          epoch: estado.hostEpoch,
+          lastSeen: estado.lastSeen,
+          claves: Object.keys(datos),
+        });
+      }
+      return estado;
     } catch (e) {
+      diagMp('leer-estado-error', { code: (e as any)?.code, mensaje: (e as any)?.message ?? String(e) });
       console.warn('CoordinadorFirebase.leerEstado:', e);
       return null;
     }
@@ -114,7 +128,16 @@ export class CoordinadorFirebase implements CoordinadorSala {
         const snap = await tx.get(ref);
         if (!snap.exists) return false;
         const d = snap.data() ?? {};
-        if (d.hostId !== id || (d.hostEpoch ?? 1) !== epoch) return false;
+        if (d.hostId !== id || (d.hostEpoch ?? 1) !== epoch) {
+          diagMp('lease-rechazado', {
+            esperadoId: id,
+            esperadoEpoch: epoch,
+            leidoId: d.hostId,
+            leidoEpoch: d.hostEpoch ?? 1,
+            lastSeen: d.lastSeen,
+          });
+          return false;
+        }
         const ahora = Date.now();
         tx.update(ref, {
           lastSeen: ahora,
@@ -123,6 +146,12 @@ export class CoordinadorFirebase implements CoordinadorSala {
         return true;
       });
     } catch (e) {
+      diagMp('lease-error', {
+        id,
+        epoch,
+        code: (e as any)?.code,
+        mensaje: (e as any)?.message ?? String(e),
+      });
       console.warn('CoordinadorFirebase.latirHost:', e);
       return false;
     }
@@ -155,6 +184,12 @@ export class CoordinadorFirebase implements CoordinadorSala {
         return { ok: true, epoch: nuevo };
       });
     } catch (e) {
+      diagMp('reclamo-error', {
+        id,
+        expectedEpoch,
+        code: (e as any)?.code,
+        mensaje: (e as any)?.message ?? String(e),
+      });
       console.warn('CoordinadorFirebase.reclamarHost:', e);
       return null;
     }

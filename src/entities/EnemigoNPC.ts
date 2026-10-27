@@ -105,13 +105,15 @@ export class EnemigoNPC extends EntidadRPG {
     const ahora = Date.now();
     if (ahora - this.ultimaVezActuadoIA < 800) return;
 
-    let objetivoInteres: any = enSalida(game.protagonista) ? null : game.protagonista;
+    const objetivoValido = (ent: any): boolean =>
+      !!ent && ent.estaVivo && ent.estadoVida !== 'fantasma' && !enSalida(ent);
+    let objetivoInteres: any = objetivoValido(game.protagonista) ? game.protagonista : null;
     let minD = objetivoInteres
       ? Math.sqrt(Math.pow(this.fila - game.protagonista.fila, 2) + Math.pow(this.columna - game.protagonista.columna, 2))
       : Infinity;
 
     game.network.jugadoresRemotos.forEach((j: any) => {
-      if (j.entidad && j.entidad.estaVivo && !enSalida(j.entidad)) {
+      if (objetivoValido(j.entidad)) {
         const distRemoto = Math.sqrt(Math.pow(this.fila - j.entidad.fila, 2) + Math.pow(this.columna - j.entidad.columna, 2));
         if (distRemoto < minD) {
           minD = distRemoto;
@@ -213,11 +215,12 @@ export class EnemigoNPC extends EntidadRPG {
     const sigColumna = this.columna + deltaColumna;
 
     let jugadorChocado = null;
-    if (sigFila === game.protagonista.fila && sigColumna === game.protagonista.columna) {
+    const bloquea = (e: any) => !!e && e.estaVivo && e.estadoVida !== 'fantasma';
+    if (bloquea(game.protagonista) && sigFila === game.protagonista.fila && sigColumna === game.protagonista.columna) {
       jugadorChocado = game.protagonista;
     } else {
       game.network.jugadoresRemotos.forEach((j: any) => {
-        if (j.entidad && j.entidad.estaVivo && j.entidad.fila === sigFila && j.entidad.columna === sigColumna) {
+        if (bloquea(j.entidad) && j.entidad.fila === sigFila && j.entidad.columna === sigColumna) {
           jugadorChocado = j.entidad;
         }
       });

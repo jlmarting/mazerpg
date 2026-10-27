@@ -13,6 +13,7 @@ import { NetworkManagerHttp } from './network/NetworkManagerHttp';
 import { SignalingClient, crearSignalingClient, getSignalingUrl } from './network/SignalingClient';
 import { crearIdConexion, obtenerPlayerId } from './network/identidad';
 import { CoordinadorFirebase, CoordinadorHttp, type CoordinadorSala, type MetadatosPartida, type ProgresoJugador } from './network/coordinadorSala';
+import { diagMp, diagMpActivo, diagMpContar, diagMpVolcar } from './network/diagnosticoMp';
 import {
   ESPERA_ELECCION_MS,
   INTERVALO_LATIDO_HOST_MS,
@@ -28,7 +29,8 @@ import { generarNodo } from './world/generadores';
 import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
-import { LLAVE_POR_COFRE, oroDeCofre, puedeAbrirCofre } from './core/tesoros';
+import { LLAVE_POR_COFRE, oroDeCofre, puedeAbrirCofre, cofreSueltaPocimaResurreccion } from './core/tesoros';
+import { adyacenteAlCuerpo, calcularVidaResurreccion, debeTerminarPartida, elegirDestinoTeletransporte, type EstadoRoster } from './core/fantasma';
 import { reensamblarPartes as reensamblarPartesQr } from './core/qrPartes';
 import { calcularPuntuacion, type ResultadoPartida } from './core/puntuacion';
 import { sanearEquipoGuardado } from './core/inventario';
@@ -110,6 +112,8 @@ class Game implements IGame {
   private roster: Set<string> | null = null;
   /** Roster por `playerId` (sobrevive a reconexiones con otro connId). */
   private rosterJugadores: Set<string> | null = null;
+  /** F5: abandonos definitivos (no se revierten al desconectar). */
+  private fueraDefinitivo: Set<string> = new Set();
   /** Nick del host vigente (corona en lobby/HUD/tabla). */
   public hostNick: string = '';
   /** Epoch de host que este cliente considera vigente. */
@@ -184,6 +188,7 @@ class Game implements IGame {
   private ultimaActualizacionInteres: number = 0;
   private readonly FPS_UMBRAL_SEGUNDOS: number = 3;
   private diagTimer: number | null = null;
+  private diagMpTimer: number | null = null;
   private diagFrameCount: number = 0;
   private diagLastLog: number = 0;
   private fundidoInicio: number = Number.NEGATIVE_INFINITY;
@@ -546,6 +551,8 @@ class Game implements IGame {
       window.location.reload();
     });
     document.getElementById('btnAbandonar')?.addEventListener('click', () => this.abandonarPartida());
+    document.getElementById('btnFantasmaTeleport')?.addEventListener('click', () => this.teletransportarFantasma());
+    document.getElementById('btnFantasmaAbandonar')?.addEventListener('click', () => this.abandonarFantasma());
 
 
 
@@ -903,14 +910,155 @@ class Game implements IGame {
     this.lobbyManager.openEquipoModal();
   }
 
+  /** Cierra la mochila y abre el mapamundi desde el objeto Mapa. */
+  abrirMapaDesdeMochila(): void {
+    this.lobbyManager.closeEquipoModal();
+    this.abrirMapamundi();
+  }
+
   /** Usa un consumible (cura) y refresca el panel. */
   usarItem(id: string): void {
+    if (id === 'pocima_resurreccion') {
+      this.usarPocimaResurreccion();
+      return;
+    }
     const antes = this.protagonista.vidaActual;
     this.protagonista.usarItem(id);
     const curado = this.protagonista.vidaActual - antes;
     this.registrarEventoLog(curado > 0 ? `Usado ${id}: +${curado} vida` : `Usado ${id}`);
     this.lobbyManager.renderEquipo();
     this.guardarSesionActual();
+  }
+
+  /** F5: revive a un fantasma adyacente a su cuerpo (host valida; invitado pide). */
+  private usarPocimaResurreccion(): void {
+    if (!this.mpActivo) {
+      this.registrarEventoLog('La pócima de resurrección solo funciona en multijugador.');
+      return;
+    }
+    if (this.protagonista.estadoVida !== 'vivo' || !this.protagonista.estaVivo) {
+      this.registrarEventoLog('Solo un jugador vivo puede usar la pócima.');
+      return;
+    }
+    if ((this.protagonista.inventario.pocima_resurreccion ?? 0) <= 0) {
+      this.registrarEventoLog('No llevas ninguna pócima de resurrección.');
+      return;
+    }
+    let objetivoId: string | null = null;
+    let objetivo: any = null;
+    for (const [id, j] of this.remotosActivos) {
+      const e = j.entidad;
+      if (!e || e.estadoVida !== 'fantasma' || e.cuerpoF == null || e.cuerpoC == null) continue;
+      if (!adyacenteAlCuerpo(this.protagonista, { fila: e.cuerpoF, columna: e.cuerpoC })) continue;
+      objetivoId = id;
+      objetivo = e;
+      break;
+    }
+    if (!objetivoId || !objetivo) {
+      this.registrarEventoLog('No hay ningún fantasma adyacente a su cuerpo.');
+      return;
+    }
+
+    if (!this.esHost) {
+      this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'resucitar', objetivoId } });
+      this.registrarEventoLog('Pócima de resurrección lanzada...');
+      return;
+    }
+
+    this.protagonista.consumirItem('pocima_resurreccion', 1);
+    const hp = calcularVidaResurreccion(objetivo.vidaMaxima);
+    this.resucitarEntidad(objetivo, this.protagonista.nombre, hp);
+    this.enviarMultiplayer({
+      tipo: 'resurreccion', id: objetivoId, f: objetivo.fila, c: objetivo.columna,
+      hp, por: this.playerId,
+    });
+    this.lobbyManager.renderEquipo();
+    this.guardarSesionActual();
+  }
+
+  /** F5: convierte a un jugador muerto en fantasma (solo MP). */
+  private convertirEnFantasma(entidad: any): void {
+    if (!entidad || entidad.estadoVida === 'fantasma' || entidad.estadoVida === 'fuera') return;
+    entidad.estadoVida = 'fantasma';
+    entidad.cuerpoF = entidad.fila;
+    entidad.cuerpoC = entidad.columna;
+    entidad.vidaActual = 0;
+    entidad.estaVivo = false;
+    entidad.enCombateCon = null;
+    entidad.estadoActual = 'idle';
+    entidad.frameActual = 0;
+    entidad.estaCaminando = false;
+    this.registrarEventoLog(`${entidad.nombre} ha caído y vaga como fantasma.`);
+    if (entidad === this.protagonista) this.mostrarOverlayFantasma();
+  }
+
+  /** F5: devuelve el fantasma a su cuerpo con vida e inmunidad breve. */
+  private resucitarEntidad(entidad: any, por: string, hp: number = calcularVidaResurreccion(entidad.vidaMaxima)): void {
+    if (!entidad || entidad.estadoVida !== 'fantasma') return;
+    if (entidad.cuerpoF != null && entidad.cuerpoC != null) {
+      entidad.fila = entidad.cuerpoF;
+      entidad.columna = entidad.cuerpoC;
+      entidad.visualFila = entidad.cuerpoF;
+      entidad.visualColumna = entidad.cuerpoC;
+    }
+    entidad.cuerpoF = null;
+    entidad.cuerpoC = null;
+    entidad.estadoVida = 'vivo';
+    entidad.estaVivo = true;
+    entidad.vidaActual = Math.max(1, hp);
+    entidad.enCombateCon = null;
+    entidad.estadoActual = 'idle';
+    entidad.frameActual = 0;
+    entidad.inmunidadHasta = Date.now() + 3000;
+    this.registrarEventoLog(`${entidad.nombre} ha resucitado (${por}).`);
+    if (entidad === this.protagonista) this.ocultarOverlayFantasma();
+  }
+
+  /** F5: overlay compacto del fantasma (no bloquea el movimiento). */
+  private mostrarOverlayFantasma(): void {
+    const ui = document.getElementById('fantasmaUI');
+    if (!ui) return;
+    ui.style.display = 'flex';
+    const msg = document.getElementById('fantasmaMsg');
+    if (msg) {
+      const f = this.protagonista.cuerpoF;
+      const c = this.protagonista.cuerpoC;
+      const host = this.esHost ? ' · sigues siendo HOST' : '';
+      msg.textContent = `Cuerpo: ${f ?? '—'},${c ?? '—'}${host} · un vivo junto al cuerpo puede resucitarte con la pócima.`;
+    }
+  }
+
+  private ocultarOverlayFantasma(): void {
+    const ui = document.getElementById('fantasmaUI');
+    if (ui) ui.style.display = 'none';
+  }
+
+  /** F5: teletransporte aleatorio cerca de otro jugador. */
+  private teletransportarFantasma(): void {
+    if (this.protagonista.estadoVida !== 'fantasma') return;
+    if (this.esHost) {
+      this.resolverAccion(this.idLocalActivo, { tipo: 'fantasma_teleport' });
+    } else {
+      this.enviarMultiplayer({ tipo: 'action', accion: { tipo: 'fantasma_teleport' } });
+      this.registrarEventoLog('Buscando un jugador cercano...');
+    }
+  }
+
+  /** F5: abandono del fantasma con ranking guardado (y migración si era host). */
+  private abandonarFantasma(): void {
+    if (!confirm('¿Abandonar el mundo como fantasma? Tu ranking quedará guardado.')) return;
+    this.protagonista.estadoVida = 'fuera';
+    this.protagonista.estaVivo = false;
+    this.fueraDefinitivo.add(this.idLocalActivo);
+    this.publicarMetadatosHost(true);
+    this.enviarMultiplayer({
+      tipo: 'progreso', id: this.idLocalActivo,
+      oro: this.protagonista.inventario.oro ?? 0,
+      xp: this.protagonista.puntosExperiencia,
+      bajas: this.protagonista.bajas,
+    });
+    this.enviarMultiplayer({ tipo: 'fantasma_abandono', id: this.idLocalActivo });
+    this.salirDePartida();
   }
 
   /** Difunde la apariencia actual por todos los transportes activos (cambio en caliente). */
@@ -1110,6 +1258,7 @@ class Game implements IGame {
         if (!this.esHost || !this.networkHttp?.idPartidaActual) return;
         this.signaling!.updateHeartbeat(this.networkHttp.idPartidaActual, this.networkHttp.jugadoresRemotos.size + 1);
         void this.coordinador?.latirHost(this.connId, this.hostEpoch).then((ok) => {
+            diagMp('lease-http', { ok, hostId: this.connId, epoch: this.hostEpoch });
             if (!ok && this.esHost) this.degradarHost('lease rechazado');
         });
     }, INTERVALO_LATIDO_HOST_MS);
@@ -1336,6 +1485,35 @@ class Game implements IGame {
     if (!this.coordinador || !this.mpActivo || this.migracionEnCurso || this.reconectando) return;
     const estado = await this.coordinador.leerEstado();
     if (!estado) return;
+    // Una lectura de caché puede ser una foto parcial (p. ej. solo `jugadores`
+    // tras un `set(merge)` offline). No sirve para elegir ni degradar host.
+    if (estado.desdeCache) {
+      diagMpContar('vigilanciaCache');
+      return;
+    }
+    if (!estado.hostId) {
+      diagMp('estado-sin-host', {
+        epoch: estado.hostEpoch,
+        lastSeen: estado.lastSeen,
+        esHost: this.esHost,
+        jugadores: Object.keys(estado.jugadores).length,
+      });
+      if (this.esHost) {
+        const res = await this.coordinador.reclamarHost(
+          this.connId, this.protagonista.nombre, this.playerId, estado.hostEpoch,
+        );
+        if (res?.ok) {
+          this.hostEpoch = res.epoch;
+          this.network.hostEpoch = res.epoch;
+          if (this.networkHttp) this.networkHttp.hostEpoch = res.epoch;
+          diagMp('host-reparado', { epoch: res.epoch });
+        } else {
+          diagMp('host-reparar-fallo', { epoch: estado.hostEpoch });
+        }
+        return;
+      }
+      // Invitado: sin host en la sala, sigue el camino normal de elección.
+    }
     this.hostEpoch = Math.max(this.hostEpoch, estado.hostEpoch);
 
     if (estado.hostId === this.connId) {
@@ -1344,16 +1522,35 @@ class Game implements IGame {
     }
 
     if (this.esHost) {
+      diagMp('democion-host', {
+        hostLeido: estado.hostId,
+        connId: this.connId,
+        epoch: estado.hostEpoch,
+        lastSeen: estado.lastSeen,
+        edadMs: Date.now() - estado.lastSeen,
+      });
       this.degradarHost('la sala eligió otro host');
       return;
     }
 
     if (!hostVivo(estado, Date.now())) {
+      diagMp('host-caido', {
+        hostId: estado.hostId,
+        lastSeen: estado.lastSeen,
+        edadMs: Date.now() - estado.lastSeen,
+        jugadores: Object.keys(estado.jugadores).length,
+        hostConocido: this.hostConocidoId,
+      });
       await this.ejecutarEleccionHost(false);
       return;
     }
 
     if (this.hostConocidoId && estado.hostId !== this.hostConocidoId) {
+      diagMp('nuevo-host', {
+        hostAnterior: this.hostConocidoId,
+        hostLeido: estado.hostId,
+        epoch: estado.hostEpoch,
+      });
       await this.reconectarANuevoHost(estado.hostId);
       return;
     }
@@ -1629,6 +1826,7 @@ class Game implements IGame {
 
   private degradarHost(motivo: string): void {
     if (!this.esHost) return;
+    diagMp('degradar-host', { motivo, hostConocido: this.hostConocidoId, epoch: this.hostEpoch });
     this.esHost = false;
     this.network.esHost = false;
     if (this.networkHttp) this.networkHttp.esHost = false;
@@ -1727,25 +1925,10 @@ class Game implements IGame {
     return entidad?.playerId || id;
   }
 
-  private entidadDeJugador(playerId: string): any | null {
-    if (playerId === this.playerId) return this.protagonista;
-    for (const j of this.remotosActivos.values()) {
-      if (j.entidad?.playerId === playerId) return j.entidad;
-    }
-    return null;
-  }
-
-  private resultadoDeJugador(playerId: string): ResultadoPartida {
-    const e = this.entidadDeJugador(playerId);
-    if (e) {
-      const oro = e === this.protagonista
-        ? (this.protagonista.inventario.oro ?? 0)
-        : ((e as any).oro ?? 0);
-      return this.resultadoDeEntidad(e.nombre, oro, e.puntosExperiencia ?? 0, e.bajas ?? 0);
-    }
-    const p = this.progresoSala[playerId];
-    if (p) return this.resultadoDeEntidad(p.nick, p.oro, p.xp, p.bajas);
-    return this.resultadoDeEntidad(playerId, 0, 0, 0);
+  /** Entidad por conexión (`connId`): dos pestañas del mismo navegador son jugadores distintos. */
+  private entidadDeJugador(id: string): any | null {
+    if (id === this.idLocalActivo) return this.protagonista;
+    return this.remotosActivos.get(id)?.entidad ?? null;
   }
 
   /**
@@ -1753,14 +1936,16 @@ class Game implements IGame {
    * comparten `playerId` pero deben aparecer como jugadores distintos.
    */
   private resultadoDeConexion(id: string): ResultadoPartida {
-    const e = this.obtenerEntidadPorId(id);
+    const e = this.entidadDeJugador(id);
     if (e) {
       const oro = e === this.protagonista
         ? (this.protagonista.inventario.oro ?? 0)
         : ((e as any).oro ?? 0);
       return this.resultadoDeEntidad(e.nombre, oro, e.puntosExperiencia ?? 0, e.bajas ?? 0);
     }
-    return this.resultadoDeJugador(this.playerIdDeConexion(id));
+    const p = this.progresoSala[id];
+    if (p) return this.resultadoDeEntidad(p.nick, p.oro, p.xp, p.bajas);
+    return this.resultadoDeEntidad(id, 0, 0, 0);
   }
 
   private resultadosParciales(): ResultadoPartida[] {
@@ -1768,21 +1953,22 @@ class Game implements IGame {
     const cubiertos = new Set<string>();
 
     for (const id of this.roster ?? []) {
+      if (cubiertos.has(id)) continue;
       resultados.push(this.resultadoDeConexion(id));
-      cubiertos.add(this.playerIdDeConexion(id));
+      cubiertos.add(id);
     }
     for (const [id] of this.remotosActivos) {
-      if (cubiertos.has(this.playerIdDeConexion(id))) continue;
+      if (cubiertos.has(id)) continue;
       resultados.push(this.resultadoDeConexion(id));
-      cubiertos.add(this.playerIdDeConexion(id));
+      cubiertos.add(id);
     }
-    if (!cubiertos.has(this.playerId)) {
+    if (!cubiertos.has(this.idLocalActivo)) {
       resultados.push(this.resultadoDeConexion(this.idLocalActivo));
-      cubiertos.add(this.playerId);
+      cubiertos.add(this.idLocalActivo);
     }
     for (const p of Object.values(this.progresoSala)) {
       if (cubiertos.has(p.playerId)) continue;
-      resultados.push(this.resultadoDeJugador(p.playerId));
+      resultados.push(this.resultadoDeConexion(p.playerId));
       cubiertos.add(p.playerId);
     }
     return resultados.sort((a, b) => b.puntuacion - a.puntuacion);
@@ -1821,22 +2007,22 @@ class Game implements IGame {
     if (!forzar && ahora - this.ultimoPublicadoMeta < 4500) return;
     this.ultimoPublicadoMeta = ahora;
 
-    const capturar = (playerId: string, e: any): void => {
+    const capturar = (id: string, e: any): void => {
       if (!e) return;
       const oro = e === this.protagonista
         ? (this.protagonista.inventario.oro ?? 0)
         : ((e as any).oro ?? 0);
-      this.progresoSala[playerId] = {
-        playerId,
-        nick: e.nombre ?? playerId,
+      this.progresoSala[id] = {
+        playerId: id,
+        nick: e.nombre ?? id,
         oro,
         xp: e.puntosExperiencia ?? 0,
         bajas: e.bajas ?? 0,
       };
     };
-    capturar(this.playerId, this.protagonista);
+    capturar(this.idLocalActivo, this.protagonista);
     this.remotosActivos.forEach((j, id) => {
-      if (j.entidad) capturar(j.entidad.playerId || id, j.entidad);
+      if (j.entidad) capturar(id, j.entidad);
     });
 
     const jugadores: Record<string, ProgresoJugador> = {};
@@ -1874,6 +2060,7 @@ class Game implements IGame {
         if (!this.esHost || !this.network.idPartidaActual) return;
         this.firebase.updateHeartbeat(this.network.idPartidaActual, this.remotosActivos.size + 1);
         void this.coordinador?.latirHost(this.connId, this.hostEpoch).then((ok) => {
+            diagMp('lease-firebase', { ok, hostId: this.connId, epoch: this.hostEpoch });
             if (!ok && this.esHost) this.degradarHost('lease rechazado');
         });
     }, INTERVALO_LATIDO_HOST_MS);
@@ -1951,24 +2138,28 @@ class Game implements IGame {
 
   abandonarPartida() {
     if (confirm("¿Seguro que quieres abandonar la partida?")) {
-        if (this.esHost && this.mpActivo) {
-            this.enviarMultiplayer({ tipo: 'host_migration_trigger', reason: 'host_abandoned' });
-        }
-        this.detenerMotorJuego();
-        this.detenerIntervalosHttp();
-        this.detenerIntervalosFirebase();
-        this.detenerAutoAdmision();
-        this.detenerPresencia();
-        this.detenerVigilanciaHost();
-        void this.coordinador?.salirJugador(this.connId);
-        this.network.desconectarPeers();
-        if (this.networkHttp) this.networkHttp.desconectar();
-        this.signaling?.desconectar();
-        this.vaciarEspejoCasa();
-        // El ex-host vuelve como invitado: si reanuda, no crea una segunda autoridad.
-        if (this.esHost && this.mpActivo) this.marcarSesionComoInvitado();
-        window.location.reload();
+        this.salirDePartida();
     }
+  }
+
+  private salirDePartida(): void {
+    if (this.esHost && this.mpActivo) {
+        this.enviarMultiplayer({ tipo: 'host_migration_trigger', reason: 'host_abandoned' });
+    }
+    this.detenerMotorJuego();
+    this.detenerIntervalosHttp();
+    this.detenerIntervalosFirebase();
+    this.detenerAutoAdmision();
+    this.detenerPresencia();
+    this.detenerVigilanciaHost();
+    void this.coordinador?.salirJugador(this.connId);
+    this.network.desconectarPeers();
+    if (this.networkHttp) this.networkHttp.desconectar();
+    this.signaling?.desconectar();
+    this.vaciarEspejoCasa();
+    // El ex-host vuelve como invitado: si reanuda, no crea una segunda autoridad.
+    if (this.esHost && this.mpActivo) this.marcarSesionComoInvitado();
+    window.location.reload();
   }
 
   actualizarPanelAcciones() {
@@ -2260,6 +2451,31 @@ class Game implements IGame {
     }, 10000);
   }
 
+  /** Diagnóstico MP opt-in (`?diagmp=1`): resumen por segundo de red y lease. */
+  private iniciarDiagMp(): void {
+    if (!diagMpActivo() || this.diagMpTimer !== null) return;
+    this.diagMpTimer = window.setInterval(() => {
+      diagMpVolcar('resumen-1s', {
+        host: this.esHost,
+        mp: this.mpActivo,
+        rem: this.remotosActivos.size,
+        hostConocido: this.hostConocidoId,
+        epoch: this.hostEpoch,
+        bufferMax: this.bufferMaximoActivo(),
+        cola: this.colaAcciones.length,
+      });
+    }, 1000);
+  }
+
+  private bufferMaximoActivo(): number {
+    let maximo = 0;
+    this.remotosActivos.forEach((j: any) => {
+      const buffer = j?.dc?.bufferedAmount;
+      if (typeof buffer === 'number' && buffer > maximo) maximo = buffer;
+    });
+    return maximo;
+  }
+
   private esLadoAutoritativo(): boolean {
     return esLadoAutoritativo({
       modo: this.modoMultijugador,
@@ -2308,6 +2524,7 @@ class Game implements IGame {
     this.lobbyManager.hideConnecting();
     this.ui.ocultarLobby();
     this.iniciarDiagnostico();
+    this.iniciarDiagMp();
 
     // Mostrar menús
     document.getElementById('topMenu')!.style.display = 'block';
@@ -2875,10 +3092,12 @@ class Game implements IGame {
     this.listaDeEnemigos.forEach(e => { if (e.estaVivo) e.actualizarEstado(); });
 
     // Renderizado de Entidades
+    this.renderer.dibujarCuerpoFantasma(this.protagonista, offset, this.config, this.mapaLaberinto);
     this.renderer.dibujarEntidad(this.protagonista, offset, this.config, this.mapaLaberinto);
 
     this.remotosActivos.forEach(j => {
         if (j.entidad) {
+            this.renderer.dibujarCuerpoFantasma(j.entidad, offset, this.config, this.mapaLaberinto);
             this.renderer.dibujarEntidad(j.entidad, offset, this.config, this.mapaLaberinto);
         }
     });
@@ -2988,6 +3207,10 @@ class Game implements IGame {
       cancelAnimationFrame(this.gameLoopId);
       this.gameLoopId = null;
     }
+    if (this.diagMpTimer !== null) {
+      window.clearInterval(this.diagMpTimer);
+      this.diagMpTimer = null;
+    }
     this.motorIniciado = false;
   }
 
@@ -3049,6 +3272,9 @@ class Game implements IGame {
         vm: this.protagonista.vidaMaxima,
         cam: this.protagonista.estaCaminando,
         viva: this.protagonista.estaVivo,
+        ev: this.protagonista.estadoVida,
+        cf: this.protagonista.cuerpoF,
+        cc: this.protagonista.cuerpoC,
         nick: this.protagonista.nombre,
         clase: this.protagonista.clase,
         est: this.protagonista.estadoActual,
@@ -3065,6 +3291,9 @@ class Game implements IGame {
                 vm: j.entidad.vidaMaxima,
                 cam: j.entidad.estaCaminando,
                 viva: j.entidad.estaVivo,
+                ev: j.entidad.estadoVida,
+                cf: j.entidad.cuerpoF,
+                cc: j.entidad.cuerpoC,
                 nick: j.entidad.nombre,
                 clase: j.entidad.clase,
                 est: j.entidad.estadoActual,
@@ -3085,6 +3314,9 @@ class Game implements IGame {
         fr: e.frameActual
     })));
 
+    if (diagMpActivo()) {
+        diagMpContar('bytesSnapshotEnv', JSON.stringify(snapshot).length);
+    }
     this.enviarMultiplayer(snapshot);
   }
 
@@ -3137,9 +3369,21 @@ class Game implements IGame {
         if (slider) slider.value = this.config.targetZoom.toString();
     }
 
+    // F5: en MP la muerte no termina la partida; el jugador pasa a fantasma.
+    if (this.mpActivo) {
+        if (!this.protagonista.estaVivo && this.protagonista.estadoVida === 'vivo') {
+            this.convertirEnFantasma(this.protagonista);
+        }
+        this.remotosActivos.forEach((j: any) => {
+            if (j.entidad && !j.entidad.estaVivo && j.entidad.estadoVida === 'vivo') {
+                this.convertirEnFantasma(j.entidad);
+            }
+        });
+    }
+
     // Verificar UI de fin de juego
     const btnEmpezar = document.getElementById('btnEmpezar') as HTMLButtonElement;
-    if (!this.protagonista.estaVivo || this.juegoTerminado) {
+    if (this.juegoTerminado || (!this.mpActivo && !this.protagonista.estaVivo)) {
         if (document.getElementById('endGameUI')!.style.display !== 'flex') {
             const ui = document.getElementById('endGameUI')!;
             const title = document.getElementById('endGameTitle')!;
@@ -3151,10 +3395,6 @@ class Game implements IGame {
                 title.textContent = "HAS CAÍDO";
                 title.style.color = "#ff4444";
                 msg.textContent = "¿Quieres volver a intentarlo?";
-                if (this.esHost && this.mpActivo) {
-                    this.enviarMultiplayer({ tipo: 'host_migration_trigger', reason: 'death' });
-                    this.iniciarEleccionHost();
-                }
             } else {
                 title.textContent = "¡VICTORIA!";
                 title.style.color = "#28a745";
@@ -3467,60 +3707,69 @@ class Game implements IGame {
     );
   }
 
-  private estaEnCeldaSalida(id: string): boolean {
-    const e = this.obtenerEntidadPorId(id);
-    return !!e && !!this.mapaLaberinto[e.fila]?.[e.columna]?.esSalida;
-  }
-
-  /** F4 (host): congela el roster al primer jugador que llega y cierra cuando todos están fuera. */
+  /**
+   * F5 (host): roster de todos los que pasaron. La partida solo termina cuando
+   * todos están `fuera`; fantasmas y ausentes no cierran (no hay TTL en v1).
+   */
   private verificarFinPartida(): void {
     if (!this.esHost || !this.mpActivo || this.juegoTerminado) return;
     const ahora = Date.now();
     if (ahora - this.ultimoChequeoFin < 1000) return;
     this.ultimoChequeoFin = ahora;
 
-    const todos = [this.idLocalActivo, ...this.remotosActivos.keys()];
-    if (!this.roster && todos.some((id) => this.estaEnCeldaSalida(id))) {
-      this.roster = new Set(todos);
-      this.rosterJugadores = new Set(todos.map((id) => this.playerIdDeConexion(id)));
-      this.registrarEventoLog(`Roster congelado: ${this.roster.size} jugador(es).`);
-      this.publicarMetadatosHost(true);
-    }
-    if (!this.roster) return;
-
-    const fuera = (id: string): boolean => {
-      if (id !== this.idLocalActivo && !this.remotosActivos.has(id)) return true;
-      const e = this.obtenerEntidadPorId(id);
-      if (!e || !e.estaVivo) return true;
-      return !!this.mapaLaberinto[e.fila]?.[e.columna]?.esSalida;
+    if (!this.rosterJugadores) this.rosterJugadores = new Set();
+    let cambio = false;
+    const addPid = (pid: string | null | undefined): void => {
+      if (!pid) return;
+      if (!this.rosterJugadores!.has(pid)) {
+        this.rosterJugadores!.add(pid);
+        cambio = true;
+      }
     };
-    const esperando = [...this.roster].filter((id) => !fuera(id)).length;
-    this.esperaInfo = { total: this.roster.size, esperando };
-    this.enviarMultiplayer({ tipo: 'espera', total: this.roster.size, esperando });
-    if (esperando === 0) this.finPartida();
+    addPid(this.idLocalActivo);
+    this.remotosActivos.forEach((_j, id) => addPid(id));
+
+    const estados = new Map<string, EstadoRoster>();
+    for (const pid of this.rosterJugadores) {
+      if (this.fueraDefinitivo.has(pid)) {
+        estados.set(pid, 'fuera');
+        continue;
+      }
+      const e = this.entidadDeJugador(pid);
+      if (!e) {
+        estados.set(pid, 'ausente');
+        continue;
+      }
+      if (e.estadoVida === 'fuera') {
+        this.fueraDefinitivo.add(pid);
+        estados.set(pid, 'fuera');
+        continue;
+      }
+      if (e.estadoVida === 'fantasma') {
+        estados.set(pid, 'fantasma');
+        continue;
+      }
+      if (this.mapaLaberinto[e.fila]?.[e.columna]?.esSalida) {
+        estados.set(pid, 'fuera');
+        continue;
+      }
+      estados.set(pid, 'vivo');
+    }
+    const esperando = [...estados.values()].filter((s) => s === 'vivo' || s === 'fantasma').length;
+    this.esperaInfo = { total: estados.size, esperando };
+    this.enviarMultiplayer({ tipo: 'espera', total: estados.size, esperando });
+    if (cambio) {
+      this.publicarMetadatosHost(true);
+      this.registrarEventoLog(`Roster: ${estados.size} jugador(es).`);
+    }
+    if (debeTerminarPartida(estados.values())) this.finPartida();
   }
 
   private finPartida(): void {
-    if (!this.roster) return;
-    const resultados: ResultadoPartida[] = [];
-    const cubiertos = new Set<string>();
-
-    // Jugadores vivos por conexión (dos pestañas del mismo navegador no se funden).
-    for (const id of this.roster) {
-      resultados.push(this.resultadoDeConexion(id));
-      cubiertos.add(this.playerIdDeConexion(id));
-    }
-    // Roster/progreso persistido: solo los que ya no tienen conexión viva.
-    for (const pid of this.rosterJugadores ?? []) {
-      if (cubiertos.has(pid)) continue;
-      resultados.push(this.resultadoDeJugador(pid));
-      cubiertos.add(pid);
-    }
-    for (const p of Object.values(this.progresoSala)) {
-      if (cubiertos.has(p.playerId)) continue;
-      resultados.push(this.resultadoDeJugador(p.playerId));
-      cubiertos.add(p.playerId);
-    }
+    if (!this.rosterJugadores) return;
+    const ids = new Set<string>(this.rosterJugadores);
+    for (const p of Object.values(this.progresoSala)) ids.add(p.playerId);
+    const resultados = [...ids].map((id) => this.resultadoDeConexion(id));
     this.resultados = resultados.sort((a, b) => b.puntuacion - a.puntuacion);
     this.esperaInfo = null;
     this.juegoTerminado = true;
@@ -3848,7 +4097,8 @@ class Game implements IGame {
         console.warn(`resolverAccion: No se encontró entidad para ID ${id} · idLocalActivo=${this.idLocalActivo} · remotosActivos=[${[...this.remotosActivos.keys()].join(',')}]`);
         return;
     }
-    if (!entidad.estaVivo) {
+    const esFantasma = entidad.estadoVida === 'fantasma';
+    if (!entidad.estaVivo && !esFantasma) {
         console.warn(`resolverAccion: La entidad ${entidad.nombre} está muerta`);
         return;
     }
@@ -3861,6 +4111,27 @@ class Game implements IGame {
         : this.config.radioSim;
     const enBurbuja = this.enBurbujaSim(entidad.fila, entidad.columna, radioInteres);
 
+    // F5: el fantasma solo camina, se teletransporta o se detiene. El resto de
+    // acciones (loot, cofres, portales, salida, combate, habilidades) no aplica.
+    if (esFantasma && accion.tipo !== 'mover' && accion.tipo !== 'fantasma_teleport' && accion.tipo !== 'stop_walking') return;
+
+    // F5: el fantasma atraviesa muros y no interactúa con nada (ni loot, ni
+    // cofres, ni portales, ni salida, ni combate). Solo respeta límites y costuras.
+    if (accion.tipo === 'mover' && esFantasma) {
+        const sigFila = entidad.fila + accion.df;
+        const sigColumna = entidad.columna + accion.dc;
+        if (this.esLadoAutoritativo() && entidad === this.protagonista && this.intentarCruzarCostura(entidad, accion.df, accion.dc)) {
+            return;
+        }
+        if (sigFila < 0 || sigFila >= this.mapaLaberinto.length || sigColumna < 0 || sigColumna >= (this.mapaLaberinto[sigFila]?.length ?? 0)) return;
+        if (enBurbuja) {
+            entidad.fila = sigFila;
+            entidad.columna = sigColumna;
+            entidad.estaCaminando = true;
+        }
+        return;
+    }
+
     if (accion.tipo === 'mover') {
         const { df, dc } = accion;
         const sigFila = entidad.fila + df;
@@ -3872,11 +4143,12 @@ class Game implements IGame {
             // 1. Verificar colisión con otros jugadores
             let jugadorChocado: any = null;
 
-            if (id !== this.idLocalActivo && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
+            const bloquea = (e: any) => !!e && e.estaVivo && e.estadoVida !== 'fantasma';
+            if (id !== this.idLocalActivo && bloquea(this.protagonista) && this.protagonista.fila === sigFila && this.protagonista.columna === sigColumna) {
                 jugadorChocado = this.protagonista;
             } else {
                 this.remotosActivos.forEach((v: any, k: string) => {
-                    if (k !== id && v.entidad && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
+                    if (k !== id && bloquea(v.entidad) && v.entidad.fila === sigFila && v.entidad.columna === sigColumna) {
                         jugadorChocado = v.entidad;
                     }
                 });
@@ -3966,7 +4238,6 @@ class Game implements IGame {
             if (enBurbuja) {
                 entidad.fila = sigFila;
                 entidad.columna = sigColumna;
-                console.log(`resolverAccion: ${entidad.nombre} movido a (${sigFila}, ${sigColumna})`);
                 entidad.estaCaminando = true;
                 (entidad as any).ultimaCasillaAtacada = null;
                 this.recogerDropsEn(sigFila, sigColumna, entidad);
@@ -4044,6 +4315,48 @@ class Game implements IGame {
         if (entidad !== this.protagonista || enBurbuja) this.lanzarWhirlwind(entidad, false);
     } else if (accion.tipo === 'freeze') {
         if (entidad !== this.protagonista || enBurbuja) this.lanzarCongelar(entidad, false);
+    } else if (accion.tipo === 'fantasma_teleport') {
+        if (!this.esHost || !esFantasma) return;
+        const jugadores: any[] = [];
+        const ocupadas = new Set<string>();
+        const add = (e: any) => {
+            if (!e || e === entidad || e.estadoVida === 'fuera' || !e.estaVivo && e.estadoVida !== 'fantasma') return;
+            jugadores.push({ fila: e.fila, columna: e.columna });
+            if (e.estadoVida === 'vivo') ocupadas.add(`${e.fila},${e.columna}`);
+        };
+        add(this.protagonista);
+        this.remotosActivos.forEach((j: any) => add(j.entidad));
+        const dims = this.dimsActivo();
+        const destino = elegirDestinoTeletransporte({ jugadores, filas: dims.filas, columnas: dims.columnas, ocupadas });
+        if (!destino) {
+            this.registrarEventoLog('No hay ningún jugador cerca al que acudir.');
+            return;
+        }
+        entidad.fila = destino.fila;
+        entidad.columna = destino.columna;
+        entidad.visualFila = destino.fila;
+        entidad.visualColumna = destino.columna;
+        entidad.estaCaminando = false;
+        if (entidad === this.protagonista) {
+            this.enviarMultiplayer({ tipo: 'posicion', f: entidad.fila, c: entidad.columna, cam: false, id: this.idLocalActivo, nick: this.protagonista.nombre, hp: 0, maxHp: this.protagonista.vidaMaxima, ev: 'fantasma', cf: entidad.cuerpoF, cc: entidad.cuerpoC });
+            this.mostrarOverlayFantasma();
+        } else {
+            this.enviarMultiplayer({ tipo: 'force_teleport', id, f: entidad.fila, c: entidad.columna, nodo: this.gestorMundo.nodoActivoId, fantasma: true });
+        }
+        this.registrarEventoLog(`${entidad.nombre} se desvanece y reaparece junto a un jugador.`);
+    } else if (accion.tipo === 'resucitar') {
+        if (!this.esHost) return;
+        const objetivo = this.obtenerEntidadPorId(accion.objetivoId);
+        if (!objetivo || objetivo === entidad || objetivo.estadoVida !== 'fantasma') return;
+        if (entidad.estadoVida !== 'vivo' || !entidad.estaVivo) return;
+        const cf = objetivo.cuerpoF ?? objetivo.fila;
+        const cc = objetivo.cuerpoC ?? objetivo.columna;
+        if (!adyacenteAlCuerpo(entidad, { fila: cf, columna: cc })) return;
+        const hp = calcularVidaResurreccion(objetivo.vidaMaxima);
+        const por = this.playerIdDeConexion(id);
+        this.resucitarEntidad(objetivo, por, hp);
+        this.enviarMultiplayer({ tipo: 'resurreccion', id: accion.objetivoId, f: objetivo.fila, c: objetivo.columna, hp, por });
+        this.registrarEventoLog(`${entidad.nombre} resucita a ${objetivo.nombre}.`);
     } else if (accion.tipo === 'stop_walking') {
         if (entidad !== this.protagonista || enBurbuja) entidad.estaCaminando = false;
     }
@@ -4342,6 +4655,7 @@ class Game implements IGame {
 
   /** Envía a los peers por el transporte multijugador activo (Firebase o HTTP). */
   private enviarMultiplayer(msg: any, exceptId: string | null = null): void {
+    if (diagMpActivo()) diagMpContar(`env:${msg?.tipo ?? '?'}`, 1);
     if (this.mpActivo) this.network.enviarMensaje(msg, exceptId);
     if (this.networkHttp && this.networkHttp.multiplayerActivo) this.networkHttp.enviarMensaje(msg, exceptId);
   }
@@ -4395,6 +4709,10 @@ class Game implements IGame {
     if (!this.aplicarDeltaAutorizado(delta)) return;
     const oro = oroDeCofre(tipo);
     this.protagonista.recibirBotin([{ id: 'oro', cantidad: oro }]);
+    if (cofreSueltaPocimaResurreccion()) {
+      this.protagonista.recibirBotin([{ id: 'pocima_resurreccion', cantidad: 1 }]);
+      this.registrarEventoLog('¡El cofre esconde una pócima de resurrección!');
+    }
     this.renderer.invalidarCacheLaberinto();
     this.enviarMultiplayer({ tipo: 'cofre_abierto', f, c, tick: delta.tick });
     this.guardarSesionActual();
@@ -4681,7 +4999,6 @@ class Game implements IGame {
     // un paso remoto conmutaba el nodo activo global con el host quieto
     // (niebla negra, fundido y conmutaciones en ping-pong que crasheaban el loop).
     if (this.esLadoAutoritativo() && entidad !== this.protagonista) {
-        this.registrarEventoLog(`${entidad?.nombre ?? 'Entidad'} pisó el portal; el anfitrión debe cruzar primero.`);
         return;
     }
     const conector = this.gestorMundo.nodoActivoId
@@ -5000,6 +5317,7 @@ class Game implements IGame {
             l.enCombateCon = null;
             if (o === this.protagonista) {
                 if (!this.mpActivo) this.juegoTerminado = true;
+                else this.convertirEnFantasma(o);
             } else if (l === this.protagonista) {
                 this.protagonista.puntosExperiencia += o.puntosExperiencia;
                 this.protagonista.bajas += 1;
@@ -5121,6 +5439,14 @@ class Game implements IGame {
                             // Por ahora usamos un umbral de 1.1 tiles para permitir predicción local.
                             const dist = Math.sqrt(Math.pow(this.protagonista.fila - entData.f, 2) + Math.pow(this.protagonista.columna - entData.c, 2));
                             if (dist > 1.1) {
+                                diagMp('snap-back', {
+                                    dist,
+                                    localF: this.protagonista.fila,
+                                    localC: this.protagonista.columna,
+                                    hostF: entData.f,
+                                    hostC: entData.c,
+                                });
+                                diagMpContar('snapBacks', 1);
                                 this.protagonista.fila = entData.f;
                                 this.protagonista.columna = entData.c;
                             }
@@ -5129,6 +5455,10 @@ class Game implements IGame {
                             this.protagonista.vidaMaxima = entData.vm;
                             this.protagonista.estaVivo = entData.viva;
                             this.protagonista.estaCaminando = entData.cam;
+                            if (entData.ev !== undefined) this.protagonista.estadoVida = entData.ev;
+                            else if (entData.viva === false && this.mpActivo) this.protagonista.estadoVida = 'fantasma';
+                            this.protagonista.cuerpoF = entData.cf ?? null;
+                            this.protagonista.cuerpoC = entData.cc ?? null;
                         } else {
                             let rem = this.remotosActivos.get(entData.id);
                             if (!rem) {
@@ -5144,6 +5474,10 @@ class Game implements IGame {
                                 rem.entidad.vidaMaxima = entData.vm;
                                 rem.entidad.estaVivo = entData.viva;
                                 rem.entidad.estaCaminando = entData.cam;
+                                if (entData.ev !== undefined) rem.entidad.estadoVida = entData.ev;
+                                else if (entData.viva === false && this.mpActivo) rem.entidad.estadoVida = 'fantasma';
+                                rem.entidad.cuerpoF = entData.cf ?? null;
+                                rem.entidad.cuerpoC = entData.cc ?? null;
                                 rem.entidad.nombre = entData.nick;
                                 if (entData.clase) rem.entidad.clase = entData.clase;
                                 if (entData.est) rem.entidad.estadoActual = entData.est;
@@ -5467,7 +5801,7 @@ class Game implements IGame {
                 this.protagonista.estaCaminando = false;
                 this.protagonista.estadoActual = 'idle';
                 this.colaAcciones = this.colaAcciones.filter((a) => a.id !== this.idLocalActivo);
-                this.registrarEventoLog("¡Has sido llamado a la guardia!");
+                this.registrarEventoLog(msg.fantasma ? 'El fantasma se desvanece y reaparece junto a un jugador.' : "¡Has sido llamado a la guardia!");
             }
             break;
         case 'request_guard_teleport':
@@ -5476,6 +5810,25 @@ class Game implements IGame {
                 if (emisorEntidad) this.teletransportarAliados(emisorEntidad, false);
             }
             break;
+        case 'fantasma_abandono': {
+            this.fueraDefinitivo.add(idSujeto);
+            const e = this.entidadDeJugador(idSujeto);
+            if (e) { e.estadoVida = 'fuera'; e.estaVivo = false; }
+            if (this.esHost) this.enviarMultiplayer(msg, idEmisor);
+            break;
+        }
+        case 'resurreccion': {
+            const target = msg.id === this.idLocalActivo ? this.protagonista : this.remotosActivos.get(msg.id)?.entidad;
+            if (target && target.estadoVida === 'fantasma') {
+                this.resucitarEntidad(target, msg.por ?? 'otro jugador', msg.hp);
+            }
+            if (msg.por === this.playerId && msg.id !== this.idLocalActivo) {
+                this.protagonista.consumirItem('pocima_resurreccion', 1);
+                this.lobbyManager.renderEquipo();
+                this.guardarSesionActual();
+            }
+            break;
+        }
         case 'posicion':
             const jPos = this.remotosActivos.get(idSujeto);
             if (jPos && jPos.entidad) {
@@ -5487,6 +5840,10 @@ class Game implements IGame {
                     jPos.entidad.vidaMaxima = msg.maxHp;
                     jPos.entidad.estaVivo = msg.hp > 0;
                 }
+                if (msg.ev !== undefined) jPos.entidad.estadoVida = msg.ev;
+                else if (msg.hp === 0) jPos.entidad.estadoVida = 'fantasma';
+                jPos.entidad.cuerpoF = msg.cf ?? jPos.entidad.cuerpoF ?? null;
+                jPos.entidad.cuerpoC = msg.cc ?? jPos.entidad.cuerpoC ?? null;
                 if (msg.est !== undefined) {
                     jPos.entidad.estadoActual = msg.est;
                 }
@@ -5539,9 +5896,8 @@ class Game implements IGame {
                 (jProg.entidad as any).oro = msg.oro;
                 jProg.entidad.puntosExperiencia = msg.xp;
                 jProg.entidad.bajas = msg.bajas;
-                const pid = (jProg.entidad as any).playerId || idSujeto;
-                this.progresoSala[pid] = {
-                    playerId: pid,
+                this.progresoSala[idSujeto] = {
+                    playerId: idSujeto,
                     nick: jProg.entidad.nombre,
                     oro: msg.oro ?? 0,
                     xp: msg.xp ?? 0,
@@ -5560,6 +5916,7 @@ class Game implements IGame {
             this.resultados = msg.resultados ?? [];
             this.esperaInfo = null;
             this.juegoTerminado = true;
+            this.ocultarOverlayFantasma();
             break;
         case 'host_migration_trigger':
             this.registrarEventoLog(`Iniciando migración de Host (Razón: ${msg.reason})`);

@@ -360,6 +360,7 @@ export class Renderer {
     this.ctx.save();
 
     const esNPC = entidad.tipo !== undefined;
+    const esFantasma = !esNPC && (entidad as any).estadoVida === 'fantasma';
     const clase = entidad.clase || entidad.tipo?.toLowerCase() || 'guerrero';
     const genero = !esNPC && aparienciaEfectiva(clase, entidad.apariencia).genero === 'f' ? 'player_f' : 'player';
     const prefix = esNPC ? 'npc' : genero;
@@ -369,7 +370,12 @@ export class Renderer {
     // Cadena de fallback visual: preferir siempre un sprite real sobre figuras geométricas
     let keyADibujar: string | null = null;
 
-    if (entidad.estaVivo) {
+    if (esFantasma) {
+        const idleKey = `${prefix}_${clase}_idle`;
+        if (this.spriteManager.obtenerSprite(idleKey)) keyADibujar = idleKey;
+        else if (this.spriteManager.obtenerSprite(`${idleKey}_0`)) keyADibujar = `${idleKey}_0`;
+        else if (this.spriteManager.obtenerSprite(`${prefix}_${clase}`)) keyADibujar = `${prefix}_${clase}`;
+    } else if (entidad.estaVivo) {
         if (this.spriteManager.obtenerSprite(spriteKey)) {
             keyADibujar = spriteKey;
         } else if (this.spriteManager.obtenerSprite(keyBase)) {
@@ -395,6 +401,11 @@ export class Renderer {
         }
     }
 
+    if (esFantasma) {
+        this.ctx.globalAlpha = 0.45;
+        this.ctx.filter = 'sepia(1) hue-rotate(160deg) saturate(2) brightness(1.2)';
+    }
+
     let dibujado = false;
     if (keyADibujar) {
         // Avatar personalizado: variante tineada si la apariencia no es el defecto
@@ -408,7 +419,9 @@ export class Renderer {
     }
 
     if (!dibujado) {
-        if (!entidad.estaVivo) {
+        if (esFantasma) {
+            this.dibujarJugadorFallback(entidad, x, y, tamEntidad);
+        } else if (!entidad.estaVivo) {
             this.dibujarTumba(x, y, tamEntidad);
         } else {
             if (esNPC) {
@@ -447,7 +460,8 @@ export class Renderer {
   private dibujarEtiquetaNombre(entidad: IEntidadRPG, x: number, y: number, tamanoCelda: number) {
       const escala = tamanoCelda * 0.6;
       this.ctx.save();
-      this.ctx.fillStyle = entidad.estaVivo ? (entidad.color || '#fff') : '#555';
+      const esFantasma = (entidad as any).estadoVida === 'fantasma';
+      this.ctx.fillStyle = esFantasma ? '#7fd4ff' : (entidad.estaVivo ? (entidad.color || '#fff') : '#555');
       this.ctx.font = 'bold 10px monospace';
       this.ctx.textAlign = 'center';
       const nombre = (entidad as any).esHost ? `[HOST] ${entidad.nombre}` : entidad.nombre;
@@ -458,6 +472,33 @@ export class Renderer {
   /**
    * Dibuja una lápida en la posición indicada.
    */
+  /** F5: marca el cuerpo de un fantasma (ancla de resurrección). */
+  dibujarCuerpoFantasma(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig, mapaLaberinto?: Celda[][]) {
+    if ((entidad as any).estadoVida !== 'fantasma') return;
+    const f = (entidad as any).cuerpoF;
+    const c = (entidad as any).cuerpoC;
+    if (f == null || c == null) return;
+    const { colOffset, filaOffset } = offset;
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y, TIEMPO_DESVANECIMIENTO_NIEBLA, vistaDebugActivada } = config;
+    if (f < filaOffset - 1 || f >= filaOffset + CELDAS_VISIBLES_Y + 1 ||
+        c < colOffset - 1 || c >= colOffset + CELDAS_VISIBLES_X + 1) return;
+    if (!vistaDebugActivada && mapaLaberinto) {
+      const celda = mapaLaberinto[f]?.[c];
+      if (!celda || celda.ultimoAvistamiento === 0 || Date.now() - celda.ultimoAvistamiento > TIEMPO_DESVANECIMIENTO_NIEBLA) return;
+    }
+    const x = (c - colOffset) * TAMANO_CELDA + TAMANO_CELDA / 2;
+    const y = (f - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP + TAMANO_CELDA / 2;
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.5;
+    this.dibujarTumba(x, y + TAMANO_CELDA * 0.15, TAMANO_CELDA * 0.8);
+    this.ctx.globalAlpha = 0.9;
+    this.ctx.fillStyle = '#7fd4ff';
+    this.ctx.font = 'bold 9px monospace';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText(`cuerpo de ${entidad.nombre}`, x, y - TAMANO_CELDA * 0.45);
+    this.ctx.restore();
+  }
+
   private dibujarTumba(x: number, y: number, tamanoCelda: number) {
     this.ctx.fillStyle = '#888';
     this.ctx.strokeStyle = '#444';
@@ -614,6 +655,7 @@ export class Renderer {
    * Dibuja la barra de vida sobre una entidad.
    */
   dibujarBarraVida(entidad: IEntidadRPG, offset: CameraOffset, config: GameConfig, mapaLaberinto?: Celda[][], preCalcX?: number, preCalcY?: number, tamanoEntidad: number = config.TAMANO_CELDA) {
+    if ((entidad as any).estadoVida === 'fantasma') return;
     const { colOffset, filaOffset } = offset;
     const { TAMANO_CELDA, ALTO_UI_TOP, vistaDebugActivada, TIEMPO_DESVANECIMIENTO_NIEBLA } = config;
 

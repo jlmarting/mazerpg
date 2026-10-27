@@ -336,7 +336,7 @@
     </div>
 
     <div id="equipoModal" class="lobby-modal-overlay z-50">
-        <div class="character-modal-box">
+        <div class="character-modal-box equipo-modal-box">
             <h2>EQUIPO Y MOCHILA</h2>
             <canvas id="equipoPreview" class="avatar-preview" width="64" height="64" aria-label="Vista previa del avatar equipado"></canvas>
             <div id="equipoStats" class="equipo-stats"></div>
@@ -478,6 +478,15 @@
         <div style="display: flex; gap: 20px; margin-top: 20px;">
             <button id="btnRespawn" style="padding: 10px 20px; cursor: pointer; background: #28a745; color: white; border: none; font-family: monospace; font-weight: bold;">REINTENTAR / EMPEZAR DE NUEVO</button>
             <button id="btnSalir" style="padding: 10px 20px; cursor: pointer; background: #6c757d; color: white; border: none; font-family: monospace; font-weight: bold;">SALIR</button>
+        </div>
+    </div>
+
+    <div id="fantasmaUI" style="position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px; background: rgba(10, 20, 30, 0.88); border: 1px solid #5ad; border-radius: 8px; box-shadow: 0 4px 18px rgba(0,0,0,0.6); z-index: 25; font-family: monospace; color: #bfe9ff; text-align: center; max-width: 92vw;">
+        <div style="font-weight: bold; letter-spacing: 2px; color: #7fd4ff;">FANTASMA</div>
+        <div id="fantasmaMsg" style="font-size: 11px; color: #cde;">Cuerpo: —</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+            <button id="btnFantasmaTeleport" style="padding: 6px 10px; cursor: pointer; background: #1b6ca8; color: white; border: none; border-radius: 4px; font-family: monospace; font-weight: bold; pointer-events: auto;">TELETRANSPORTARSE</button>
+            <button id="btnFantasmaAbandonar" style="padding: 6px 10px; cursor: pointer; background: #dc3545; color: white; border: none; border-radius: 4px; font-family: monospace; font-weight: bold; pointer-events: auto;">ABANDONAR</button>
         </div>
     </div>
 

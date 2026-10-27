@@ -6,6 +6,10 @@ function assert(condicion: boolean, mensaje: string): void {
 
 assert(TABLA_BOTIN.reduce((s, e) => s + e.peso, 0) === 100, 'los pesos suman 100');
 
+const resurreccion = TABLA_BOTIN.find((e) => e.id === 'pocima_resurreccion');
+if (!resurreccion) throw new Error('la tabla incluye la pócima de resurrección');
+assert(resurreccion.peso === 2, 'la pócima de resurrección es rara (peso 2)');
+
 // rng=0 → primer item (flecha) con cantidad mínima
 const b0 = elegirBotin(() => 0, 1);
 assert(b0[0].id === 'flecha', 'rng 0 → flecha');

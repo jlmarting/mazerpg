@@ -116,6 +116,9 @@ j4.importarInventario(null);
 assert(j4.equipo.cabeza === 'casco_hierro', 'payload inválido no altera el estado');
 j4.importarInventario({ formato: 1, puesto: { cabeza: 'no_existe' }, bulto: ['basura'], mochila: { basura: 2 } });
 assert(j4.equipo.cabeza === null && j4.bulto.length === 0, 'payload saneado se aplica');
+assert(j4.inventario.mapa === 1, 'una sesión antigua recibe el mapa al importar');
+j4.consumirItem('mapa');
+assert(j4.inventario.mapa === 1, 'el mapa no se consume');
 
 // --- Pico: cavar requiere empuñarlo; −1 al daño ---
 const j5 = new Jugador('Pico');

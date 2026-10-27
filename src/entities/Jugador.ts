@@ -23,7 +23,7 @@ export class Jugador extends EntidadRPG {
   personajeCreado: boolean = false;
   /** Equipo puesto (7 ranuras) e inventario (pilas de consumibles/materiales). */
   equipo: Equipo = equipoVacio();
-  inventario: Inventario = { pocion_vida: 3, flecha: 20 };
+  inventario: Inventario = { pocion_vida: 3, flecha: 20, mapa: 1 };
   /** Equipo poseído pero no puesto (bulto del loot). Se llena al recoger botín. */
   bulto: string[] = ['casco_hierro', 'daga'];
   /** Vida máxima sin equipo; `vidaMaxima` = base + bonus de vida del equipo. */
@@ -174,10 +174,19 @@ export class Jugador extends EntidadRPG {
     this.equipo = g.puesto;
     this.bulto = g.bulto;
     this.inventario = g.mochila;
+    this.asegurarHerramientasBase();
     this.aplicarEquipo();
   }
 
+  /** Herramientas permanentes que deben existir aunque la sesión sea antigua. */
+  asegurarHerramientasBase(): void {
+    if ((this.inventario.mapa ?? 0) <= 0) {
+      this.inventario = { ...this.inventario, mapa: 1 };
+    }
+  }
+
   consumirItem(id: string, cantidad: number = 1): void {
+    if (ITEMS[id]?.tipo === 'herramienta') return;
     this.inventario = consumir(this.inventario, id, cantidad);
   }
 
@@ -221,7 +230,7 @@ export class Jugador extends EntidadRPG {
   }
 
   intentarMover(deltaFila: number, deltaColumna: number, game: IGame): boolean {
-    if (!this.estaVivo) return false;
+    if (!this.estaVivo && this.estadoVida !== 'fantasma') return false;
 
     const ahora = Date.now();
     const costePaso = 100 * (1 + this.penalizacion().movimiento);

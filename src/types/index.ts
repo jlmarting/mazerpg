@@ -41,6 +41,9 @@ export interface IEntidadRPG {
     vidaActual: number;
     vidaMaxima: number;
     estaVivo: boolean;
+    estadoVida?: 'vivo' | 'fantasma' | 'fuera';
+    cuerpoF?: number | null;
+    cuerpoC?: number | null;
     estaCaminando: boolean;
     enCombateCon: IEntidadRPG | null;
     puntosExperiencia: number;

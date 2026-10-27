@@ -17,6 +17,11 @@ export abstract class EntidadRPG implements IEntidadRPG {
   vidaMaxima: number;
   vidaActual: number;
   estaVivo: boolean;
+  /** F5: vivo → fantasma al morir en MP; fuera al abandonar/salir. */
+  estadoVida: 'vivo' | 'fantasma' | 'fuera' = 'vivo';
+  /** Celda del cuerpo, ancla de la resurrección. */
+  cuerpoF: number | null = null;
+  cuerpoC: number | null = null;
   estaCaminando: boolean;
   ultimaVezMovido: number;
   enCombateCon: EntidadRPG | null;
@@ -71,6 +76,7 @@ export abstract class EntidadRPG implements IEntidadRPG {
   }
 
   recibirDano(cantidad: number, _atacante?: EntidadRPG | null): number {
+    if (this.estadoVida === 'fantasma' || this.estadoVida === 'fuera') return 0;
     this.vidaActual = Math.max(0, this.vidaActual - cantidad);
     if (this.vidaActual <= 0) {
       this.estaVivo = false;

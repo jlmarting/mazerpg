@@ -1,4 +1,4 @@
-import { puedeAbrirCofre, oroDeCofre, llaveDeCofre, cofreSueltaPocimaResurreccion, PROBABILIDAD_POCIMA_RESURRECCION } from './tesoros';
+import { puedeAbrirCofre, oroDeCofre, llaveDeCofre, cofreSueltaPocimaResurreccion, textoRecolectadoCofre, PROBABILIDAD_POCIMA_RESURRECCION } from './tesoros';
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg);
@@ -12,6 +12,8 @@ assert(puedeAbrirCofre('hierro', { llave_hierro: 1 }) === true, 'con su llave se
 assert(puedeAbrirCofre('acero', { llave_acero: 3 }) === true, 'la llave es reutilizable');
 assert(puedeAbrirCofre('titanio', { llave_titanio: 1 }) === true, 'la llave de titanio abre su cofre');
 assert(oroDeCofre('titanio') === 100, 'cofre de titanio 100 monedas');
+assert(textoRecolectadoCofre(10, false) === '+10 oro', 'texto de cofre solo oro');
+assert(textoRecolectadoCofre(30, true) === '+30 oro · +1 pócima', 'texto de cofre con pócima');
 
 assert(PROBABILIDAD_POCIMA_RESURRECCION === 0.08, 'probabilidad de pócima en cofre 8 %');
 assert(cofreSueltaPocimaResurreccion(() => 0) === true, 'rng 0 suelta pócima');

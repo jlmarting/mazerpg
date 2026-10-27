@@ -29,7 +29,7 @@ import { generarNodo } from './world/generadores';
 import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
-import { LLAVE_POR_COFRE, oroDeCofre, puedeAbrirCofre, cofreSueltaPocimaResurreccion } from './core/tesoros';
+import { LLAVE_POR_COFRE, oroDeCofre, puedeAbrirCofre, cofreSueltaPocimaResurreccion, textoRecolectadoCofre } from './core/tesoros';
 import { adyacenteAlCuerpo, calcularVidaResurreccion, debeTerminarPartida, elegirDestinoTeletransporte, type EstadoRoster } from './core/fantasma';
 import { reensamblarPartes as reensamblarPartesQr } from './core/qrPartes';
 import { calcularPuntuacion, type ResultadoPartida } from './core/puntuacion';
@@ -4708,12 +4708,14 @@ class Game implements IGame {
     const delta = this.construirDelta(f, c, { tipo: 'cofre', abierto: true }, id);
     if (!this.aplicarDeltaAutorizado(delta)) return;
     const oro = oroDeCofre(tipo);
+    const conPocima = cofreSueltaPocimaResurreccion();
     this.protagonista.recibirBotin([{ id: 'oro', cantidad: oro }]);
-    if (cofreSueltaPocimaResurreccion()) {
+    if (conPocima) {
       this.protagonista.recibirBotin([{ id: 'pocima_resurreccion', cantidad: 1 }]);
       this.registrarEventoLog('¡El cofre esconde una pócima de resurrección!');
     }
     this.renderer.invalidarCacheLaberinto();
+    this.ui.crearTextoFlotanteEnCelda(f, c, textoRecolectadoCofre(oro, conPocima), '#ffd700', this);
     this.enviarMultiplayer({ tipo: 'cofre_abierto', f, c, tick: delta.tick });
     this.guardarSesionActual();
     this.registrarEventoLog(`¡Cofre de ${tipo} abierto! +${oro} monedas.`);

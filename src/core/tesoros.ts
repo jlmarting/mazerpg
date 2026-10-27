@@ -29,6 +29,11 @@ export function oroDeCofre(tipo: TipoCofre): number {
   return ORO_POR_COFRE[tipo];
 }
 
+/** Texto ascendente con lo recogido al abrir un cofre. */
+export function textoRecolectadoCofre(oro: number, pocima: boolean): string {
+  return pocima ? `+${oro} oro · +1 pócima` : `+${oro} oro`;
+}
+
 /** La llave es reutilizable: basta con tener al menos una. */
 export function puedeAbrirCofre(tipo: TipoCofre, inventario: Record<string, number>): boolean {
   return (inventario[llaveDeCofre(tipo)] ?? 0) > 0;

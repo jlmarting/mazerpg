@@ -1,5 +1,6 @@
 import { Celda } from './Celda';
 import type { LadoCostura } from './costura';
+import type { PoblacionSpec } from './poblacion';
 
 export const FMT_DELTA = 1;
 
@@ -20,6 +21,8 @@ export interface NodoMundo {
   gen: GenSpec;
   celdas: Celda[][];
   ownerId: string | null;
+  /** Receta de población del nodo (opcional; ausente ⇒ derivada del seed). */
+  poblacion?: PoblacionSpec;
 }
 
 export interface ConectorMundo {

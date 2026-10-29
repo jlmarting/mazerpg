@@ -315,6 +315,59 @@ function prepararCeldaCostura(
   return objetivo;
 }
 
+/**
+ * Costura continua (B): además del conector canónico, registra un conector por
+ * cada fila del borde este/oeste donde AMBOS lados son transitables. Así se
+ * puede franquear en toda la franja de contacto con suelo en ambos nodos.
+ */
+function sembrarCosturaContinuaEste(
+  gestor: GestorMundo,
+  anterior: NodoMundo,
+  nodo: NodoMundo,
+  idBase: string,
+  filaCanonica: number,
+): void {
+  const filas = Math.min(anterior.filas, nodo.filas);
+  const colO = anterior.columnas - 1;
+  // El transform relativo del destino fija el desfase de filas entre rejillas;
+  // ignorarlo producía conectores con objetivo inválido (cruce roto).
+  const dfRel = nodo.transform.df;
+  for (let r = 0; r < filas; r++) {
+    if (r === filaCanonica) continue;
+    const filaD = r - dfRel;
+    if (filaD < 0 || filaD >= nodo.filas) continue;
+    const cO = anterior.celdas[r]?.[colO];
+    const cD = nodo.celdas[filaD]?.[0];
+    if (!cO || !cD || !cO.esTransitable || !cD.esTransitable) continue;
+    const idIda = `${idBase}-c${r}`;
+    if (gestor.conectores.has(idIda)) continue;
+    gestor.registrarConector({
+      id: idIda,
+      tipo: 'salida',
+      nodoOrigenId: anterior.id,
+      filaO: r,
+      columnaO: colO,
+      nodoDestinoId: nodo.id,
+      filaD,
+      columnaD: 0,
+      housingOwnerId: null,
+      lado: 'este',
+    });
+    gestor.registrarConector({
+      id: `${idIda}-vuelta`,
+      tipo: 'entrada',
+      nodoOrigenId: nodo.id,
+      filaO: filaD,
+      columnaO: 0,
+      nodoDestinoId: anterior.id,
+      filaD: r,
+      columnaD: colO,
+      housingOwnerId: null,
+      lado: 'oeste',
+    });
+  }
+}
+
 function hashCadena(texto: string): number {
   let hash = 2166136261;
   for (let i = 0; i < texto.length; i++) {
@@ -423,6 +476,7 @@ export function sembrarMundoBase(params: {
     lado: 'oeste',
   };
   gestor.registrarConector(conectorInterVuelta);
+  sembrarCosturaContinuaEste(gestor, raiz, hijo, conectorInter.id, celdaOrigen.fila);
 
   const idCasa = `casa-${idLocal}`;
   let casa = gestor.mundo.get(idCasa) ?? null;
@@ -566,6 +620,7 @@ export function sembrarCadenaZonas(
         lado: 'oeste',
       };
       gestor.registrarConector(vuelta);
+      sembrarCosturaContinuaEste(gestor, anterior, nodo, idIda, origen.fila);
       filaEntrada = destino.fila;
     } else {
       const ida = gestor.conectores.get(idIda)!;

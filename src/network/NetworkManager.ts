@@ -72,6 +72,13 @@ export class NetworkManager {
      * @param objeto - Objeto que será serializado a JSON y enviado
      * @param exceptId - Opcional: ID de jugador al que NO se enviará el mensaje
      */
+    vigilarIce(pc: RTCPeerConnection, idRemoto: string, game: IGame) {
+        pc.oniceconnectionstatechange = () => {
+            const estado = pc.iceConnectionState;
+            game.registrarEventoLog?.(`ICE ${idRemoto}: ${estado}`);
+        };
+    }
+
     enviarMensaje(objeto: any, exceptId: string | null = null) {
         const data = JSON.stringify(objeto);
         this.jugadoresRemotos.forEach((j, id) => {
@@ -188,6 +195,7 @@ export class NetworkManager {
 
         game.ui.registrarLogConexion(`Iniciando PeerConnection para Invitado: ${guestId}`);
         const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+        this.vigilarIce(pc, guestId, game);
         const dc = pc.createDataChannel("mazeRPG");
         const iceBuffer: any[] = [];
         const info: RemotePlayer = { pc, dc, entidad: null, unsubscribes: [], creadoEn: Date.now() };

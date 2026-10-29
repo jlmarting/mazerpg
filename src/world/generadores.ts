@@ -352,5 +352,26 @@ export function generarNodo(gen: GenSpec, filas: number, columnas: number): Celd
     poblarObjetosAmbiente(celdas, rng);
     if (gen.nombre === 'mazmorra') poblarTesoros(celdas, salas, rng);
   }
+  sellarBordeExterior(celdas);
   return celdas;
+}
+
+/**
+ * Cierra el anillo exterior del nodo con muro (no hay celda más allá, así que
+ * es indestructible). Las costuras reabren su celda en `abrirCostura`.
+ */
+export function sellarBordeExterior(celdas: Celda[][]): void {
+  const filas = celdas.length;
+  const columnas = filas > 0 ? celdas[0].length : 0;
+  for (let f = 0; f < filas; f++) {
+    for (let c = 0; c < columnas; c++) {
+      if (f !== 0 && f !== filas - 1 && c !== 0 && c !== columnas - 1) continue;
+      const celda = celdas[f][c];
+      if (!celda) continue;
+      if (f === 0) celda.muros.superior = true;
+      if (f === filas - 1) celda.muros.inferior = true;
+      if (c === 0) celda.muros.izquierdo = true;
+      if (c === columnas - 1) celda.muros.derecho = true;
+    }
+  }
 }

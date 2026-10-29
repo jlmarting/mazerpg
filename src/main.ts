@@ -26,6 +26,7 @@ import { eliminarMurosEntre } from './world/generation';
 import { elegirCeldaLejos, elegirCeldaParaLlave } from './world/spawn';
 import { serializarMapa, deserializarMapa } from './world/serialization';
 import { generarNodo } from './world/generadores';
+import { generarPoblacion } from './world/poblacion';
 import { generateSessionName } from './utils/session';
 import { aparienciaEfectiva, aplicarAparienciaRemota, sanearApariencia, fichaJugador } from './core/avatarTintes';
 import { bonosEquipo } from './core/equipo';
@@ -45,7 +46,7 @@ import { elegirBotin, sortearOro } from './config/botin';
 import { inicializarSpritesheets, SpriteConfig } from './core/SpriteConfig';
 import { GameConfig, IEntidadRPG, IGame } from './types';
 import { cargarKeybinds, guardarKeybinds, asignarTecla, accionParaTecla, KEYBINDS_DEFECTO, ACCIONES_VALIDAS, type IdAccion } from './ui/keybinds';
-import { NUMERO_FILAS, NUMERO_COLUMNAS, ENEMIGOS_BASE, TAMANO_CELDA,
+import { NUMERO_FILAS, NUMERO_COLUMNAS, TAMANO_CELDA,
     ALTO_UI_TOP, ALTO_UI_BOTTOM, RADIO_VISION,
     TIEMPO_DESVANECIMIENTO_NIEBLA
 } from './world/constants';
@@ -201,7 +202,7 @@ class Game implements IGame {
   private portalesInactivosCache: Set<string> = new Set();
   private portalesInactivosRecalculadoEn: number = Number.NEGATIVE_INFINITY;
   /** Tema de render del nodo que el host tiene activo; el invitado no tiene árbol propio. */
-  private ambienteRemoto: 'casa' | 'dungeon' | null = null;
+  private ambienteRemoto: 'casa' | 'dungeon' | 'campo' | null = null;
   private readonly INTERVALO_PORTALES_MS: number = 250;
   /** Debounce del guardado del espejo de la casa (solo sin Firebase). */
   private static readonly DEBOUNCE_ESPEJO_CASA_MS = 1500;
@@ -214,8 +215,9 @@ class Game implements IGame {
     const badgeVersion = document.getElementById('lobbyVersion');
     if (badgeVersion) badgeVersion.textContent = `v${__VERSION__}`;
     console.log(`mazerpg v${__VERSION__}`);
-    // Identidad: playerId estable (persona) + connId de pestaña (red/buzón).
-    this.playerId = obtenerPlayerId(window.localStorage);
+    // Identidad: playerId por pestaña (sessionStorage) ⇒ cada cliente es un
+    // jugador distinto; al reanudar se adopta el playerId de la sesión guardada.
+    this.playerId = obtenerPlayerId(window.sessionStorage);
     this.connId = crearIdConexion(this.playerId, window.sessionStorage);
     this.network = new NetworkManager(this.connId, this.playerId);
     // Keybinds de usuario (mazerpg.ui.keybinds); JSON corrupto o ausente → defaults.
@@ -239,6 +241,35 @@ class Game implements IGame {
     this.setupEventListeners();
     this.verificarUrlParams();
     this.lobbyManager = new LobbyManager(this);
+    const btn = document.createElement('button');
+    btn.id = 'btnReanudarCanal';
+    btn.textContent = 'REANUDAR CANAL';
+    btn.style.cssText = 'display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 20px;background:#c0392b;color:#fff;border:none;border-radius:6px;cursor:pointer;';
+    btn.addEventListener('click', () => { void this.reanudarCanal(); });
+    document.body.appendChild(btn);
+    window.setInterval(() => {
+      if (!this.mpActivo) return;
+        if (!this.esHost) {
+        const last = (this as any)._ultimoSnapshotMs ?? 0;
+        const btn = document.getElementById('btnReanudarCanal') as HTMLButtonElement | null;
+        if (last > 0 && Date.now() - last >= 8000) {
+          this.registrarEventoLog?.('⚠ canal silencioso (sin snapshot ≥8s)');
+          if (btn) btn.style.display = 'block';
+          (this as any)._ultimoSnapshotMs = Date.now();
+        } else if (btn && last > 0 && Date.now() - last < 4000) {
+          btn.style.display = 'none';
+        }
+      } else {
+        const pings = (this as any)._ultimoPingGuest || {};
+        const now = Date.now();
+        for (const id of Object.keys(pings)) {
+          if (now - pings[id] >= 8000) {
+            this.registrarEventoLog?.(`⚠ guest silencioso: ${id} (sin posición ≥8s)`);
+            pings[id] = now;
+          }
+        }
+      }
+    }, 2000);
     // Los errores de Firebase se muestran en el front (log + banner), no solo en consola.
     this.firebase.setErrorReporter((contexto, e) => {
       const msg = (e as any)?.message ?? String(e);
@@ -477,6 +508,10 @@ class Game implements IGame {
   private verificarUrlParams() {
     // Primero verificar si viene de la URL como parámetro
     const params = new URLSearchParams(window.location.search);
+    if (params.get('inmune') === '1') {
+      this.protagonista.inmuneDebug = true;
+      this.registrarEventoLog('🛡 Inmunidad de depuración activada (?inmune=1)');
+    }
     const partidaIdFromUrl = params.get('id');
     
     // Si no hay en URL, verificar si fue inyectado por el servidor
@@ -1481,6 +1516,33 @@ class Game implements IGame {
     }
   }
 
+  async reanudarCanal(): Promise<void> {
+    if (!this.mpActivo || this.esHost) return;
+    const pc = (this.network as any)?.jugadoresRemotos?.values?.().next?.().value?.pc;
+    let intentos = 0;
+    while (intentos < 3) {
+      intentos++;
+      this.registrarEventoLog?.(`Reanudando canal (intento ${intentos}/3)…`);
+      try { pc?.restartIce?.(); } catch { /* noop */ }
+      await new Promise(r => setTimeout(r, 2000));
+      if (pc?.iceConnectionState === 'connected') { this.registrarEventoLog?.('Canal reanudado'); return; }
+    }
+    // Fallback Firestore
+    this.registrarEventoLog?.('ICE falló; re-negociando vía Firestore…');
+    try {
+      const pid = this.network?.idPartidaActual;
+      if (pid) {
+        try { await this.firebase.limpiarSignaling(pid, this.network.idLocal); } catch { /* noop */ }
+        await this.network.setupWebRTCGuest(pid, this);
+        this.registrarEventoLog?.('Re-negociación Firestore completada');
+        return;
+      }
+    } catch (e) {
+      this.registrarEventoLog?.(`Re-negociación falló: ${(e as any)?.message ?? e}`);
+    }
+    this.registrarEventoLog?.('Reconexión fallida');
+  }
+
   private async vigilarHost(): Promise<void> {
     if (!this.coordinador || !this.mpActivo || this.migracionEnCurso || this.reconectando) return;
     const estado = await this.coordinador.leerEstado();
@@ -1662,6 +1724,12 @@ class Game implements IGame {
 
   private async ejecutarEleccionHost(hostCaidoPorCierre: boolean = false): Promise<void> {
     if (this.esHost || this.juegoTerminado || this.migracionEnCurso || this.reconectando) return;
+    // Resincronizar antes de re-elegir: dar una oportunidad al host original.
+    if (hostCaidoPorCierre) {
+      this.registrarEventoLog?.('Intentando resincronizar con host original antes de elegir…');
+      await new Promise(r => setTimeout(r, 1500));
+      if (this.reconectando) return;
+    }
     this.migracionEnCurso = true;
     try {
       if (!this.coordinador) {
@@ -2317,6 +2385,14 @@ class Game implements IGame {
     const dataStr = localStorage.getItem('mazeRPG_lastSession');
     if (!dataStr) return;
     const data = JSON.parse(dataStr);
+    // Reanudar adopta la identidad guardada (continuidad de roster/progreso).
+    if (typeof data?.playerId === 'string' && /^P[A-Za-z0-9_-]{6,}$/.test(data.playerId)) {
+        this.playerId = data.playerId;
+        window.sessionStorage.setItem('mazerpg.playerId', data.playerId);
+        this.connId = crearIdConexion(this.playerId, window.sessionStorage);
+        this.network.idLocal = this.connId;
+        this.network.playerId = this.playerId;
+    }
 
     this.protagonista.nombre = data.name;
     this.protagonista.clase = data.class;
@@ -2557,6 +2633,7 @@ class Game implements IGame {
             if (salida) this.mapaLaberinto[salida.fila][salida.columna].esSalida = true;
         }
         this.generarEnemigos();
+        if (this.gestorMundo.nodoActivoId) this.nodosEnemigosSembrados.add(this.gestorMundo.nodoActivoId);
         if (!this.mundoCargado) {
             this.generarEscenarioDinamicoDemo();
         }
@@ -2829,25 +2906,20 @@ class Game implements IGame {
   }
 
   generarEnemigos() {
-    const tipos = ["Esqueleto", "Orco", "Goblin", "Minotauro"];
-    let cantidad = ENEMIGOS_BASE;
-    if (this.config.dificultad === 'facil' || this.config.dificultad === 'medio') {
-        cantidad = Math.floor(cantidad * 0.75);
-    } else if (this.config.dificultad === 'locura') {
-        cantidad = Math.floor(cantidad * 1.75);
-    }
-
-    for (let i = 0; i < cantidad; i++) {
-        let f, c;
-        let s = 0;
-        const dims = this.dimsActivo();
-        do {
-            f = Math.floor(Math.random() * dims.filas);
-            c = Math.floor(Math.random() * dims.columnas);
-            s++;
-        } while (((f < 5 && c < 5) || !this.mapaLaberinto[f][c].esTransitable || this.mapaLaberinto[f][c].esSalida) && s < 1000);
-        const t = tipos[i % tipos.length];
-        const e = new EnemigoNPC(f, c, t, t, i, this.config.dificultad);
+    const nodo = this.nodoActivo;
+    const dims = this.dimsActivo();
+    // Población determinista: la existencia del mapa implica la de su población.
+    const sembrados = generarPoblacion({
+        seed: nodo?.gen?.seed ?? 0,
+        celdas: this.mapaLaberinto,
+        filas: dims.filas,
+        columnas: dims.columnas,
+        dificultad: this.config.dificultad,
+        spec: nodo?.poblacion,
+        spawn: { fila: this.protagonista.fila, columna: this.protagonista.columna },
+    });
+    for (const d of sembrados) {
+        const e = new EnemigoNPC(d.fila, d.columna, d.tipo, d.tipo, d.id, this.config.dificultad);
         this.setupEntity(e);
         this.listaDeEnemigos.push(e);
     }
@@ -3066,7 +3138,7 @@ class Game implements IGame {
     // en el mensaje 'mapa' (si no, la casa se pintaba como mazmorra).
     const ambiente = !this.esHost && this.mpActivo && this.ambienteRemoto !== null
       ? this.ambienteRemoto
-      : (this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon');
+      : (this.nodoActivo?.tipo === 'personal' ? 'casa' : this.nodoActivo?.tipo === 'abierto' ? 'campo' : 'dungeon');
     this.renderer.setAmbiente(ambiente);
 
     let persistence = this.config.TIEMPO_DESVANECIMIENTO_NIEBLA;
@@ -3475,7 +3547,9 @@ class Game implements IGame {
     // F4b.3: HTTP/manual sin persistencia → gen + deltas + costuras. Con
     // Firebase (snapshot/history en Firestore) o payload excesivo → mapa completo F3.
     let enviadoCompacto = false;
-    if (!this.persistenciaMundo) {
+    {
+        // Transmitir el mundo completo (todos los nodos) de forma compacta:
+        // el invitado regenera por gen + deltas + costuras.
         const compacto = this.construirMundoCompacto();
         if (compacto) {
             const payload = JSON.stringify(compacto);
@@ -3487,7 +3561,7 @@ class Game implements IGame {
     }
     if (!enviadoCompacto) {
         const mapaCompacto = serializarMapa(this.mapaLaberinto, { v2: true });
-        const ambiente = this.nodoActivo?.tipo === 'personal' ? 'casa' : 'dungeon';
+        const ambiente = this.nodoActivo?.tipo === 'personal' ? 'casa' : this.nodoActivo?.tipo === 'abierto' ? 'campo' : 'dungeon';
         const activo = this.nodoActivo;
         const transformActivo = this.gestorMundo.nodoActivoId
             ? this.gestorMundo.transformAbsoluto(this.gestorMundo.nodoActivoId)
@@ -3625,7 +3699,14 @@ class Game implements IGame {
       console.warn('mundo: mensaje sin nodos; se conserva el mundo actual.');
       return this.dimsActivo();
     }
-    const activo = nodos.find((n) => n.id === msg.nodoActivoId) ?? nodos[0];
+    // Posición por jugador: cada cliente conserva su propio nodo activo; solo
+    // adopta el del host en el join (sin nodo propio) o si el suyo ya no existe.
+    const previoId = this.gestorMundo.nodoActivoId;
+    const conservar = !this.esHost && this.motorIniciado
+      && !!previoId && nodos.some((n) => n.id === previoId);
+    const activo = conservar
+      ? nodos.find((n) => n.id === previoId)!
+      : (nodos.find((n) => n.id === msg.nodoActivoId) ?? nodos[0]);
     this.gestorMundo.mundo = new Map(nodos.map((n) => [n.id, n]));
     this.gestorMundo.nodoActivoId = activo.id;
     return { filas: activo.filas, columnas: activo.columnas };
@@ -3664,6 +3745,16 @@ class Game implements IGame {
       });
     }
 
+    // Posición por jugador: si el invitado ya tiene nodo propio y sigue en el
+    // mundo, se fusionan los nodos recibidos sin cambiar su nodo activo.
+    const previoId = this.gestorMundo.nodoActivoId;
+    const conservar = !this.esHost && this.motorIniciado
+      && !!previoId && this.gestorMundo.mundo.has(previoId);
+    if (conservar) {
+      for (const [id, n] of mundo) this.gestorMundo.mundo.set(id, n);
+      const propio = this.gestorMundo.mundo.get(previoId)!;
+      return { filas: propio.filas, columnas: propio.columnas };
+    }
     this.gestorMundo.mundo = mundo;
     this.gestorMundo.nodoActivoId = nodoActivo.id;
     return dims;
@@ -3945,11 +4036,11 @@ class Game implements IGame {
     return base;
   }
 
-  /** F4b.3: mensaje compacto activo + hasta 2 vecinos (HTTP/manual). */
+  /** Mundo compacto: TODOS los nodos (activo completo; resto gen+deltas+costuras). */
   private construirMundoCompacto(): any {
     const activo = this.nodoActivo;
     if (!activo) return null;
-    const nodos = [activo, ...this.nodosVecinosParaInvitado()];
+    const nodos = Array.from(this.gestorMundo.mundo.values());
     const vistos = new Set<string>();
     const remotos: NodoRemoto[] = [];
     for (const nodo of nodos) {
@@ -3961,7 +4052,7 @@ class Game implements IGame {
       tipo: 'mundo',
       version: 2,
       nodoActivoId: activo.id,
-      ambiente: activo.tipo === 'personal' ? 'casa' : 'dungeon',
+      ambiente: activo.tipo === 'personal' ? 'casa' : activo.tipo === 'abierto' ? 'campo' : 'dungeon',
       dificultad: this.config.dificultad,
       continuo: activo.tipo !== 'personal' && remotos.length > 1,
       nodos: remotos,
@@ -4183,8 +4274,12 @@ class Game implements IGame {
             return;
         }
 
-        // 4b. Límites del mapa
+        // 4b. Límites del mapa: si hay un nodo vecino en esa dirección, la celda
+        // existe en el mundo (contiguo); si no, es la "nada" y bloquea.
         if (sigFila < 0 || sigFila >= this.mapaLaberinto.length || sigColumna < 0 || sigColumna >= (this.mapaLaberinto[sigFila]?.length ?? 0)) {
+            if (this.esLadoAutoritativo() && this.intentarCruzarBordeANodo(entidad, df, dc, sigFila, sigColumna)) {
+                return;
+            }
             console.warn(`resolverAccion: Intento de movimiento fuera de límites por ${entidad.nombre}`);
             return;
         }
@@ -5020,10 +5115,88 @@ class Game implements IGame {
    * Cruce continuo: la entidad está en la celda de un conector con `lado` y se
    * mueve hacia fuera. Devuelve true si el cruce se realizó.
    */
+  /** Nodo cuya rejilla contiene el punto de mundo absoluto. */
+  private nodoEnPuntoMundo(worldF: number, worldC: number): { nodoId: string; fila: number; columna: number } | null {
+    for (const [id, nodo] of this.gestorMundo.mundo) {
+      const t = this.gestorMundo.transformAbsoluto(id);
+      const f = worldF - t.df;
+      const c = worldC - t.dc;
+      if (f >= 0 && f < nodo.filas && c >= 0 && c < nodo.columnas) {
+        return { nodoId: id, fila: f, columna: c };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Resuelve un movimiento que sale de la rejilla activa contra el nodo vecino.
+   * Devuelve true si lo gestionó (cruzar, picar o borde sólido de un nodo);
+   * false si no hay nodo al otro lado (la "nada" bloquea).
+   */
+  private intentarCruzarBordeANodo(entidad: IEntidadRPG, df: number, dc: number, sigFila: number, sigColumna: number): boolean {
+    const activoId = this.gestorMundo.nodoActivoId;
+    if (!activoId) return false;
+    const tAct = this.gestorMundo.transformAbsoluto(activoId);
+    const destino = this.nodoEnPuntoMundo(tAct.df + sigFila, tAct.dc + sigColumna);
+    if (!destino) return false;
+    const nodo = this.gestorMundo.mundo.get(destino.nodoId);
+    const celdaDestino = nodo?.celdas[destino.fila]?.[destino.columna];
+    if (!celdaDestino) return false;
+
+    const idConector = `costura-borde-${activoId}-${entidad.fila}-${entidad.columna}`;
+    const registrar = () => {
+      if (this.gestorMundo.conectores.has(idConector)) return;
+      const lado = df === 1 ? 'sur' : df === -1 ? 'norte' : dc === 1 ? 'este' : 'oeste';
+      this.gestorMundo.registrarConector({
+        id: idConector, tipo: 'salida', nodoOrigenId: activoId,
+        filaO: entidad.fila, columnaO: entidad.columna,
+        nodoDestinoId: destino.nodoId, filaD: destino.fila, columnaD: destino.columna,
+        housingOwnerId: null, lado,
+      } as any);
+      this.renderer.invalidarCacheLaberinto();
+    };
+
+    if (celdaDestino.esTransitable) {
+      registrar();
+      return this.intentarCruzarCostura(entidad, df, dc);
+    }
+
+    // Celda vecina sólida: picar si se puede.
+    const puedeCavar = typeof (entidad as any).puedeCavar === 'function' ? (entidad as any).puedeCavar() : (entidad as any).tienePico;
+    if (!puedeCavar) return true;
+    const clave = `${destino.nodoId}:${destino.fila}:${destino.columna}`;
+    const ultima = (entidad as any).ultimaCasillaAtacada;
+    if (ultima && ultima.bordeKey === clave) {
+      celdaDestino.golpesCavar++;
+    } else {
+      celdaDestino.golpesCavar = 1;
+      (entidad as any).ultimaCasillaAtacada = { bordeKey: clave };
+    }
+    if (celdaDestino.golpesCavar >= 5) {
+      celdaDestino.golpesCavar = 0;
+      celdaDestino.esTransitable = true;
+      registrar();
+      this.renderer.invalidarCacheLaberinto();
+    }
+    return true;
+  }
+
   private intentarCruzarCostura(entidad: IEntidadRPG, df: number, dc: number): boolean {
     const activoId = this.gestorMundo.nodoActivoId;
     if (!activoId) return false;
-    const conector = this.gestorMundo.conectorEn(entidad.fila, entidad.columna);
+    let conector = this.gestorMundo.conectorEn(entidad.fila, entidad.columna);
+    let origenBusqueda = 'actual';
+    if (!conector) {
+      // El conector puede estar en la celda adyacente (borde/muro).
+      const sigFila = entidad.fila + df;
+      const sigColumna = entidad.columna + dc;
+      conector = this.gestorMundo.conectorEn(sigFila, sigColumna);
+      origenBusqueda = `adyacente(${sigFila},${sigColumna})`;
+    }
+    if (this.config.vistaDebugActivada) {
+      const listaConectores = Array.from(this.gestorMundo.conectores.values()).map((c: any) => `${c.id}|O=(${c.filaO},${c.columnaO})|D=(${c.filaD},${c.columnaD})|ori=${c.nodoOrigenId}|dst=${c.nodoDestinoId}|lado=${c.lado}`);
+      console.warn(`[cruzar] activo=${activoId} pos=(${entidad.fila},${entidad.columna}) dir=(${df},${dc}) busq=${origenBusqueda} conector=${conector ? conector.id : 'null'} | ${listaConectores.join(' ;; ')}`);
+    }
     if (!conector || !conector.lado || conector.nodoOrigenId !== activoId) return false;
 
     const tOrigen = this.gestorMundo.transformAbsoluto(activoId);
@@ -5111,6 +5284,9 @@ class Game implements IGame {
     }
   }
 
+  /** Nodos cuyo set de enemigos ya se sembró (evita regenerar al volver). */
+  private nodosEnemigosSembrados: Set<string> = new Set();
+
   /** Foto fiel de la lista activa (id/fila/columna/nombre/tipo/vidas); null salvo lado autoritativo con lista no vacía. */
   private fotografiarEnemigos(): EnemigoFoto[] | null {
     // Sin Firebase el espejo local usa esta foto para la casa (solo); el destino
@@ -5137,9 +5313,14 @@ class Game implements IGame {
     if (!destinoId) return;
     const persistencia = this.persistenciaMundo;
     if (!persistencia) {
-        // HTTP/manual: no hay historia persistida que rehidratar, pero el nodo
-        // destino ya está materializado y el invitado debe recibirlo igual. En
-        // microtask para que atravesarConector termine de mover al protagonista.
+        // HTTP/manual: no hay historia persistida que rehidratar. El nodo destino
+        // ya está materializado; si es su primera visita, se siembran enemigos.
+        if (this.gestorMundo.nodoActivoId === destinoId
+            && !this.nodosEnemigosSembrados.has(destinoId)
+            && this.nodoActivo?.tipo !== 'personal') {
+            this.generarEnemigos();
+            this.nodosEnemigosSembrados.add(destinoId);
+        }
         queueMicrotask(() => this.reenviarEstadoAInvitados());
         return;
     }
@@ -5169,6 +5350,14 @@ class Game implements IGame {
                     (d) => this.reconstruirEnemigo(d),
                     this.dimsActivo(),
                 );
+            }
+            // Primera visita (sin snapshot de enemigos): sembrar el nodo destino.
+            if (this.gestorMundo.nodoActivoId === destinoId
+                && !this.nodosEnemigosSembrados.has(destinoId)
+                && !fotoDestino.enemigos
+                && this.nodoActivo?.tipo !== 'personal') {
+                this.generarEnemigos();
+                this.nodosEnemigosSembrados.add(destinoId);
             }
             // Post-aceptación: el invitado recibe 'mapa' SOLO al join. Si el host
             // atraviesa a otro nodo, su rejilla quedaría vieja (p. ej. casa 9×16)
@@ -5422,6 +5611,7 @@ class Game implements IGame {
             break;
         case 'snapshot':
             if (!this.esHost) {
+                (this as any)._ultimoSnapshotMs = Date.now();
                 msg.entities.forEach((entData: any) => {
                     if (entData.isNpc) {
                         const npc = this.listaDeEnemigos.find(e => (e as any).id === entData.id);
@@ -5649,7 +5839,7 @@ class Game implements IGame {
             break;
         case 'mundo': {
             this.mundoRemotoCompacto = true;
-            this.ambienteRemoto = msg.ambiente === 'casa' ? 'casa' : 'dungeon';
+            this.ambienteRemoto = msg.ambiente === 'casa' ? 'casa' : msg.ambiente === 'campo' ? 'campo' : 'dungeon';
             const offsetPrevio = this.renderer.obtenerOffsetCamaraMundo(
                 this.worldDesdeCeldaActiva(this.protagonista.visualFila, this.protagonista.visualColumna),
                 this.config,
@@ -5663,6 +5853,10 @@ class Game implements IGame {
             this.ajustarDimensiones();
             this.renderer?.invalidarCacheLaberinto();
             this.mundoDelHostRecibido = true;
+            if (!this.motorIniciado) {
+                this.mundoSincronizado = true;
+                this.ui.ocultarLobby();
+            }
             if (msg.continuo && nodoAnterior && !this.gestorMundo.mundo.has(nodoAnterior.id)) {
                 this.gestorMundo.mundo.set(nodoAnterior.id, nodoAnterior);
             }
@@ -5676,7 +5870,7 @@ class Game implements IGame {
         }
         case 'mapa': {
             this.mundoRemotoCompacto = false;
-            this.ambienteRemoto = msg.ambiente === 'casa' ? 'casa' : 'dungeon';
+            this.ambienteRemoto = msg.ambiente === 'casa' ? 'casa' : msg.ambiente === 'campo' ? 'campo' : 'dungeon';
             const offsetPrevio = this.renderer.obtenerOffsetCamaraMundo(
                 this.worldDesdeCeldaActiva(this.protagonista.visualFila, this.protagonista.visualColumna),
                 this.config,
@@ -5832,6 +6026,7 @@ class Game implements IGame {
             break;
         }
         case 'posicion':
+            if (this.esHost) (this as any)._ultimoPingGuest = (this as any)._ultimoPingGuest || {}; (this as any)._ultimoPingGuest[idSujeto] = Date.now();
             const jPos = this.remotosActivos.get(idSujeto);
             if (jPos && jPos.entidad) {
                 jPos.entidad.fila = msg.f;
@@ -5925,6 +6120,10 @@ class Game implements IGame {
             this.iniciarEleccionHost();
             break;
         case 'spawn':
+            if (!this.esHost && this.ambienteRemoto === 'casa') {
+                this.registrarEventoLog?.('Spawn en casa del host bloqueado (anti-drag).');
+                break;
+            }
             this.protagonista.fila = msg.f;
             this.protagonista.columna = msg.c;
             this.protagonista.visualFila = msg.f;

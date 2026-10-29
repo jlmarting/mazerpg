@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Costura continua entre nodos**: se cruza por toda la franja del borde donde ambos nodos tienen suelo (no solo una celda); los bordes sin nodo vecino quedan como muro/bosque. Corrige el desfase de filas (`df`) entre rejillas de distinto tamaño. Spec `costuraContinua`
+- **Mundo contiguo (pico en el borde)**: al salir de la rejilla se resuelve la celda del nodo vecino en coordenadas de mundo; se puede picar la celda contigua del otro nodo para abrir paso. Sin nodo vecino, la "nada" bloquea
+- **Zonas abiertas como campo**: tema `campo` (césped, caminos, flores, árboles) para nodos `abierto`, sin assets nuevos
+- **Población determinista por nodo**: `generarPoblacion(seed, celdas, dificultad, spec)` — la población es función del mapa; `PoblacionSpec` extensible por nodo (`modo`, `densidad`, `tipos`, `seed`). Spec `poblacion`
+- **Identidad por pestaña**: `playerId` en `sessionStorage` (cada cliente/jugador distinto); al reanudar se adopta el `playerId` guardado. Cada cliente conserva su propio nodo activo en MP (no salta al del host)
+- **Reconexión robusta (propuesta g)**: detección de canal zombi (`oniceconnectionstatechange` + watcher de silencio ≥8s en guest/host), botón `REANUDAR CANAL` que intenta `restartIce()` (3 intentos) y cae a re-negociación vía Firestore, y gracia de 1.5s antes de elegir nuevo host para evitar carreras
+- **Mundo completo al invitado**: el host transmite todos los nodos en formato compacto (gen + deltas + costuras), no solo el activo y 2 vecinos
+- **Inmunidad de depuración `?inmune=1`**: el protagonista no recibe daño (solo pruebas)
 - **F5 v1 — muerte, fantasma y resurrección**: al morir el jugador pasa a fantasma (atraviesa muros, sin atacar ni recoger loot), con cuerpo anclado, teletransporte al cuerpo y abandono; resurrección al 50 % con **pócima de resurrección** usada por un jugador adyacente; roster de todos los que pasaron y fin cuando todos están `fuera`; render y overlay de fantasma; specs `fantasma` y smoke `smoke_fantasma.mjs` (host muerto sigue siendo host, sin migración, resurrección y abandono con migración)
 - **Apertura de cofres**: texto flotante ascendente sobre el cofre con lo recogido (`+10 oro`, `+30 oro · +1 pócima`), además del log existente
 - **Mapa en la mochila**: objeto permanente (`herramienta`, 0 kg, no consumible y no comerciable) con **VER MAPA**, que cierra la mochila y abre el mapamundi; se inyecta al reanudar sesiones antiguas; mochila en rejilla con scroll, tarjetas de objeto, modal más ancho y una columna en móvil; el mapa queda excluido del trueque; specs y smoke `smoke_mochila_mapa.mjs` (19 PASS)

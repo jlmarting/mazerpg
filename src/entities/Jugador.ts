@@ -218,7 +218,13 @@ export class Jugador extends EntidadRPG {
   }
 
 
+  /** Inmunidad de depuración (activada con ?inmune=1). No afecta a partidas normales. */
+  public inmuneDebug: boolean = false;
+
   recibirDano(cantidad: number, atacante?: EntidadRPG | null): number {
+    if (this.inmuneDebug) {
+        return 0;
+    }
     if (Date.now() < this.inmunidadHasta) {
         return 0;
     }

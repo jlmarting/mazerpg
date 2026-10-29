@@ -105,7 +105,6 @@ export class GestorMundo {
     if (!conector) {
       throw new Error(`Conector desconocido: ${conectorId}`);
     }
-
     const nodoExistente = this.mundo.get(conector.nodoDestinoId) ?? null;
     const origen = this.mundo.get(conector.nodoOrigenId) ?? null;
     const filasDestino = nodoExistente ? nodoExistente.filas : origen ? origen.filas : 0;

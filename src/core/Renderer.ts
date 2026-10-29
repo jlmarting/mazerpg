@@ -12,7 +12,7 @@ interface CacheNodo {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   valido: boolean;
-  ambiente: 'dungeon' | 'casa';
+  ambiente: 'dungeon' | 'casa' | 'campo';
   nivel: 'hot' | 'lod';
   tamanoCelda: number;
 }
@@ -45,7 +45,7 @@ export class Renderer {
   /** Portales de housing (todos: ida y vuelta) para dibujarlos como casita con pulso. */
   private portalesHousing: Set<string> = new Set();
   /** Ambiente del nodo activo: 'casa' cambia el tema de suelos/muros. */
-  private ambiente: 'dungeon' | 'casa' = 'dungeon';
+  private ambiente: 'dungeon' | 'casa' | 'campo' = 'dungeon';
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -157,6 +157,7 @@ export class Renderer {
       this.dibujarPulsoHousing(entry.nodo.celdas, offset, config);
       this.dibujarTesoros(entry.nodo.celdas, offset, config);
       this.dibujarSalida(entry.nodo.celdas, offset, config);
+      this.dibujarConectoresDebug(entry.nodo.celdas, offset, config);
       this.dibujarNiebla(entry.nodo.celdas, offset, config, persistenceOverride);
       if (entry.nodo.id === nodoActivoId) offsetActivo = offset;
     }
@@ -173,6 +174,7 @@ export class Renderer {
     this.dibujarDrops(offset, config, drops);
     this.dibujarTesoros(mapaLaberinto, offset, config);
     this.dibujarSalida(mapaLaberinto, offset, config);
+    this.dibujarConectoresDebug(mapaLaberinto, offset, config);
   }
 
   private nodoSintetico(mapaLaberinto: Celda[][]): NodoRender {
@@ -211,6 +213,32 @@ export class Renderer {
         this.ctx.textAlign = 'center';
         this.ctx.fillText('SALIDA', x + TAMANO_CELDA / 2, y + TAMANO_CELDA / 2 + 3);
         this.ctx.textAlign = 'left';
+      }
+    }
+  }
+
+  /** DEBUG: parpadea sobre las celdas con conector (costuras) cuando la vista debug está activa. */
+  private dibujarConectoresDebug(mapaLaberinto: Celda[][], offset: CameraOffset, config: GameConfig) {
+    if (!config.vistaDebugActivada) return;
+    const { TAMANO_CELDA, ALTO_UI_TOP, CELDAS_VISIBLES_X, CELDAS_VISIBLES_Y } = config;
+    const { colOffset, filaOffset } = offset;
+    const fInicio = Math.max(0, Math.floor(filaOffset));
+    const fFin = Math.min(mapaLaberinto.length - 1, Math.ceil(filaOffset + CELDAS_VISIBLES_Y));
+    const cInicio = Math.max(0, Math.floor(colOffset));
+    const cFin = Math.min((mapaLaberinto[0]?.length ?? 0) - 1, Math.ceil(colOffset + CELDAS_VISIBLES_X));
+    const fase = (performance.now() % 800) / 800;
+    const alpha = 0.25 + 0.5 * (1 - fase);
+    for (let fila = fInicio; fila <= fFin; fila++) {
+      for (let columna = cInicio; columna <= cFin; columna++) {
+        const celda = mapaLaberinto[fila]?.[columna];
+        if (celda?.conectorId === null || celda?.conectorId === undefined) continue;
+        const x = (columna - colOffset) * TAMANO_CELDA;
+        const y = (fila - filaOffset) * TAMANO_CELDA + ALTO_UI_TOP;
+        this.ctx.fillStyle = `rgba(255, 0, 255, ${alpha})`;
+        this.ctx.fillRect(x + 1, y + 1, TAMANO_CELDA - 2, TAMANO_CELDA - 2);
+        this.ctx.strokeStyle = '#ff00ff';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(x + 1, y + 1, TAMANO_CELDA - 2, TAMANO_CELDA - 2);
       }
     }
   }
@@ -1085,8 +1113,8 @@ export class Renderer {
     const clave = nivel === 'lod' ? `${nodo.id}:lod` : nodo.id;
     const w = Math.max(1, nodo.columnas) * tam;
     const h = Math.max(1, nodo.filas) * tam;
-    const ambiente: 'dungeon' | 'casa' =
-      nodo.id === '__laberinto__' ? this.ambiente : nodo.tipo === 'personal' ? 'casa' : 'dungeon';
+    const ambiente: 'dungeon' | 'casa' | 'campo' =
+      nodo.id === '__laberinto__' ? this.ambiente : nodo.tipo === 'personal' ? 'casa' : nodo.tipo === 'abierto' ? 'campo' : 'dungeon';
 
     let entry = this.cacheNodos.get(clave);
     if (!entry || entry.canvas.width !== w || entry.canvas.height !== h || entry.ambiente !== ambiente || entry.nivel !== nivel) {
@@ -1198,6 +1226,10 @@ export class Renderer {
   }
 
   private pintarSuelo(ctx: CanvasRenderingContext2D, celda: Celda, fila: number, columna: number, x: number, y: number, tam: number) {
+    if (this.ambiente === 'campo') {
+      this.pintarSueloCampo(ctx, celda, fila, columna, x, y, tam);
+      return;
+    }
     // Tema casa: suelo según el material de la habitación (madera/baldosa/alfombra).
     if (this.ambiente === 'casa') {
       const material = celda.sueloDecor ?? 'madera';
@@ -1226,7 +1258,61 @@ export class Renderer {
     ctx.fill();
   }
 
+  /** Césped, caminos de tierra y flores deterministas para zonas abiertas. */
+  private pintarSueloCampo(ctx: CanvasRenderingContext2D, celda: Celda, fila: number, columna: number, x: number, y: number, tam: number) {
+    const h = hashCelda(fila, columna);
+    const abiertos = [!celda.muros.superior, !celda.muros.inferior, !celda.muros.izquierdo, !celda.muros.derecho];
+    const nAbiertos = abiertos.filter(Boolean).length;
+    const esCamino = nAbiertos >= 3 || (!celda.muros.superior && !celda.muros.inferior) || (!celda.muros.izquierdo && !celda.muros.derecho);
+    if (esCamino) {
+      ctx.fillStyle = `rgb(${150 + Math.floor(h * 20)}, ${125 + Math.floor(h * 15)}, ${85 + Math.floor(h * 10)})`;
+      ctx.fillRect(x, y, tam, tam);
+      ctx.fillStyle = 'rgba(0,0,0,0.06)';
+      ctx.fillRect(x + tam * h, y + tam * 0.3, Math.max(1, tam * 0.05), Math.max(1, tam * 0.04));
+    } else {
+      const g = 120 + Math.floor(h * 50);
+      ctx.fillStyle = `rgb(${45 + Math.floor(h * 20)}, ${g}, ${55 + Math.floor(h * 20)})`;
+      ctx.fillRect(x, y, tam, tam);
+      if (h > 0.75) {
+        const colores = ['#ff6b8a', '#ffd93d', '#a78bfa', '#ffffff'];
+        ctx.fillStyle = colores[Math.floor(hashCelda(columna, fila) * 4) % 4];
+        ctx.beginPath();
+        ctx.arc(x + tam * 0.5, y + tam * 0.5, Math.max(1.5, tam * 0.08), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  /** Árboles y arbustos en las celdas no transitables (sustituyen la piedra). */
+  private pintarBloqueMuroCampo(ctx: CanvasRenderingContext2D, fila: number, columna: number, x: number, y: number, tam: number) {
+    const h = hashCelda(fila + 7, columna + 13);
+    ctx.fillStyle = `rgb(40, ${95 + Math.floor(h * 30)}, 45)`;
+    ctx.fillRect(x, y, tam, tam);
+    if (h > 0.35) {
+      ctx.fillStyle = '#5b3a1a';
+      const tw = Math.max(2, tam * 0.12);
+      ctx.fillRect(x + tam * 0.5 - tw / 2, y + tam * 0.6, tw, tam * 0.35);
+      ctx.fillStyle = '#2e7d32';
+      ctx.beginPath();
+      ctx.arc(x + tam * 0.5, y + tam * 0.45, tam * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#43a047';
+      ctx.beginPath();
+      ctx.arc(x + tam * 0.38, y + tam * 0.38, tam * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = '#388e3c';
+      ctx.beginPath();
+      ctx.arc(x + tam * 0.5, y + tam * 0.6, tam * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   private pintarBloqueMuro(ctx: CanvasRenderingContext2D, mapa: Celda[][], fila: number, columna: number, x: number, y: number, tam: number, numFilas: number, numColumnas: number) {
+    if (this.ambiente === 'campo') {
+      this.pintarBloqueMuroCampo(ctx, fila, columna, x, y, tam);
+      return;
+    }
     if (this.ambiente === 'casa') {
       const celda = mapa[fila][columna];
       if (celda.mueble && this.spriteManager.obtenerSprite(`casa_mueble_${celda.mueble}`)) {
@@ -1420,7 +1506,7 @@ export class Renderer {
   }
 
   /** Cambia el tema de render (dungeon vs casa). Invalida las cachés al cambiar. */
-  setAmbiente(ambiente: 'dungeon' | 'casa'): void {
+  setAmbiente(ambiente: 'dungeon' | 'casa' | 'campo'): void {
     if (this.ambiente !== ambiente) {
       this.ambiente = ambiente;
       this.invalidarCacheLaberinto();

@@ -29,8 +29,15 @@ export function generarIdJugador(rng: () => number = Math.random): string {
   return `P${trozo(rng)}${trozo(rng)}`.slice(0, 20);
 }
 
-/** Devuelve el `playerId` persistido o genera y guarda uno nuevo. */
-export function obtenerPlayerId(almacen: AlmacenLike, generar: () => string = () => generarIdJugador()): string {
+/**
+ * Devuelve el `playerId` persistido en el almacén dado o genera y guarda uno
+ * nuevo. Con `sessionStorage` (por pestaña) cada cliente es un jugador distinto;
+ * al reanudar una sesión se adopta el `playerId` guardado.
+ */
+export function obtenerPlayerId(
+  almacen: AlmacenLike,
+  generar: () => string = () => generarIdJugador(),
+): string {
   const existente = almacen.getItem(CLAVE_PLAYER);
   if (existente && RE_ID.test(existente)) return existente;
   const nuevo = generar();
